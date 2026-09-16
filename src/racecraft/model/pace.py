@@ -386,7 +386,10 @@ def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
         # how much slower a harder tyre is before wear enters at all.
         compound_offset_s={reference: 0.0,
                            **{c: float(by_name.get(f"offset_{c}", 0.0)) for c in compounds[1:]}},
-        driver_baseline_s={},
+        # Each driver's own level in this session, relative to the quickest.
+        # Lap effects absorb fuel and track state, so what is left is the car
+        # and the driver - which is exactly what a race simulation needs.
+        driver_baseline_s=_relative_driver_pace(by_name, drivers),
         n_laps=len(df),
         n_drivers=len(drivers),
         residual_std_s=float(np.sqrt(sigma_squared)),
@@ -398,6 +401,15 @@ def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
         curvature_s_per_lap2={c: float(by_name[f"curve_{c}"]) for c in compounds if f"curve_{c}" in by_name},
         condition_number=float(np.linalg.cond(design)),
     )
+
+
+def _relative_driver_pace(by_name: dict[str, float], drivers: list) -> dict[int, float]:
+    """Driver coefficients rebased so the quickest car in the session is zero."""
+    values = {int(d): float(by_name[f"driver_{d}"]) for d in drivers if f"driver_{d}" in by_name}
+    if not values:
+        return {}
+    quickest = min(values.values())
+    return {driver: value - quickest for driver, value in values.items()}
 
 
 def combine(models: list[PaceModel]) -> dict[str, tuple[float, float]]:

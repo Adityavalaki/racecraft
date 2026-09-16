@@ -301,6 +301,61 @@ once safety cars are allowed for, because a stop still owed is a stop that
 might come cheap. Its downside is also bounded: the worst a plan can do is its
 own green-flag race, since a neutralisation only ever makes a stop cheaper.
 
+## Race simulator (Phase 4)
+
+`racecraft.model.race` puts the whole field on track and runs the race lap by
+lap, so strategy can be judged in places rather than seconds. Cars have their
+own pace, tyres that wear, and plans; a car that catches another loses time in
+its wake and only gets past when the circuit allows; safety cars bunch the
+field and hand a cheap stop to whoever still owes one.
+
+Every input is measured from the lake:
+
+| Input | Measured | Example |
+|---|---|---|
+| Overtaking | pairwise on-track passes per race | Monaco 5.8, Baku 27.0, Las Vegas 48.3 |
+| Following | lap time lost by gap to the car ahead | 2026: +0.55 s under 0.5 s, gone by 2.5 s |
+| Pit loss | in and out lap against pace either side | Spa 18.0 s, Baku 21.0 s, Imola 27.8 s |
+| Safety cars | rate, duration and the discount on a stop | 1.27 per race, 61% of a green stop |
+| Pace, wear | the pace model's driver and compound terms | see above |
+
+Following in 2026 costs less than in 2025 and fades faster with distance
+(+0.06 s at 1.5-2.5 s behind, against +0.23 s in 2025), which is what the
+regulations were meant to achieve.
+
+### What it is for, and what it is not for
+
+**It does not predict finishing order.** Validated over 30 races with pace
+taken only from earlier races, it is level with predicting the starting grid:
+
+| | Simulator | Grid order |
+|---|---|---|
+| Mean position error | 3.24 | 3.31 |
+| Podium places hit (of 3) | 2.03 | 2.03 |
+| Races won against the baseline | 15 of 30 | — |
+
+Given each race's *own* pace instead, it looks far better — 2.54 against 3.04,
+winning 31 of 36 — and that gap is the measure of how much hindsight was
+doing. Finishing order is dominated by how quick each car is on the day, and
+forecasting that is a different problem from strategy.
+
+`python scripts/validate_race.py prior` reproduces both numbers.
+
+**What it is for is comparing plans for one car**, where pace errors largely
+cancel because every plan runs against the same field. A midfield car starting
+P8 at Baku:
+
+| Plan | Mean finish | In the points | Best case |
+|---|---|---|---|
+| one stop, lap 26 | **8.01** | 100% | 7 |
+| one stop, lap 34 | 8.40 | 94% | **4** |
+| one stop, lap 20 | 8.49 | 90% | 6 |
+| two stops | 9.74 | 68% | 7 |
+
+The late stop is the gamble: worse on average, better if the race falls your
+way. That is a strategy question, and it is the shape of answer the simulator
+can honestly give.
+
 ## Query
 
 ```python
@@ -351,6 +406,7 @@ src/racecraft/
   model/circuit.py         pit loss, safety car risk
   model/strategy.py        costing and ranking race plans
   model/simulate.py        plans under safety car uncertainty
+  model/race.py            the whole field, scored in places
   model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
