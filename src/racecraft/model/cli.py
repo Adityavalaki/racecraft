@@ -45,6 +45,8 @@ def _clean_by_session(con, year: int) -> tuple[dict, dict]:
 
 def cmd_pace(args) -> int:
     con = connect()
+    if args.method == "lap-effects":
+        return _pace_by_lap_effects(args, con)
     seasons = [args.season] if args.season else sorted(
         r[0] for r in con.sql("select distinct year from sessions where session='R'").fetchall())
 
@@ -80,6 +82,34 @@ def cmd_pace(args) -> int:
                 values = "  ".join(
                     f"{single.degradation_s_per_lap.get(c, float('nan')):>8.3f}" for c in pace_model.DRY_COMPOUNDS)
                 print(f"  {names[key]:<28} {single.n_laps:>5} {single.fuel_s_per_lap:>7.3f}   {values}")
+    return 0
+
+
+def _pace_by_lap_effects(args, con) -> int:
+    """Degradation from comparing drivers at the same lap, fuel absorbed rather than modelled."""
+    seasons = [args.season] if args.season else sorted(
+        r[0] for r in con.sql("select distinct year from sessions where session='R'").fetchall())
+    header = "  ".join(f"{c:>18}" for c in pace_model.DRY_COMPOUNDS)
+    print(f"{'season':>6} {'races':>6}   {header}")
+    for year in sorted(seasons, reverse=True):
+        (clean, _), _ = _clean_by_session(con, year)
+        models = []
+        for laps in clean.values():
+            if len(laps) < 200:
+                continue
+            try:
+                models.append(pace_model.fit_lap_effects(laps, curved=args.curved))
+            except (pace_model.Confounded, ValueError):
+                continue
+        if not models:
+            print(f"{year:>6}   nothing fittable")
+            continue
+        pooled = pace_model.combine(models)
+        cells = [f"{pooled[c][0]:.4f} ± {pooled[c][1]:.4f}" if c in pooled else "—"
+                 for c in pace_model.DRY_COMPOUNDS]
+        print(f"{year:>6} {len(models):>6}   " + "  ".join(f"{c:>18}" for c in cells))
+    print()
+    print("Fuel is absorbed into the per-lap effects here, so it is not reported.")
     return 0
 
 
@@ -145,6 +175,11 @@ def main(argv: list[str] | None = None) -> int:
 
     pace_parser = commands.add_parser("pace", help="fuel and tyre degradation per season")
     pace_parser.add_argument("--season", type=int, help="one season, listing each race")
+    pace_parser.add_argument("--method", choices=["fuel", "lap-effects"], default="fuel",
+                             help="fuel: models fuel explicitly. lap-effects: compares drivers at the "
+                                  "same lap, absorbing fuel and track evolution whatever their shape")
+    pace_parser.add_argument("--curved", action="store_true",
+                             help="let degradation bend rather than run straight (lap-effects only)")
     pace_parser.set_defaults(handler=cmd_pace)
 
     circuits_parser = commands.add_parser("circuits", help="pit loss and neutralisation risk, every circuit")

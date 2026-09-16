@@ -205,15 +205,40 @@ race keeps its own fuel slope and baselines:
 Fuel lands at 0.05-0.06 s per lap every season, which is the expected size.
 2023-2025 order as you would expect: soft wears fastest, hard slowest.
 
-**Open question: 2026 comes out backwards**, with soft degrading least. It
-survives restricting every compound to the same 3-20 lap age window, and the
-age distributions match earlier seasons, so it is not obvious selection. But
-race by race it is a coin flip — only 6 of 13 races show soft below hard — so
-it is being treated as unresolved, not as a finding. The likely culprit is the
-fuel term: it also absorbs track evolution, and softs are used disproportionately
-in short late-race stints, where that absorption is least accurate. Phase 3
-should give track evolution its own term and allow degradation a cliff rather
-than a straight line.
+### Measuring degradation without modelling fuel
+
+The model above has to assume a shape for everything that changes as a race
+runs — fuel burning away and the track rubbering in — and fits one straight
+line to both. `fit_lap_effects` avoids the assumption instead of refining it:
+give every lap its own effect, and anything shared by the whole field on that
+lap is absorbed whatever its shape. What is left is what differs between cars
+on the same lap, which is tyre age, because drivers stop at different times.
+
+On synthetic data with non-linear track evolution added, the fuel model
+compresses the gap between compounds while this one recovers it. Run it with
+`racecraft-analyse pace --method lap-effects`:
+
+| Season | Soft | Medium | Hard |
+|---|---|---|---|
+| 2026 | 0.033 ± 0.003 | 0.036 ± 0.002 | 0.043 ± 0.001 |
+| 2025 | 0.070 ± 0.002 | 0.046 ± 0.001 | 0.030 ± 0.001 |
+| 2024 | 0.079 ± 0.003 | 0.055 ± 0.001 | 0.050 ± 0.001 |
+| 2023 | 0.050 ± 0.002 | 0.049 ± 0.001 | 0.037 ± 0.001 |
+
+**2026 really does behave differently.** Softs degrade least and hards most,
+the reverse of 2023-2025, and it survives both estimators and allowing the
+curve to bend (`--curved`): at every stint length from 5 to 30 laps the 2026
+soft loses less than the 2026 hard. Overall degradation is also far lower — a
+2026 soft loses 0.86 s by lap 30 where a 2025 soft loses 2.15 s. Lighter cars
+and new tyre construction make that plausible, and a hard compound struggling
+to reach temperature would degrade through sliding, but this is data, not an
+explanation, and it is quoted as such.
+
+**What is still not measurable here: the cliff.** Fitted curvature is negative
+for 2024 and 2025, which would mean tyres settling down as they age. That is
+survivorship: a team pits when the tyre falls away, so the laps after the
+cliff are mostly missing from the data. Any simulator built on these numbers
+models wear up to the point teams accept, not the wall beyond it.
 
 ## Query
 

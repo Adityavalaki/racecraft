@@ -60,6 +60,7 @@ class PaceModel:
     residual_std_s: float
     r_squared: float
     standard_errors: dict[str, float] = field(default_factory=dict)
+    curvature_s_per_lap2: dict[str, float] = field(default_factory=dict)
     condition_number: float = float("nan")
 
     @property
@@ -309,3 +310,110 @@ def _qr_pivot(a: np.ndarray):
     from scipy.linalg import qr
     q, r, p = qr(a, mode="economic", pivoting=True)
     return q, r, p
+
+
+def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
+    """
+    Degradation measured by comparing drivers at the same lap.
+
+    The fuel model above has to assume a shape for everything that changes as
+    a race runs: fuel burning away, and the track rubbering in. It fits one
+    straight line to both, and any error in that assumption lands on whichever
+    compound is used when the assumption is worst.
+
+    This avoids the problem instead of modelling it. Give every lap of the race
+    its own effect, and everything shared by the whole field on that lap —
+    fuel load, track state, wind, a damp patch — is absorbed, whatever its
+    shape. What remains is what differs between cars on that same lap, and the
+    thing that differs is tyre age, because drivers stop at different times.
+
+    The cost is that fuel can no longer be read off: it is inside the lap
+    effects. Use `fit` when the fuel number is wanted and this when the
+    degradation number is.
+    """
+    df = laps
+    if len(df) < MIN_LAPS_TO_FIT:
+        raise ValueError(f"only {len(df)} clean laps; need at least {MIN_LAPS_TO_FIT}")
+
+    drivers = sorted(df["driver_number"].unique())
+    lap_numbers = sorted(df["lap_number"].unique())
+    compounds = [c for c in DRY_COMPOUNDS if c in set(df["compound"])]
+    tyre_age = df["tyre_life"].to_numpy(dtype=float)
+
+    columns, names = [], []
+    for driver in drivers:
+        columns.append((df["driver_number"] == driver).to_numpy(dtype=float))
+        names.append(f"driver_{driver}")
+    for lap in lap_numbers[1:]:                      # first lap is the reference
+        columns.append((df["lap_number"] == lap).to_numpy(dtype=float))
+        names.append(f"lap_{lap}")
+    for compound in compounds[1:]:
+        columns.append((df["compound"] == compound).to_numpy(dtype=float))
+        names.append(f"offset_{compound}")
+    for compound in compounds:
+        columns.append(np.where(df["compound"] == compound, tyre_age, 0.0))
+        names.append(f"deg_{compound}")
+    if curved:
+        # A tyre rarely wears in a straight line: it holds on, then falls away.
+        # The squared term is that bend, so `deg_` becomes the slope when the
+        # tyre is new and `curve_` how fast the drop-off accelerates.
+        for compound in compounds:
+            columns.append(np.where(df["compound"] == compound, tyre_age**2, 0.0))
+            names.append(f"curve_{compound}")
+
+    design = np.column_stack(columns)
+    observed = df["lap_time_s"].to_numpy(dtype=float)
+    if np.linalg.matrix_rank(design) < design.shape[1]:
+        keep = _independent_columns(design)
+        design, names = design[:, keep], [n for n, k in zip(names, keep) if k]
+        if not any(n.startswith("deg_") for n in names):
+            raise Confounded("no degradation slope survives: every driver is on the same tyre age each lap")
+
+    coefficients, *_ = np.linalg.lstsq(design, observed, rcond=None)
+    residuals = observed - design @ coefficients
+    dof = max(1, len(observed) - design.shape[1])
+    sigma_squared = float(residuals @ residuals) / dof
+    errors = np.sqrt(np.clip(np.diag(sigma_squared * np.linalg.pinv(design.T @ design)), 0, None))
+    by_name = dict(zip(names, coefficients))
+    error_by_name = dict(zip(names, errors))
+    total_variance = float(((observed - observed.mean()) ** 2).sum())
+
+    return PaceModel(
+        fuel_s_per_lap=float("nan"),        # absorbed into the lap effects, by design
+        degradation_s_per_lap={c: float(by_name[f"deg_{c}"]) for c in compounds if f"deg_{c}" in by_name},
+        compound_offset_s={},
+        driver_baseline_s={},
+        n_laps=len(df),
+        n_drivers=len(drivers),
+        residual_std_s=float(np.sqrt(sigma_squared)),
+        r_squared=float(1 - (residuals @ residuals) / total_variance) if total_variance > 0 else float("nan"),
+        standard_errors={
+            **{f"deg_{c}": float(error_by_name.get(f"deg_{c}", np.nan)) for c in compounds},
+            **({f"curve_{c}": float(error_by_name.get(f"curve_{c}", np.nan)) for c in compounds} if curved else {}),
+        },
+        curvature_s_per_lap2={c: float(by_name[f"curve_{c}"]) for c in compounds if f"curve_{c}" in by_name},
+        condition_number=float(np.linalg.cond(design)),
+    )
+
+
+def combine(models: list[PaceModel]) -> dict[str, tuple[float, float]]:
+    """
+    Pool per-race degradation estimates, weighting each by its precision.
+
+    A race that pinned the number down counts for more than one that barely
+    did. Returns {compound: (estimate, standard error)}.
+    """
+    out: dict[str, tuple[float, float]] = {}
+    for compound in DRY_COMPOUNDS:
+        weights, values = [], []
+        for model in models:
+            value = model.degradation_s_per_lap.get(compound)
+            error = model.standard_errors.get(f"deg_{compound}")
+            if value is None or error is None or not np.isfinite(error) or error <= 0:
+                continue
+            weights.append(1 / error**2)
+            values.append(value)
+        if weights:
+            weight_total = float(np.sum(weights))
+            out[compound] = (float(np.dot(weights, values) / weight_total), float(np.sqrt(1 / weight_total)))
+    return out

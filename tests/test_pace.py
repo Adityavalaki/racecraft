@@ -128,3 +128,61 @@ class TestCleanRaceLaps:
         short = (laps.driver_number == 1) & (laps.stint == 1) & (laps.tyre_life > 2)
         cleaned = pace.clean_race_laps(laps[~short])
         assert cleaned[(cleaned.driver_number == 1) & (cleaned.stint == 1)].empty
+
+
+class TestLapEffects:
+    """Degradation from comparing drivers at the same lap, rather than modelling fuel."""
+
+    def test_recovers_degradation_without_modelling_fuel_at_all(self):
+        model = pace.fit_lap_effects(pace.clean_race_laps(build(VARIED)))
+        for compound, truth in TRUE_DEG.items():
+            assert model.degradation_s_per_lap[compound] == pytest.approx(truth, abs=0.015), compound
+        assert np.isnan(model.fuel_s_per_lap)      # absorbed into the lap effects, by design
+
+    def test_survives_track_evolution_that_the_fuel_model_assumes_away(self):
+        # The fuel model fits one straight line to fuel and track evolution
+        # together. When the track improves non-linearly, the error lands on
+        # whichever compound runs when the straight line fits worst.
+        rng = np.random.default_rng(3)
+        rows = []
+        for driver, plan in VARIED.items():
+            for stint, (compound, first, last) in enumerate(plan, start=1):
+                for age, lap in enumerate(range(first, last + 1), start=1):
+                    evolution = -1.2 * (1 - np.exp(-lap / 12))
+                    rows.append({
+                        "driver_number": driver, "lap_number": lap, "stint": stint, "compound": compound,
+                        "tyre_life": age, "track_status": "1", "is_pit_in_lap": False, "is_pit_out_lap": False,
+                        "deleted": False, "is_accurate": True,
+                        "lap_time_s": (90 + TRUE_FUEL * (TOTAL_LAPS - lap) + TRUE_DEG[compound] * age
+                                       + evolution + rng.normal(0, 0.15)),
+                    })
+        laps = pace.clean_race_laps(pd.DataFrame(rows))
+        lap_effects = pace.fit_lap_effects(laps)
+        fuel_model = pace.fit(laps, total_laps=TOTAL_LAPS)
+
+        for compound, truth in TRUE_DEG.items():
+            assert lap_effects.degradation_s_per_lap[compound] == pytest.approx(truth, abs=0.015), compound
+        # The gap between compounds is what a strategy turns on, and the fuel
+        # model compresses it here while the lap-effects model does not.
+        true_spread = TRUE_DEG["SOFT"] - TRUE_DEG["HARD"]
+        fuel_spread = fuel_model.degradation_s_per_lap["SOFT"] - fuel_model.degradation_s_per_lap["HARD"]
+        lap_spread = lap_effects.degradation_s_per_lap["SOFT"] - lap_effects.degradation_s_per_lap["HARD"]
+        assert abs(lap_spread - true_spread) < abs(fuel_spread - true_spread)
+
+    def test_can_let_degradation_bend(self):
+        model = pace.fit_lap_effects(pace.clean_race_laps(build(VARIED)), curved=True)
+        assert set(model.curvature_s_per_lap2) == set(TRUE_DEG)
+        # The synthetic tyres wear in a straight line, so the bend should be tiny.
+        assert all(abs(v) < 0.002 for v in model.curvature_s_per_lap2.values())
+
+
+def test_combine_weights_precise_races_more_heavily():
+    def model(value, error):
+        return pace.PaceModel(fuel_s_per_lap=0.05, degradation_s_per_lap={"SOFT": value},
+                              compound_offset_s={}, driver_baseline_s={}, n_laps=100, n_drivers=20,
+                              residual_std_s=0.5, r_squared=0.9, standard_errors={"deg_SOFT": error})
+
+    combined = pace.combine([model(0.10, 0.001), model(0.30, 0.10)])
+    estimate, error = combined["SOFT"]
+    assert estimate == pytest.approx(0.10, abs=0.005)   # the vague race barely moves it
+    assert error < 0.001                                # and pooling is tighter than either alone
