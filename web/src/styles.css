@@ -283,6 +283,293 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .dot.is-loading { background: var(--signal); }
 
+
+/* ---------- tabbed lower panel ---------- */
+
+/*
+  The tab strip replaces the panel heading, so it repeats that rule's type and
+  border rather than nesting buttons inside an <h2> — a heading is not a place
+  for interactive controls.
+*/
+.panel-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 0.8rem;
+  padding-right: 0.7rem;
+  min-height: 1.9rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--ink-soft);
+}
+.panel-bar small { letter-spacing: 0.04em; color: var(--rule-strong); }
+.tabs { display: flex; flex-wrap: wrap; }
+.tab {
+  background: none;
+  border: 0;
+  border-right: 1px solid var(--rule);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--ink-mid); background: var(--panel-2); }
+.tab.is-active { color: var(--signal); border-bottom-color: var(--signal); }
+.tab:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.tab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+.panel-note {
+  padding: 1.2rem 0.9rem;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.panel-note.error { color: var(--red); }
+
+/* ---------- tyre model ---------- */
+
+.tyre-model { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+.tyre-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.1rem;
+  padding: 0.45rem 0.7rem 0.1rem;
+  font-size: 0.78rem;
+  color: var(--ink-mid);
+}
+.legend-item { display: flex; align-items: center; gap: 0.35rem; }
+.legend-item b {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 500;
+}
+.legend-item small { color: var(--ink-soft); font-size: 0.68rem; }
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+.tyre-canvas { flex: 1; width: 100%; min-height: 120px; display: block; }
+.tyre-note {
+  margin: 0;
+  padding: 0.35rem 0.7rem 0.6rem;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------- strategy board ---------- */
+
+.strategy { flex: 1; min-height: 0; overflow-y: auto; }
+.constants {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  border-bottom: 1px solid var(--rule);
+}
+.constant {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  border-right: 1px solid var(--rule);
+}
+.constant:last-child { border-right: 0; }
+.constant-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.constant-value {
+  font-size: 1.32rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.constant-detail { font-size: 0.7rem; color: var(--ink-soft); }
+
+.mode-switch {
+  display: flex;
+  gap: 1px;
+  padding: 0.45rem 0.7rem 0;
+}
+.mode {
+  background: var(--panel-2);
+  border: 1px solid var(--rule);
+  padding: 0.25rem 0.6rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.mode:hover:not(:disabled) { color: var(--ink-mid); }
+.mode.is-active { color: var(--signal); border-color: var(--signal); }
+.mode:disabled { opacity: 0.4; cursor: default; }
+.mode:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+
+.plan-table { font-size: 0.82rem; }
+.plan-head,
+.plan-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.5fr) 56px 56px minmax(90px, 2fr);
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.3rem 0.7rem;
+}
+.plan-head {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+  padding-block: 0.35rem;
+}
+.plan-head-risk,
+.plan-row-risk {
+  grid-template-columns: minmax(140px, 1.5fr) 56px 56px 62px minmax(70px, 1fr);
+}
+.plan-row { border-bottom: 1px solid var(--rule); }
+.plan-green { color: var(--ink-soft); font-size: 0.76rem; }
+.plan-green em {
+  font-style: normal;
+  color: var(--green);
+  margin-left: 0.3rem;
+}
+.plan-cheap { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.plan-cheap i {
+  height: 9px;
+  display: block;
+  background: var(--signal);
+  opacity: 0.55;
+  flex: none;
+  min-width: 1px;
+}
+.plan-cheap b {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.plan-row:first-of-type { background: rgba(255, 122, 51, 0.06); }
+.plan-name { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.plan-stint { display: flex; align-items: center; gap: 0.28rem; white-space: nowrap; }
+.plan-name em {
+  font-style: normal;
+  font-size: 0.64rem;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule-strong);
+  padding: 0 0.25rem;
+  cursor: help;
+}
+.num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; }
+.plan-cost { color: var(--ink-mid); }
+.plan-row:first-of-type .plan-cost { color: var(--signal); }
+.plan-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.plan-bar i { height: 9px; display: block; flex: none; }
+.bar-tyre { background: var(--rule-strong); }
+.bar-pit { background: var(--signal); opacity: 0.75; }
+.plan-bar b {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin-left: 0.4rem;
+  white-space: nowrap;
+}
+
+/* ---------- stint chart ---------- */
+
+.stint-chart { padding: 0.6rem 0.7rem 0.2rem; border-top: 1px solid var(--rule); }
+.stint-chart h3 {
+  margin: 0 0 0.45rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-mid);
+}
+.stint-chart h3 small { letter-spacing: 0.04em; text-transform: none; color: var(--ink-soft); }
+.stint-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.stint-row.is-model {
+  padding-bottom: 4px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.stint-row.is-model .stint-driver { color: var(--signal); }
+.stint-row.is-model .stint-bar { height: 13px; }
+.stint-driver {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+}
+.stint-bars { display: flex; gap: 1px; min-width: 0; }
+.stint-bar {
+  height: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: none;
+}
+.stint-bar b {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.58rem;
+  font-weight: 500;
+  color: rgba(12, 16, 21, 0.75);
+}
+.stint-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.25rem 0 0 calc(34px + 0.5rem);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  color: var(--ink-soft);
+}
+
+.omissions {
+  padding: 0.7rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+}
+.omissions h3 {
+  margin: 0 0 0.35rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-mid);
+}
+.omissions ul { margin: 0; padding-left: 1rem; font-size: 0.75rem; line-height: 1.55; }
+.omissions b { color: var(--ink-mid); font-weight: 600; }
+
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
   .panel-tower, .panel-map, .panel-trace { grid-column: 1; grid-row: auto; }

@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
+import { api, type Insight, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
 import { RaceTrace } from "./panels/RaceTrace";
+import { StrategyBoard } from "./panels/StrategyBoard";
 import { TimingTower } from "./panels/TimingTower";
 import { TrackMap } from "./panels/TrackMap";
+import { TyreModel } from "./panels/TyreModel";
 
 /** How often the tower refreshes while playing. Positions animate separately and far more often. */
 const STATE_INTERVAL_MS = 400;
+
+/** The lower-right panel shows one of these at a time. */
+const TABS = [
+  { id: "trace", label: "Race trace", hint: "gap to the lap leader · click to jump" },
+  { id: "tyres", label: "Tyre model", hint: "modelled wear against what this race did" },
+  { id: "strategy", label: "Strategy", hint: "cheapest plans, and what they ignore" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
 
 export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -20,6 +30,9 @@ export default function App() {
   const [crossings, setCrossings] = useState<{ laps: number[]; t: number[] } | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>("trace");
+  const [insight, setInsight] = useState<Insight | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   useEffect(() => {
     api.sessions()
@@ -40,6 +53,8 @@ export default function App() {
     setCrossings(null);
     setSelected([]);
     setError(null);
+    setInsight(null);
+    setInsightError(null);
     api.info(sessionKey, controller.signal).then(setInfo).catch(reportUnlessAborted(setError));
     api
       .laps(sessionKey, controller.signal)
@@ -50,6 +65,19 @@ export default function App() {
       .catch(reportUnlessAborted(setError));
     return () => controller.abort();
   }, [sessionKey]);
+
+  // Fitting a season costs seconds, so it is asked for only once a tab that
+  // needs it is opened, and then kept for as long as the session is loaded.
+  const wantsInsight = tab === "tyres" || tab === "strategy";
+  useEffect(() => {
+    if (!sessionKey || !wantsInsight || insight || insightError) return;
+    const controller = new AbortController();
+    api
+      .insight(sessionKey, controller.signal)
+      .then(setInsight)
+      .catch(reportUnlessAborted(setInsightError));
+    return () => controller.abort();
+  }, [sessionKey, wantsInsight, insight, insightError]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
@@ -86,6 +114,10 @@ export default function App() {
   }, [sessionKey, info]);
 
   const cars = positions.at(clock.t);
+  const actualStops = useMemo(() => {
+    const counts = laps.map((d) => d.pit_in.filter(Boolean).length);
+    return counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : null;
+  }, [laps]);
   const sessionBest = useMemo(() => {
     const times = laps.flatMap((d) => d.lap_time_s.filter((v): v is number => v !== null));
     return times.length ? Math.min(...times) : null;
@@ -160,15 +192,45 @@ export default function App() {
           </section>
 
           <section className="panel panel-trace">
-            <h2>
-              Race trace <small>gap to the lap leader · click to jump</small>
-            </h2>
-            <RaceTrace
-              series={laps}
-              selected={selected}
-              currentLap={state?.leader_lap ?? 0}
-              onSelectLap={seekToLap}
-            />
+            <div className="panel-bar with-tabs">
+              <span className="tabs" role="tablist" aria-label="Lower panel">
+                {TABS.map((item) => (
+                  <button
+                    key={item.id}
+                    id={`tab-${item.id}`}
+                    role="tab"
+                    type="button"
+                    aria-selected={tab === item.id}
+                    className={tab === item.id ? "tab is-active" : "tab"}
+                    onClick={() => setTab(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </span>
+              <small>{TABS.find((item) => item.id === tab)?.hint}</small>
+            </div>
+            <div className="tab-body" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+              {tab === "trace" && (
+                <RaceTrace
+                  series={laps}
+                  selected={selected}
+                  currentLap={state?.leader_lap ?? 0}
+                  onSelectLap={seekToLap}
+                />
+              )}
+              {tab === "tyres" && (
+                <TyreModel insight={insight} loading={!insight && !insightError} error={insightError} />
+              )}
+              {tab === "strategy" && (
+                <StrategyBoard
+                  insight={insight}
+                  loading={!insight && !insightError}
+                  error={insightError}
+                  actualStops={actualStops}
+                />
+              )}
+            </div>
           </section>
         </main>
       ) : (

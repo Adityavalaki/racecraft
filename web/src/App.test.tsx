@@ -63,14 +63,29 @@ function mockApi() {
     t: [1000, 1001], drivers: { "1": { x: [10, 12], y: [10, 12] }, "11": { x: [20, 22], y: [20, 22] } },
   };
 
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    const body = url.includes("/state") ? state
+  const insight = {
+    session_key: "2024_01_R", circuit: "Sakhir", event_name: "Bahrain Grand Prix", year: 2024,
+    is_race: true, total_laps: 57,
+    pit_loss: { circuit: "Sakhir", seconds: 22.4, spread_s: 0.8, stops: 60, seasons: 3 },
+    safety_car: null, scale: 1.5,
+    degradation_measured: { SOFT: 0.04 }, degradation_used: { SOFT: 0.06 },
+    compound_offset_s: {}, fuel_s_per_lap: 0.05,
+    fitted_on: ["Jeddah Grand Prix"], fitted_on_count: 1, held_out: true,
+    caveats: ["traffic: a car released into a queue loses time this does not count"],
+    degradation_curve: [], plans: [], plans_with_risk: [], plans_unavailable: "no plans in this fixture", stints: [],
+  };
+
+  const fetchMock = vi.fn(async (url: string) => {
+    const body = url.includes("/insight") ? insight
+      : url.includes("/state") ? state
       : url.includes("/frames") ? frames
       : url.includes("/laps") ? laps
       : url.match(/sessions\/[^/?]+$/) ? info
       : sessions;
     return { ok: true, json: async () => body } as Response;
-  }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -103,6 +118,35 @@ describe("App", () => {
     const perRow = rows.find((row) => row.textContent?.includes("PER"))!;
     perRow.click();
     await waitFor(() => expect(perRow.getAttribute("aria-pressed")).toBe("true"));
+  });
+
+
+  it("does not fit a season until a tab that needs it is opened", async () => {
+    const fetchMock = mockApi();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
+
+    // The fit costs seconds on the server, so opening a replay must not trigger it.
+    const asked = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/insight"));
+    expect(asked()).toHaveLength(0);
+
+    screen.getByRole("tab", { name: "Strategy" }).click();
+    await waitFor(() => expect(asked().length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
+
+    // Switching between the two model tabs reuses the one fit.
+    const once = asked().length;
+    screen.getByRole("tab", { name: "Tyre model" }).click();
+    await waitFor(() => expect(screen.getByText(/no dry-tyre laps/i)).toBeDefined());
+    expect(asked()).toHaveLength(once);
+  });
+
+  it("keeps the race trace as the tab that opens first", async () => {
+    mockApi();
+    const { container } = render(<App />);
+    await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
+    expect(screen.getByRole("tab", { name: "Race trace" }).getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelector(".tab-body canvas")).not.toBeNull();
   });
 
   it("shows the error when the API is unreachable, rather than an empty screen", async () => {

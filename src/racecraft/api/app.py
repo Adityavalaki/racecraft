@@ -8,6 +8,8 @@ Three shapes of request, matching how the panels actually consume data:
 * `/frames` is a window of positions as parallel arrays. Playback pulls a
   few seconds ahead and animates locally, instead of asking per frame.
 * `/laps` is the whole race in one response, for the race trace.
+* `/insight` is what the models make of the session: degradation, pit loss,
+  neutralisation risk, ranked plans. Slow once per season, then cached.
 
 Telemetry is thinned server-side. The browser never receives raw samples.
 """
@@ -22,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from racecraft.api import insight
 from racecraft.api import session as session_store
 from racecraft.store.db import connect
 
@@ -85,6 +88,29 @@ def session_laps(session_key: str) -> dict:
 @app.get("/api/sessions/{session_key}/messages")
 def session_messages(session_key: str, until: float, limit: int = Query(30, ge=1, le=200)) -> list[dict]:
     return _load(session_key).messages(until, limit)
+
+
+@app.get("/api/sessions/{session_key}/insight")
+def session_insight(session_key: str,
+                    scale: float = Query(insight.DEFAULT_SCALE, ge=0.5, le=3.0)) -> dict:
+    """
+    What the models make of this session: degradation, pit loss, neutralisation
+    risk and the cheapest plans.
+
+    The first call for a season fits every race in it and takes about fifteen
+    seconds; later calls are served from that fit. The race being viewed is
+    held out of its own degradation figure.
+    """
+    try:
+        return insight.for_session(session_key, scale=scale)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+
+
+@app.get("/api/circuits")
+def list_circuits() -> list[dict]:
+    """Measured pit loss and neutralisation risk, every circuit in the lake."""
+    return insight.circuits()
 
 
 def _load(session_key: str):

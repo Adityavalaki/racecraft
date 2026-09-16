@@ -114,6 +114,110 @@ export interface LapChart {
   leader_crossings: { laps: number[]; t: number[] };
 }
 
+export interface PitLoss {
+  circuit: string;
+  seconds: number;
+  spread_s: number;
+  stops: number;
+  seasons: number;
+}
+
+export interface SafetyCarRisk {
+  circuit: string;
+  races: number;
+  share_of_races: number;
+  /** Shrunk toward the league average: this is the one to quote. */
+  probability: number;
+  periods_per_race: number;
+  per_lap: number;
+  median_laps_lost: number;
+}
+
+export interface CurvePoint {
+  age: number;
+  /** The model's line at the scale actually used for the plans. */
+  model_s: number;
+  /** The same line before scaling: what was measured, unadjusted. */
+  model_unscaled_s: number;
+  /** What this race's tyres did at that age, or null where too few laps ran. */
+  observed_s: number | null;
+  laps: number;
+}
+
+export interface DegradationCurve {
+  compound: string;
+  points: CurvePoint[];
+  observed_to_age: number;
+}
+
+export interface Plan {
+  plan: string;
+  stops: number;
+  seconds_lost: number;
+  tyre_seconds: number;
+  compound_seconds: number;
+  pit_seconds: number;
+  behind_best_s: number;
+  stint_laps: number[];
+  stop_laps: number[];
+  /** Orders this row stands for: the model cannot tell them apart. */
+  orders: string[];
+}
+
+/** A plan costed over simulated races that can be neutralised. */
+export interface RiskyPlan {
+  plan: string;
+  stops: number;
+  expected_s: number;
+  green_s: number;
+  best_case_s: number;
+  worst_case_s: number;
+  /** How often at least one stop fell under a safety car. */
+  cheap_stop_share: number;
+  stop_laps: number[];
+  behind_best_s: number;
+}
+
+export interface StintRun {
+  compound: string;
+  laps: number;
+  first_lap: number;
+  last_lap: number;
+}
+
+export interface DriverStints {
+  driver: string;
+  driver_number: number;
+  stops: number;
+  stints: StintRun[];
+}
+
+export interface Insight {
+  session_key: string;
+  circuit: string;
+  event_name: string;
+  year: number;
+  is_race: boolean;
+  total_laps: number | null;
+  pit_loss: PitLoss | null;
+  safety_car: SafetyCarRisk | null;
+  scale: number;
+  degradation_measured: Record<string, number>;
+  degradation_used: Record<string, number>;
+  compound_offset_s: Record<string, number>;
+  fuel_s_per_lap: number;
+  /** Which races the degradation was fitted on — never this one. */
+  fitted_on: string[];
+  fitted_on_count: number;
+  held_out: boolean;
+  caveats: string[];
+  degradation_curve: DegradationCurve[];
+  plans: Plan[];
+  plans_with_risk: RiskyPlan[];
+  plans_unavailable?: string;
+  stints: DriverStints[];
+}
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal });
   if (!response.ok) {
@@ -132,6 +236,9 @@ export const api = {
     get<Frames>(`/api/sessions/${key}/frames?start=${start.toFixed(2)}&end=${end.toFixed(2)}&hz=${hz}`, signal),
   laps: (key: string, signal?: AbortSignal) =>
     get<LapChart>(`/api/sessions/${key}/laps`, signal),
+  /** Slow the first time a season is asked for — the server fits it — then cached. */
+  insight: (key: string, signal?: AbortSignal) =>
+    get<Insight>(`/api/sessions/${key}/insight`, signal),
 };
 
 /** 92.608 -> "1:32.608", the way lap times are always written. */

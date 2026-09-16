@@ -4,8 +4,10 @@ An F1 strategy workbench. It learns tyre, pace and pit behaviour from historic
 timing data, models the car state the public feed doesn't expose (tyre wear,
 fuel load), and simulates races to find strategy windows.
 
-The build plan lives at the published *Racecraft Build Plan* artifact. This
-repository has finished **Phase 2: replay interface**; Phase 3 (estimators) is next.
+The build plan lives at the published *Racecraft Build Plan* artifact. Phases
+0–4 are built and the models now reach the interface: the replay panels answer
+*what happened*, and two further panels answer *what the models make of it*.
+Phase 5 (live timing) is next.
 
 ## Setup
 
@@ -70,7 +72,8 @@ Pick a session, scrub or play, click drivers in the tower to follow them on
 the map and in the trace. While developing the interface, run `npm run dev`
 in `web/` for hot reload; it proxies `/api` to the server on port 8000.
 
-Three panels, one clock:
+Five panels, one clock. The lower-right panel carries three tabs: the race
+trace, and the two that show the models rather than the feed.
 
 - **Timing tower** — order, gap, interval, last lap, all three sector times,
   tyre and age, stops. Purple marks the session's fastest, green a driver's
@@ -86,6 +89,51 @@ Three panels, one clock:
   between two fetched windows.
 - **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
   stops marked. Click to jump the clock to that lap.
+- **Tyre model** — modelled wear per compound against what this race's tyres
+  actually did. See below: the line is a prediction, not a description.
+- **Strategy** — measured pit loss and neutralisation risk for the circuit, the
+  cheapest plans ranked two ways, and the list of what the model cannot see,
+  shown beside the ranking rather than hidden behind it.
+
+  The two rankings answer different questions. *If green* is arithmetic: tyres
+  plus pit lane, no luck. *Expected* simulates races that can be neutralised,
+  where a stop costs 61% of a green one — which usually rewards a longer first
+  stint, because more laps remain in which a cheap stop can arrive.
+
+  The second is measurably the better description of what teams do. Across the
+  fourteen 2026 races in the lake, comparing each ranking's cheapest stop count
+  against what the field actually ran:
+
+  | Ranking | Mean error in stops |
+  |---|---|
+  | If green | 0.57 |
+  | Expected, with safety cars | **0.43** |
+
+  Neither is good. Both are worse at Monaco (4.24 stops actually run) and at
+  Barcelona (2.41 against a modelled 1), which is what a model with no traffic
+  and no track position should be expected to get wrong.
+
+### The tyre model panel is a prediction, not a fit
+
+Degradation drawn over a race is combined from the season's **other** races.
+The race being watched is never in its own fit, so the line was not shown the
+laps the dots come from — a model fitted on the race it is drawn over hugs the
+data and tells you nothing. The panel names how many races went into it.
+
+The dots are that race's own partial residuals: lap time with driver, fuel and
+track evolution removed. Getting this right took three attempts, and the two
+failures are instructive enough to keep in `api/insight.py`:
+
+| Attempt | Result |
+|---|---|
+| Each lap against the driver's own early-stint pace | Hard tyres 1 s/lap **faster** by age 22 — the track rubbering in, not the tyre |
+| Each lap against the field's median on that lap | Track evolution gone, but medium tyres flattened to zero: early in a stint the whole field shares a tyre age, so the median moves with them and the wear vanishes into it |
+| The regression's own partial residuals | Lap effects estimated *jointly* with the wear slope, so fuel and track come out while degradation stays in |
+
+Two lines are drawn per compound: solid is the ×1.5 figure the plans are costed
+on, dashed is the raw measurement. The gap between them is the cliff nobody
+records. An adjusted number shown without its raw value is how a model starts
+lying quietly.
 
 ### Track map accuracy
 
@@ -147,10 +195,29 @@ crossed the line*; comparing current lap counts would label the whole field
 | `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry |
 | `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
 | `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
+| `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans |
+| `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
 A session is read into memory once (about 1.6 s), after which a state costs
 ~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
 server-side; the browser never sees raw samples.
+
+`/insight` is the expensive one: the first call for a season fits every race in
+it, about 13 s, and later calls cost about 5 s — nearly all of it the Monte
+Carlo behind the safety-car ranking.
+
+That ranking simulates a pruned field, because simulating every plan took 25 s.
+The prune is a bound rather than a guess: a plan cannot cost less than its green
+cost minus the discount on its stops, so anything whose floor sits above the
+best plan's green cost cannot win and is never run. The bound is exact but loose
+for two-stop plans — at Zandvoort 3054 of 6234 survived it — so the survivors
+are screened on 120 runs and only the leading 24 re-run on 1500. A screen noisy
+by a tenth cannot lose a plan that wins by more, and what is displayed always
+comes from the accurate pass. `tests/test_insight.py` checks the bound against
+the full field rather than trusting it.
+Each race is fitted separately rather than the season as a whole, which is what
+makes holding one out free. The interface does not ask for it until a tab that
+needs it is opened, so a replay never pays for a fit nobody looked at.
 
 ## Analysis commands
 
@@ -478,6 +545,50 @@ Audited across the whole lake:
 - **FP2 long runs** (5+ timed green laps on one compound): 243 in 2026, 396
   in 2025, 493 in 2024, 444 in 2023, averaging about 8 laps. This is the
   degradation training set.
+
+## Negative results
+
+Kept because they cost as much to find as the positive ones, and because a
+model is shaped as much by what it refuses to include.
+
+### The rejoin penalty is not measurable from where a car leaves the pits
+
+The strategy model counts seconds and cannot see that a plan two seconds
+quicker may rejoin behind a car it will never pass. The obvious fix is to
+measure what rejoining in traffic costs and add it. It does not work.
+
+`python scripts/traffic_probe.py` takes every green-flag stop since 2024 — 1,328
+of them, 30 drivers, 60 races — and measures each driver's pace over the three
+green laps after the out-lap against the field's median on those same laps,
+against the gap to the car ahead when they rejoined.
+
+Raw, the bands span 0.13 s/lap and are not even ordered: cars rejoining 5–8 s
+behind someone are the *quickest* of all. Fitting proximity properly, with
+driver fixed effects — the least you must do when quick cars rejoin in clear air
+*because* they are quick — the effect dies:
+
+| Proximity decay | Traffic penalty |
+|---|---|
+| 1.0 s | −0.028 ± 0.156 s/lap |
+| 2.0 s | +0.040 ± 0.127 s/lap |
+| 4.0 s | +0.059 ± 0.117 s/lap |
+
+Every estimate is inside its own error bar, and the sign is not even stable.
+
+This is not evidence that traffic is free. The project measures a following
+penalty of +0.55 s/lap inside 0.5 s elsewhere, over whole races. It is evidence
+that *this* design cannot see it, and the reasons are identifiable: three laps
+is a short window, the car ahead may itself pit on the next lap, and a fresh
+tyre is worth about 0.6 s/lap, which swamps what is being looked for.
+
+So no traffic term went into the strategy model. A number of 0.04 ± 0.13 dressed
+up as a penalty would have made every plan look more considered and none of them
+more correct.
+
+**What to try instead.** The information is not missing, it is in the wrong
+model. Knowing where a plan rejoins requires a field to rejoin *into*, which the
+seconds-based model does not have and `model/race.py` does. Joining them is the
+remaining work, and it is a simulation problem rather than a measurement one.
 
 ## Known data gaps
 
