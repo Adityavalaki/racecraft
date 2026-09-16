@@ -1,7 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { StrategyBoard } from "./StrategyBoard";
-import type { Insight, Plan } from "../api";
+import type { Insight, Plan, RiskyPlan } from "../api";
 
 function plan(overrides: Partial<Plan> = {}): Plan {
   return {
@@ -15,6 +15,21 @@ function plan(overrides: Partial<Plan> = {}): Plan {
     stint_laps: [25, 26],
     stop_laps: [25],
     orders: ["medium 26 > soft 25", "soft 25 > medium 26"],
+    ...overrides,
+  };
+}
+
+function riskyPlan(overrides: Partial<RiskyPlan> = {}): RiskyPlan {
+  return {
+    plan: "medium 30 > soft 21",
+    stops: 1,
+    expected_s: 51.7,
+    green_s: 53.6,
+    best_case_s: 44.4,
+    worst_case_s: 54.4,
+    cheap_stop_share: 0.4,
+    stop_laps: [30],
+    behind_best_s: 0,
     ...overrides,
   };
 }
@@ -47,6 +62,7 @@ function insight(overrides: Partial<Insight> = {}): Insight {
     ],
     degradation_curve: [],
     plans: [plan(), plan({ plan: "soft 22 > medium 29", seconds_lost: 53.1, behind_best_s: 0.5, stop_laps: [22], orders: ["soft 22 > medium 29"] })],
+    plans_with_risk: [riskyPlan(), riskyPlan({ plan: "medium 26 > soft 25", expected_s: 51.9, green_s: 52.6, behind_best_s: 0.2, cheap_stop_share: 0.35, stop_laps: [26] })],
     stints: [],
     ...overrides,
   };
@@ -106,6 +122,54 @@ describe("StrategyBoard", () => {
       <StrategyBoard insight={insight({ safety_car: null })} loading={false} error={null} actualStops={null} />,
     );
     expect(screen.getByText("one season only")).toBeDefined();
+  });
+
+
+  it("opens on the green ranking, because that one is arithmetic rather than simulation", () => {
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    expect(screen.getByRole("radio", { name: "If green" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText("where it goes")).toBeDefined();
+  });
+
+  it("switches to the safety-car ranking, which answers a different question", () => {
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    fireEvent.click(screen.getByRole("radio", { name: /safety cars/i }));
+
+    expect(screen.getByText("cheap stop")).toBeDefined();
+    // Each stint is its own span so it can carry a compound colour, so the
+    // plan is matched by its parts rather than as one string.
+    expect(screen.getByText("medium 30")).toBeDefined();
+    expect(screen.getByText("soft 21")).toBeDefined();
+    expect(screen.getByText("40%")).toBeDefined();
+    // The green ranking's own columns are gone, not merely hidden behind it.
+    expect(screen.queryByText("where it goes")).toBeNull();
+  });
+
+  it("stops listing safety cars as an omission once they are modelled", () => {
+    const withSafetyCarCaveat = insight({
+      caveats: [
+        "safety cars: a stop under one costs roughly half, which can flip the answer",
+        "traffic: a car released into a queue loses time this does not count",
+      ],
+    });
+    render(<StrategyBoard insight={withSafetyCarCaveat} loading={false} error={null} actualStops={null} />);
+    expect(within(screen.getByRole("list")).getByText("safety cars")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("radio", { name: /safety cars/i }));
+    expect(within(screen.getByRole("list")).queryByText("safety cars")).toBeNull();
+    expect(within(screen.getByRole("list")).getByText("traffic")).toBeDefined();
+  });
+
+  it("disables the safety-car ranking when the circuit has no risk figure to simulate", () => {
+    render(
+      <StrategyBoard
+        insight={insight({ plans_with_risk: [] })}
+        loading={false}
+        error={null}
+        actualStops={null}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: /safety cars/i }).hasAttribute("disabled")).toBe(true);
   });
 
   it("reports an error instead of pretending it has a model", () => {

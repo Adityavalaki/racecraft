@@ -92,9 +92,26 @@ trace, and the two that show the models rather than the feed.
 - **Tyre model** — modelled wear per compound against what this race's tyres
   actually did. See below: the line is a prediction, not a description.
 - **Strategy** — measured pit loss and neutralisation risk for the circuit, the
-  cheapest plans ranked with their cost split between tyres and pit lane, and
-  the list of what the model cannot see, shown beside the ranking rather than
-  hidden behind it.
+  cheapest plans ranked two ways, and the list of what the model cannot see,
+  shown beside the ranking rather than hidden behind it.
+
+  The two rankings answer different questions. *If green* is arithmetic: tyres
+  plus pit lane, no luck. *Expected* simulates races that can be neutralised,
+  where a stop costs 61% of a green one — which usually rewards a longer first
+  stint, because more laps remain in which a cheap stop can arrive.
+
+  The second is measurably the better description of what teams do. Across the
+  fourteen 2026 races in the lake, comparing each ranking's cheapest stop count
+  against what the field actually ran:
+
+  | Ranking | Mean error in stops |
+  |---|---|
+  | If green | 0.57 |
+  | Expected, with safety cars | **0.43** |
+
+  Neither is good. Both are worse at Monaco (4.24 stops actually run) and at
+  Barcelona (2.41 against a modelled 1), which is what a model with no traffic
+  and no track position should be expected to get wrong.
 
 ### The tyre model panel is a prediction, not a fit
 
@@ -186,7 +203,18 @@ A session is read into memory once (about 1.6 s), after which a state costs
 server-side; the browser never sees raw samples.
 
 `/insight` is the expensive one: the first call for a season fits every race in
-it, about 13 s, and later calls are served from that fit in under a second.
+it, about 13 s, and later calls cost about 5 s — nearly all of it the Monte
+Carlo behind the safety-car ranking.
+
+That ranking simulates a pruned field, because simulating every plan took 25 s.
+The prune is a bound rather than a guess: a plan cannot cost less than its green
+cost minus the discount on its stops, so anything whose floor sits above the
+best plan's green cost cannot win and is never run. The bound is exact but loose
+for two-stop plans — at Zandvoort 3054 of 6234 survived it — so the survivors
+are screened on 120 runs and only the leading 24 re-run on 1500. A screen noisy
+by a tenth cannot lose a plan that wins by more, and what is displayed always
+comes from the accurate pass. `tests/test_insight.py` checks the bound against
+the full field rather than trusting it.
 Each race is fitted separately rather than the season as a whole, which is what
 makes holding one out free. The interface does not ask for it until a tab that
 needs it is opened, so a replay never pays for a fit nobody looked at.

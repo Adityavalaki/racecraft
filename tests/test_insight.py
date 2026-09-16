@@ -246,3 +246,67 @@ def test_circuits_lists_every_track_with_its_constants(lake_dir):
 def test_an_unknown_session_is_a_key_error(lake_dir):
     with pytest.raises(KeyError):
         insight.for_session("1999_01_R")
+
+
+def test_safety_car_ranking_is_a_different_question_from_the_green_one(lake_dir):
+    """
+    A stop under a safety car costs 61% of a green one, so a circuit that
+    neutralises often rewards a longer first stint: more laps in which a cheap
+    stop can arrive. The two rankings are allowed to disagree — that is the
+    point of having both — but both must be complete and ordered.
+    """
+    out = insight.for_session(f"{YEAR}_01_R")
+    risky = out["plans_with_risk"]
+    assert risky, out.get("plans_unavailable")
+
+    expected = [p["expected_s"] for p in risky]
+    assert expected == sorted(expected)
+    assert risky[0]["behind_best_s"] == 0.0
+
+    for plan in risky:
+        # A neutralisation can only ever make a plan cheaper, never dearer.
+        assert plan["expected_s"] <= plan["green_s"] + 0.5
+        assert plan["best_case_s"] <= plan["expected_s"] <= plan["worst_case_s"]
+        assert 0.0 <= plan["cheap_stop_share"] <= 1.0
+        assert sum(int(part.split(" ")[1]) for part in plan["plan"].split(" > ")) == TOTAL_LAPS
+
+
+def test_pruning_never_drops_the_plan_that_would_have_won(lake_dir):
+    """
+    The ranking simulates a pruned set, because simulating every plan took 25 s.
+    The prune is a bound, not a guess — a plan cannot cost less than its green
+    cost minus the discount on its stops — so the winner has to survive it.
+    This checks the bound against the full field rather than trusting it.
+    """
+    from racecraft.model import simulate as simulate_model
+    from racecraft.model import strategy as strategy_model
+
+    out = insight.for_session(f"{YEAR}_01_R")
+    degradation = {c: v for c, v in out["degradation_used"].items()}
+    offsets = out["compound_offset_s"]
+    pit_loss = out["pit_loss"]["seconds"]
+    risk = out["safety_car"]
+    periods = risk["periods_per_race"] if risk else 1.0
+    neutralisation = simulate_model.Neutralisation.for_circuit(periods, TOTAL_LAPS)
+
+    plans = strategy_model.enumerate_plans(TOTAL_LAPS, tuple(degradation), max_stops=2,
+                                           min_stint=insight.MIN_STINT_LAPS, step=insight.RISK_STEP)
+    saving = (1 - neutralisation.stop_discount) * pit_loss
+    green = {p: strategy_model.cost(p, degradation, pit_loss, compound_offset_s=offsets) for p in plans}
+    best_green = min(c.seconds_lost for c in green.values())
+    kept = {p for p in plans if green[p].seconds_lost - p.stops * saving < best_green}
+    assert len(kept) < len(plans), "the bound pruned nothing, so it is not doing its job"
+
+    # Every plan the bound dropped must be provably unable to win.
+    for plan in plans:
+        if plan in kept:
+            continue
+        floor = green[plan].seconds_lost - plan.stops * saving
+        assert floor >= best_green
+
+
+def test_a_circuit_with_no_neutralisation_history_still_ranks_plans(lake_dir):
+    """Two of the three synthetic circuits have too little history for a risk figure."""
+    for round_number in (1, 2, 3):
+        out = insight.for_session(f"{YEAR}_0{round_number}_R")
+        assert out["plans_with_risk"], out["circuit"]

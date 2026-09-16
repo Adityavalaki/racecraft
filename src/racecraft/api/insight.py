@@ -52,6 +52,15 @@ MIN_LAPS_TO_FIT_RACE = 200
 MIN_STINT_LAPS = 10
 TOP_PLANS = 8
 MAX_CACHED_SEASONS = 3
+# Simulating safety cars costs a Monte Carlo run per plan, so the sweep steps in
+# threes rather than ones. The cost curve is a shallow bowl — neighbouring stop
+# laps differ by a tenth — so the coarser grid loses nothing worth showing.
+RISK_STEP = 3
+# Two passes: a cheap screen over every plan that survives the bound, then an
+# accurate run over the leaders. Only the second pass is ever shown.
+SCREEN_RUNS = 120
+SCREEN_KEEP = 24
+RISK_RUNS = 1500
 # Tyre ages counted as "new" when rebasing the observed curve to zero, so it
 # starts where the model's line starts.
 BASELINE_AGE = 3
@@ -128,8 +137,11 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
 
     if measured and loss and total_laps:
         out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"])
+        out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
+                                                  loss["seconds"], risk)
     else:
         out["plans"] = []
+        out["plans_with_risk"] = []
         out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
 
     out["stints"] = _observed_stints(con, session_key)
@@ -261,6 +273,73 @@ def _plans(total_laps: int, measured: dict[str, float], scale: float,
         out.append(record)
         if len(out) == TOP_PLANS:
             break
+    return out
+
+
+def _plans_with_risk(total_laps: int, measured: dict[str, float], scale: float,
+                     offsets: dict[str, float], pit_loss_s: float,
+                     risk: dict | None) -> list[dict]:
+    """
+    The same plans, costed over simulated races that can be neutralised.
+
+    This is a different question from the green-flag ranking, not a refinement
+    of it. A stop under a safety car costs about 61% of a green one, so the
+    best plan on a circuit that neutralises often is usually a *later* first
+    stop than the green optimum — a longer first stint leaves more laps in
+    which a cheap stop can arrive. Showing only the green answer would hide
+    that, and at somewhere like Baku it is the answer that decides the race.
+    """
+    from racecraft.model import simulate as simulate_model
+
+    degradation = {c: v * scale for c, v in measured.items()}
+    periods = risk["periods_per_race"] if risk else simulate_model.NEUTRALISATION_PER_LAP * total_laps
+    neutralisation = simulate_model.Neutralisation.for_circuit(periods, total_laps)
+
+    plans = strategy_model.enumerate_plans(total_laps, tuple(degradation), max_stops=2,
+                                           min_stint=MIN_STINT_LAPS, step=RISK_STEP)
+
+    # Simulating every plan took 12 seconds for a ranking whose answer was
+    # settled by a handful of them, so the hopeless ones are dropped first —
+    # and dropped by a bound rather than by a guess at how many to keep.
+    #
+    # A neutralisation can only ever save the discount on a stop, so no plan
+    # costs less than `green - stops x (1 - discount) x pit loss`. If even that
+    # floor is above the best plan's green cost, which is itself an upper bound
+    # on the best expected cost, the plan cannot win and is not worth running.
+    saving_per_stop = (1 - neutralisation.stop_discount) * pit_loss_s
+    green = {plan: strategy_model.cost(plan, degradation, pit_loss_s, compound_offset_s=offsets)
+             for plan in plans}
+    best_green = min(c.seconds_lost for c in green.values())
+    contenders = [plan for plan in plans
+                  if green[plan].seconds_lost - plan.stops * saving_per_stop < best_green]
+
+    # The bound is exact but loose for two-stop plans, which are allowed twice
+    # the saving and so nearly all survive it — at Zandvoort, 3054 of them. So
+    # the survivors are screened on few runs and only the leaders re-run
+    # properly. A screen that is noisy by a few tenths cannot lose a plan that
+    # wins by more, and the ranking people read comes from the accurate pass.
+    screened = simulate_model.best_plans_with_risk(
+        contenders, degradation, pit_loss_s, neutralisation,
+        compound_offset_s=offsets, runs=SCREEN_RUNS, top=SCREEN_KEEP)
+    ranked = simulate_model.best_plans_with_risk(
+        [costed.plan for costed in screened], degradation, pit_loss_s, neutralisation,
+        compound_offset_s=offsets, runs=RISK_RUNS, top=SCREEN_KEEP)
+
+    out, seen = [], set()
+    for costed in ranked:
+        shape = tuple(sorted(costed.plan.stints))
+        if shape in seen:
+            continue
+        seen.add(shape)
+        record = costed.as_dict()
+        record["stop_laps"] = _stop_laps(costed.plan)
+        out.append(record)
+        if len(out) == TOP_PLANS:
+            break
+    if out:
+        best = out[0]["expected_s"]
+        for record in out:
+            record["behind_best_s"] = round(record["expected_s"] - best, 1)
     return out
 
 

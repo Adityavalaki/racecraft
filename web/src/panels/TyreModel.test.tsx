@@ -41,6 +41,7 @@ function insight(overrides: Partial<Insight> = {}): Insight {
     caveats: [],
     degradation_curve: [curve("SOFT", 0.033, 12), curve("HARD", 0.048, 30)],
     plans: [],
+    plans_with_risk: [],
     stints: [],
     ...overrides,
   };

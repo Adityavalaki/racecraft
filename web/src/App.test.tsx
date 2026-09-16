@@ -72,7 +72,7 @@ function mockApi() {
     compound_offset_s: {}, fuel_s_per_lap: 0.05,
     fitted_on: ["Jeddah Grand Prix"], fitted_on_count: 1, held_out: true,
     caveats: ["traffic: a car released into a queue loses time this does not count"],
-    degradation_curve: [], plans: [], plans_unavailable: "no plans in this fixture", stints: [],
+    degradation_curve: [], plans: [], plans_with_risk: [], plans_unavailable: "no plans in this fixture", stints: [],
   };
 
   const fetchMock = vi.fn(async (url: string) => {

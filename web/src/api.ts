@@ -164,6 +164,20 @@ export interface Plan {
   orders: string[];
 }
 
+/** A plan costed over simulated races that can be neutralised. */
+export interface RiskyPlan {
+  plan: string;
+  stops: number;
+  expected_s: number;
+  green_s: number;
+  best_case_s: number;
+  worst_case_s: number;
+  /** How often at least one stop fell under a safety car. */
+  cheap_stop_share: number;
+  stop_laps: number[];
+  behind_best_s: number;
+}
+
 export interface StintRun {
   compound: string;
   laps: number;
@@ -199,6 +213,7 @@ export interface Insight {
   caveats: string[];
   degradation_curve: DegradationCurve[];
   plans: Plan[];
+  plans_with_risk: RiskyPlan[];
   plans_unavailable?: string;
   stints: DriverStints[];
 }
