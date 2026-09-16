@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+import numpy as np
 import pandas as pd
 
 from racecraft import config
@@ -189,6 +190,122 @@ def cmd_strategy(args) -> int:
     return 0
 
 
+def passes_per_race(circuit_laps: pd.DataFrame) -> float:
+    """
+    On-track passes per race: pairs of cars that swapped places between laps
+    while neither was in the pit lane and the race was green. Counting raw
+    position changes instead would count everyone gaining a place when someone
+    ahead pits, which is not overtaking.
+    """
+    counts = []
+    for _, race_laps in circuit_laps.groupby("session_key"):
+        per_lap = {n: g.set_index("driver_number") for n, g in race_laps.groupby("lap_number")}
+        passes = 0
+        for lap in sorted(per_lap):
+            before, after = per_lap.get(lap - 1), per_lap.get(lap)
+            if before is None or after is None or str(after.track_status.iloc[0]) != "1":
+                continue
+            running = [d for d in after.index if d in before.index
+                       and not bool(before.loc[d, "is_pit_in_lap"]) and not bool(after.loc[d, "is_pit_in_lap"])
+                       and not bool(after.loc[d, "is_pit_out_lap"]) and not bool(before.loc[d, "is_pit_out_lap"])
+                       and pd.notna(before.loc[d, "position"]) and pd.notna(after.loc[d, "position"])]
+            for i, a in enumerate(running):
+                for b in running[i + 1:]:
+                    passes += ((before.loc[a, "position"] < before.loc[b, "position"])
+                               != (after.loc[a, "position"] < after.loc[b, "position"]))
+        counts.append(passes)
+    return float(np.mean(counts)) if counts else 30.0
+
+
+def cmd_race(args) -> int:
+    """Compare plans for one car by simulating the whole field around it."""
+    from racecraft.model import race as race_model
+    from racecraft.model.simulate import Neutralisation
+    from racecraft.model.strategy import Plan
+
+    con = connect()
+    name = circuit_model.canonical_circuit(args.circuit)
+    laps_all = _race_laps(con)
+    here = laps_all[circuit_model.canonical_circuit(laps_all["location"]) == name]
+    if here.empty:
+        print(f"no races at '{args.circuit}' in the lake at {config.LAKE_DIR}")
+        return 1
+    loss = next((p for p in circuit_model.pit_loss(laps_all) if p.circuit == name), None)
+    if loss is None:
+        print(f"not enough green-flag stops at '{args.circuit}' to measure pit loss")
+        return 1
+
+    (clean, _), _ = _clean_by_session(con, args.season)
+    models = []
+    for laps in clean.values():
+        if len(laps) < 200:
+            continue
+        try:
+            models.append(pace_model.fit_lap_effects(laps))
+        except (pace_model.Confounded, ValueError):
+            continue
+    if not models:
+        print(f"no fittable races in {args.season}")
+        return 1
+
+    degradation = {c: v[0] * args.scale for c, v in pace_model.combine(models).items()}
+    offsets = {c: float(np.median([m.compound_offset_s[c] for m in models if c in m.compound_offset_s]))
+               for c in pace_model.DRY_COMPOUNDS if any(c in m.compound_offset_s for m in models)}
+    # The pace ladder from the most recent races: how far apart the cars are,
+    # quickest first. Races differ in how many cars they classify, so each one
+    # is cut to the same length before averaging.
+    ladders = [sorted(m.driver_baseline_s.values())[:args.cars] for m in models[-5:]
+               if len(m.driver_baseline_s) >= args.cars]
+    if not ladders:
+        print(f"fewer than {args.cars} cars with a fitted pace in {args.season}")
+        return 1
+    ladder = list(np.mean(np.array(ladders), axis=0))
+    quickest = float(here["lap_time_s"].min())
+
+    total = args.laps or int(here.groupby("session_key")["lap_number"].max().median())
+    sessions = con.sql("select session_key, location from sessions where session='R'").df()
+    track_status = con.sql("select session_key, t, status from track_status").df()
+    risk = next((r for r in circuit_model.safety_car_risk(track_status, sessions, laps_all)
+                 if r.circuit == name), None)
+    neutralisation = Neutralisation.for_circuit(risk.periods_per_race if risk else 1.27, total)
+    overtaking = passes_per_race(here)
+    passes = race_model.pass_probability(overtaking, total, args.cars)
+
+    print(f"{name}, {total} laps — {args.season} field, {args.cars} cars")
+    print(f"  pit loss {loss.seconds:.1f}s | {overtaking:.0f} passes per race here "
+          f"({passes:.3f} per lap in a fight) | safety car {neutralisation.per_lap:.3f} per lap")
+    print(f"  degradation s/lap: " + ", ".join(f"{c.lower()} {v:.4f}" for c, v in degradation.items())
+          + (f"  (scaled x{args.scale})" if args.scale != 1.0 else ""))
+    print()
+
+    field_plan = Plan((("MEDIUM", total // 2), ("SOFT", total - total // 2)))
+    options = {
+        "one stop, early": Plan((("MEDIUM", int(total * 0.4)), ("SOFT", total - int(total * 0.4)))),
+        "one stop, normal": field_plan,
+        "one stop, late": Plan((("MEDIUM", int(total * 0.66)), ("SOFT", total - int(total * 0.66)))),
+        "two stops": Plan((("SOFT", total // 3), ("MEDIUM", total // 3), ("SOFT", total - 2 * (total // 3)))),
+    }
+    print(f"  A car starting P{args.grid}; the rest of the field on a normal one-stop.")
+    print(f"  {'plan':<22} {'stints':<24} {'mean finish':>12} {'points':>8} {'best':>6} {'worst':>6}")
+    for label, plan in options.items():
+        cars = [race_model.Car(driver_number=i + 1, abbreviation=f"P{i+1}",
+                               pace_s=quickest + ladder[i], grid=i + 1,
+                               plan=plan if i + 1 == args.grid else field_plan)
+                for i in range(args.cars)]
+        result = race_model.simulate(cars, total, degradation, loss.seconds, neutralisation, passes,
+                                     compound_offset_s=offsets, runs=args.runs,
+                                     rng=np.random.default_rng(5))
+        finishes = result.positions[args.grid]
+        print(f"  {label:<22} {str(plan):<24} {finishes.mean():>12.2f} "
+              f"{(finishes <= 10).mean():>8.0%} {finishes.min():>6} {finishes.max():>6}")
+
+    print()
+    print("  Comparing plans for one car is what this is for. It does not predict")
+    print("  finishing order: with pace from earlier races only it is level with")
+    print("  guessing the grid (see scripts/validate_race.py).")
+    return 0
+
+
 def cmd_circuits(args) -> int:
     con = connect()
     laps = _race_laps(con)
@@ -273,6 +390,17 @@ def main(argv: list[str] | None = None) -> int:
                                  help="simulate races with safety cars instead of assuming green throughout")
     strategy_parser.add_argument("--runs", type=int, default=600, help="simulated races per plan")
     strategy_parser.set_defaults(handler=cmd_strategy)
+
+    race_parser = commands.add_parser("race", help="simulate the field and compare plans for one car")
+    race_parser.add_argument("circuit")
+    race_parser.add_argument("--season", type=int, default=2026)
+    race_parser.add_argument("--laps", type=int, help="race distance; defaults to this circuit's usual")
+    race_parser.add_argument("--grid", type=int, default=8, help="grid slot of the car being advised")
+    race_parser.add_argument("--cars", type=int, default=20)
+    race_parser.add_argument("--runs", type=int, default=300, help="simulated races per plan")
+    race_parser.add_argument("--scale", type=float, default=1.5,
+                             help="multiply measured degradation; 1.5 matches real stop counts")
+    race_parser.set_defaults(handler=cmd_race)
 
     circuit_parser = commands.add_parser("circuit", help="everything known about one circuit")
     circuit_parser.add_argument("name")

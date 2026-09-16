@@ -94,3 +94,17 @@ def test_strategy_command_costs_plans_for_a_circuit(small_lake, capsys):
 def test_strategy_command_refuses_an_unknown_circuit(small_lake, capsys):
     assert cli.main(["strategy", "Nowhere", "--season", "2026"]) == 1
     assert "no pit loss known" in capsys.readouterr().out
+
+
+def test_race_command_compares_plans_for_one_car(small_lake, capsys):
+    assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30",
+                     "--grid", "3", "--cars", "6", "--runs", "20"]) == 0
+    out = capsys.readouterr().out
+    assert "passes per race" in out
+    assert "mean finish" in out
+    assert "does not predict" in out      # the caveat travels with the numbers
+
+
+def test_race_command_refuses_an_unknown_circuit(small_lake, capsys):
+    assert cli.main(["race", "Nowhere", "--season", "2026"]) == 1
+    assert "no races at 'Nowhere'" in capsys.readouterr().out

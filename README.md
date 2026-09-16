@@ -134,7 +134,8 @@ racecraft-analyse pace                 # fuel and degradation, per season
 racecraft-analyse pace --season 2026   # one season, race by race
 racecraft-analyse circuits             # pit loss and neutralisation risk
 racecraft-analyse circuit Baku         # everything known about one circuit
-racecraft-analyse strategy Baku        # cheapest plans for a circuit
+racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
+racecraft-analyse race Baku            # simulate the field, answer in places
 ```
 
 Every model number quoted below comes from these, so they can be reproduced
@@ -342,8 +343,13 @@ forecasting that is a different problem from strategy.
 `python scripts/validate_race.py prior` reproduces both numbers.
 
 **What it is for is comparing plans for one car**, where pace errors largely
-cancel because every plan runs against the same field. A midfield car starting
-P8 at Baku:
+cancel because every plan runs against the same field:
+
+```sh
+racecraft-analyse race Baku --laps 51 --grid 8
+```
+
+A midfield car starting P8 at Baku:
 
 | Plan | Mean finish | In the points | Best case |
 |---|---|---|---|
