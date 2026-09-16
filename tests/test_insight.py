@@ -310,3 +310,81 @@ def test_a_circuit_with_no_neutralisation_history_still_ranks_plans(lake_dir):
     for round_number in (1, 2, 3):
         out = insight.for_session(f"{YEAR}_0{round_number}_R")
         assert out["plans_with_risk"], out["circuit"]
+
+
+# ---------------------------------------------------------------- over HTTP
+
+@pytest.fixture
+def client(lake_dir):
+    from fastapi.testclient import TestClient
+    from racecraft.api.app import app
+    return TestClient(app)
+
+
+def test_the_endpoint_serves_what_the_interface_expects(client):
+    """
+    The panels read these keys by name. A rename here is silent in Python and
+    shows up in the browser as an empty chart, so the contract is pinned.
+    """
+    body = client.get(f"/api/sessions/{YEAR}_01_R/insight").json()
+    for key in ("circuit", "total_laps", "pit_loss", "safety_car", "scale",
+                "degradation_measured", "degradation_used", "compound_offset_s",
+                "fitted_on", "fitted_on_count", "held_out", "caveats",
+                "degradation_curve", "plans", "plans_with_risk", "stints"):
+        assert key in body, key
+
+    point = body["degradation_curve"][0]["points"][0]
+    assert set(point) == {"age", "model_s", "model_unscaled_s", "observed_s", "laps"}
+
+    plan = body["plans"][0]
+    for key in ("plan", "stops", "seconds_lost", "tyre_seconds", "pit_seconds",
+                "behind_best_s", "stint_laps", "stop_laps", "orders"):
+        assert key in plan, key
+
+    risky = body["plans_with_risk"][0]
+    for key in ("plan", "stops", "expected_s", "green_s", "best_case_s",
+                "worst_case_s", "cheap_stop_share", "stop_laps", "behind_best_s"):
+        assert key in risky, key
+
+    stint = body["stints"][0]
+    assert set(stint) == {"driver", "driver_number", "stops", "stints"}
+    assert set(stint["stints"][0]) == {"compound", "laps", "first_lap", "last_lap"}
+
+
+def test_the_endpoint_passes_the_scale_through(client):
+    plain = client.get(f"/api/sessions/{YEAR}_01_R/insight").json()
+    doubled = client.get(f"/api/sessions/{YEAR}_01_R/insight", params={"scale": 2.0}).json()
+    assert doubled["scale"] == 2.0
+    for compound, value in plain["degradation_measured"].items():
+        assert doubled["degradation_used"][compound] == pytest.approx(value * 2.0, abs=1e-3)
+
+
+def test_an_absurd_scale_is_refused_rather_than_fitted(client):
+    assert client.get(f"/api/sessions/{YEAR}_01_R/insight", params={"scale": 99}).status_code == 422
+    assert client.get(f"/api/sessions/{YEAR}_01_R/insight", params={"scale": 0}).status_code == 422
+
+
+def test_an_unknown_session_is_a_404_not_a_crash(client):
+    response = client.get("/api/sessions/1999_01_R/insight")
+    assert response.status_code == 404
+    assert "1999_01_R" in response.json()["detail"]
+
+
+def test_a_session_key_that_is_not_a_key_is_refused(client):
+    """
+    The key is interpolated into SQL, so anything but a plain key must not get
+    that far. Checking the status code alone would pass even if the statement
+    had run, so the lake is read afterwards to prove it is still there.
+    """
+    response = client.get("/api/sessions/x'; drop table laps; --/insight")
+    assert response.status_code == 404
+
+    still_there = client.get(f"/api/sessions/{YEAR}_01_R/insight")
+    assert still_there.status_code == 200
+    assert still_there.json()["stints"], "the laps table did not survive the request"
+
+
+def test_circuits_endpoint_lists_the_constants(client):
+    rows = client.get("/api/circuits").json()
+    assert {r["circuit"] for r in rows} == {"Sakhir", "Jeddah", "Melbourne"}
+    assert all(r["pit_loss"]["seconds"] > 0 for r in rows)
