@@ -68,12 +68,13 @@ def session_state(session_key: str, t: float = Query(..., description="session t
 
 
 @app.get("/api/sessions/{session_key}/frames")
-def session_frames(session_key: str, start: float, end: float, hz: float = Query(5.0, ge=0.2, le=25.0)) -> dict:
+def session_frames(session_key: str, start: float, end: float, hz: float = Query(5.0, ge=0.2, le=25.0),
+                   smooth: float = Query(session_store.DEFAULT_SMOOTHING_S, ge=0.0, le=3.0)) -> dict:
     if end < start:
         raise HTTPException(status_code=400, detail="end must be at or after start")
     if end - start > 600:
         raise HTTPException(status_code=400, detail="window must be 600 s or less")
-    return _load(session_key).frames(start, end, hz)
+    return _load(session_key).frames(start, end, hz, smooth_s=smooth)
 
 
 @app.get("/api/sessions/{session_key}/laps")

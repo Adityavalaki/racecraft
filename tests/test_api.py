@@ -158,3 +158,79 @@ def test_the_cache_does_not_confuse_two_lakes(client, tmp_path, monkeypatch):
 def test_an_empty_lake_is_a_404_not_a_server_error(client, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path.parent / "nothing-here")
     assert client.get(f"/api/sessions/{KEY}").status_code == 404
+
+
+class TestPositionSmoothing:
+    """
+    The feed's timestamps jitter while its positions are smooth, so sampling
+    an even grid straight off them makes a car leap. Smoothing the mapping from
+    time to distance fixes the motion without moving the car off its own line.
+    """
+
+    def _channel(self, jitter=0.0):
+        from racecraft.api.session import Channel
+        # A car circling at a genuinely constant speed. The positions come from
+        # the true times; the timestamps reported alongside them are what
+        # carries the noise, which is the shape of the real problem: the car
+        # moves smoothly, the feed just mislabels when each sample was taken.
+        true_time = np.arange(0, 400) * 0.24
+        angle = true_time / 20 * 2 * np.pi
+        reported = true_time
+        if jitter:
+            rng = np.random.default_rng(0)
+            reported = np.maximum.accumulate(true_time + rng.normal(0, jitter, len(true_time)))
+        return Channel(t=reported, values={"x": 1000 * np.cos(angle), "y": 1000 * np.sin(angle)})
+
+    def _speeds(self, channel, smooth):
+        from racecraft.api.session import _smooth_positions
+        times = np.arange(5.0, 40.0, 0.1)
+        if smooth:
+            x, y = _smooth_positions(channel, times, smooth)
+        else:
+            sampled = channel.at(times)
+            x, y = sampled["x"], sampled["y"]
+        x = np.array([v for v in x], dtype=float)
+        y = np.array([v for v in y], dtype=float)
+        return np.hypot(np.diff(x), np.diff(y))
+
+    def test_jittery_timestamps_make_a_steady_car_look_erratic(self):
+        steady = self._speeds(self._channel(), smooth=0)
+        jittery = self._speeds(self._channel(jitter=0.08), smooth=0)
+        assert jittery.std() > steady.std() * 3
+
+    def test_smoothing_steadies_it_again(self):
+        jittery = self._speeds(self._channel(jitter=0.08), smooth=0)
+        smoothed = self._speeds(self._channel(jitter=0.08), smooth=0.5)
+        assert smoothed.std() < jittery.std() / 2
+
+    def test_the_car_stays_on_its_own_path(self):
+        from racecraft.api.session import _smooth_positions
+        channel = self._channel(jitter=0.08)
+        times = np.arange(5.0, 40.0, 0.1)
+        x, y = _smooth_positions(channel, times, 0.5)
+        radius = np.hypot(np.array(x, dtype=float), np.array(y, dtype=float))
+        assert np.allclose(radius, 1000, atol=5)      # never leaves the circle it drove
+
+    def test_a_car_never_goes_backwards(self):
+        from racecraft.api.session import _smooth_positions
+        channel = self._channel(jitter=0.15)
+        times = np.arange(5.0, 40.0, 0.1)
+        x, y = _smooth_positions(channel, times, 0.5)
+        angle = np.unwrap(np.arctan2(np.array(y, dtype=float), np.array(x, dtype=float)))
+        assert (np.diff(angle) >= -1e-9).all()
+
+    def test_positions_past_the_end_of_the_feed_are_still_null(self):
+        from racecraft.api.session import _smooth_positions
+        x, _ = _smooth_positions(self._channel(), np.array([500.0]), 0.5)
+        assert x == [None]
+
+
+def test_frames_can_be_served_raw(client):
+    smoothed = client.get(f"/api/sessions/{KEY}/frames",
+                          params={"start": START, "end": START + 10, "hz": 10}).json()
+    raw = client.get(f"/api/sessions/{KEY}/frames",
+                     params={"start": START, "end": START + 10, "hz": 10, "smooth": 0}).json()
+    assert len(smoothed["t"]) == len(raw["t"]) == 101
+    # This fixture's timestamps are perfectly regular, so there is no jitter to
+    # remove: smoothing should leave the car essentially where it was.
+    assert np.allclose(smoothed["drivers"]["1"]["x"], raw["drivers"]["1"]["x"], atol=2.0)

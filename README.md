@@ -106,13 +106,29 @@ result is consistently 1-2% short, which is what cutting the apexes costs:
 `tests/test_outline_realdata.py` keeps this honest; it skips when the lake is
 missing.
 
-**The position feed is not perfectly clean, and is served unsmoothed.**
-Timestamps jitter (intervals of 0.08-0.50 s where the cadence is 0.24 s) and
-the feed occasionally lags and catches up in one step: about 0.1% of samples
-jump over 60 m, the worst 137 m. Median filtering, trajectory smoothing,
-distance-vs-time smoothing and an even cadence were all measured, and every
-one made implied speeds *worse*, because smoothing spreads a jump across its
-neighbours. The data is left faithful and the artefact documented instead.
+**The position feed's timestamps jitter**, at intervals of 0.08-0.50 s where
+the cadence is 0.24 s, while the positions themselves are smooth. Sampling an
+even grid straight off those timestamps makes a car leap: 4.9% of intervals
+imply over 340 km/h when the cars never exceed 331.
+
+Smoothing the coordinates does not fix this and makes it worse - median
+filtering, trajectory smoothing and an even cadence were all measured and all
+lost. The noise is in the *mapping from time to distance*, so that is what is
+smoothed: distance along the car's own path is fitted against time with a
+local straight line over half a second. Positions are never altered, only the
+judgement of how far along the path the car had got at each instant.
+
+| | Over 340 km/h | p99 | Path moved by |
+|---|---|---|---|
+| Raw | 4.9% | 424 km/h | — |
+| Smoothed, 0.5 s | **0.02%** | **312 km/h** | 1.3 m |
+
+A metre on a circuit 5 km round is invisible; the leaping is not.
+`?smooth=0` on `/frames` returns the raw feed, and `smooth=0.8` steadies it
+further at the cost of about 2.4 m.
+
+Genuine position jumps remain and are left alone: the feed occasionally lags
+and catches up in one step, moving a car over 60 m in about 0.1% of samples.
 
 ### Gaps
 
