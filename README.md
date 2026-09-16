@@ -134,6 +134,7 @@ racecraft-analyse pace                 # fuel and degradation, per season
 racecraft-analyse pace --season 2026   # one season, race by race
 racecraft-analyse circuits             # pit loss and neutralisation risk
 racecraft-analyse circuit Baku         # everything known about one circuit
+racecraft-analyse strategy Baku        # cheapest plans for a circuit
 ```
 
 Every model number quoted below comes from these, so they can be reproduced
@@ -240,6 +241,35 @@ survivorship: a team pits when the tyre falls away, so the laps after the
 cliff are mostly missing from the data. Any simulator built on these numbers
 models wear up to the point teams accept, not the wall beyond it.
 
+## Strategy (Phase 4, first pass)
+
+`racecraft.model.strategy` costs a race plan: compound pace for every lap on a
+harder tyre, wear accumulated in each stint, pit loss per stop. Then it sweeps
+every plan and ranks them.
+
+```sh
+racecraft-analyse strategy Baku --laps 51 --scale 1.5
+```
+
+**Backtested against 62 dry races, 2023-2025**, comparing the predicted stop
+count with the median a driver actually made:
+
+| Degradation as measured | x1.5 |
+|---|---|
+| 42% exact, 87% within one stop | **53% exact, 89% within one stop** |
+
+Measured degradation systematically **under-stops**: it predicted a one-stop
+in 57 of 62 races when teams split roughly evenly between one and two. That is
+the survivorship problem made concrete — degradation measured from race laps
+only covers the life teams accept, so a long stint looks cheaper than it is.
+Multiplying it by about 1.5 best reproduces real strategy, and that factor is
+also absorbing everything the model omits: traffic, safety cars, warm-up and
+track position. It is a calibration, not a physical constant.
+
+The model prints its own limits every time it runs, because a number this
+simple should not travel without them. Notably it counts **seconds, not
+places**, and races are scored in places.
+
 ## Query
 
 ```python
@@ -288,6 +318,7 @@ src/racecraft/
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation
   model/circuit.py         pit loss, safety car risk
+  model/strategy.py        costing and ranking race plans
   model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)

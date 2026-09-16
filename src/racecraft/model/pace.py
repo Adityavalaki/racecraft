@@ -378,10 +378,14 @@ def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
     error_by_name = dict(zip(names, errors))
     total_variance = float(((observed - observed.mean()) ** 2).sum())
 
+    reference = compounds[0]
     return PaceModel(
         fuel_s_per_lap=float("nan"),        # absorbed into the lap effects, by design
         degradation_s_per_lap={c: float(by_name[f"deg_{c}"]) for c in compounds if f"deg_{c}" in by_name},
-        compound_offset_s={},
+        # Pace at the same tyre age, relative to the softest compound present:
+        # how much slower a harder tyre is before wear enters at all.
+        compound_offset_s={reference: 0.0,
+                           **{c: float(by_name.get(f"offset_{c}", 0.0)) for c in compounds[1:]}},
         driver_baseline_s={},
         n_laps=len(df),
         n_drivers=len(drivers),

@@ -81,3 +81,16 @@ def test_circuit_command_describes_one_circuit(small_lake, capsys):
 def test_circuit_command_says_so_when_it_has_no_data(small_lake, capsys):
     assert cli.main(["circuit", "Nowhere"]) == 1
     assert "no races at 'Nowhere'" in capsys.readouterr().out
+
+
+def test_strategy_command_costs_plans_for_a_circuit(small_lake, capsys):
+    assert cli.main(["strategy", "Baku", "--season", "2026", "--laps", "40", "--top", "2", "--step", "5"]) == 0
+    out = capsys.readouterr().out
+    assert "pit loss" in out
+    assert "stop" in out
+    assert "It leaves out" in out          # the limits travel with the numbers
+
+
+def test_strategy_command_refuses_an_unknown_circuit(small_lake, capsys):
+    assert cli.main(["strategy", "Nowhere", "--season", "2026"]) == 1
+    assert "no pit loss known" in capsys.readouterr().out

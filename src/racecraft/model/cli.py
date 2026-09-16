@@ -113,6 +113,57 @@ def _pace_by_lap_effects(args, con) -> int:
     return 0
 
 
+def cmd_strategy(args) -> int:
+    """Cheapest plans for one circuit, from measured degradation and pit loss."""
+    import numpy as np
+    from racecraft.model import strategy as strategy_model
+
+    con = connect()
+    name = circuit_model.canonical_circuit(args.circuit)
+    laps_all = _race_laps(con)
+    loss = next((p for p in circuit_model.pit_loss(laps_all) if p.circuit == name), None)
+    if loss is None:
+        print(f"no pit loss known for '{args.circuit}': not enough green-flag stops in the lake")
+        return 1
+
+    (clean, _), _ = _clean_by_session(con, args.season)
+    models = []
+    for laps in clean.values():
+        if len(laps) < 200:
+            continue
+        try:
+            models.append(pace_model.fit_lap_effects(laps))
+        except (pace_model.Confounded, ValueError):
+            continue
+    if not models:
+        print(f"no fittable races in {args.season}")
+        return 1
+    degradation = {c: v[0] * args.scale for c, v in pace_model.combine(models).items()}
+    offsets = {c: float(np.median([m.compound_offset_s[c] for m in models if c in m.compound_offset_s]))
+               for c in pace_model.DRY_COMPOUNDS
+               if any(c in m.compound_offset_s for m in models)}
+
+    total = args.laps or int(laps_all[circuit_model.canonical_circuit(laps_all["location"]) == name]
+                             .groupby("session_key")["lap_number"].max().median())
+    print(f"{name}, {total} laps — {args.season} tyre behaviour, pit loss {loss.seconds:.1f}s"
+          + (f", degradation scaled x{args.scale}" if args.scale != 1.0 else ""))
+    print(f"  degradation s/lap: " + ", ".join(f"{c.lower()} {v:.4f}" for c, v in degradation.items()))
+    print(f"  pace at equal age: " + ", ".join(f"{c.lower()} {v:+.2f}s" for c, v in offsets.items()))
+    print()
+
+    for costed in strategy_model.best_plans(total, degradation, loss.seconds,
+                                            compound_offset_s=offsets, top=args.top, step=args.step):
+        d = costed.as_dict()
+        print(f"  {d['plan']:<30} {d['stops']} stop   {d['seconds_lost']:6.1f}s lost   "
+              f"(tyres {d['tyre_seconds']:5.1f}, compound {d['compound_seconds']:+5.1f}, pits {d['pit_seconds']:4.0f})")
+
+    print()
+    print("  This counts seconds, not places. It leaves out:")
+    for omission in strategy_model.KNOWN_OMISSIONS:
+        print(f"    - {omission}")
+    return 0
+
+
 def cmd_circuits(args) -> int:
     con = connect()
     laps = _race_laps(con)
@@ -184,6 +235,16 @@ def main(argv: list[str] | None = None) -> int:
 
     circuits_parser = commands.add_parser("circuits", help="pit loss and neutralisation risk, every circuit")
     circuits_parser.set_defaults(handler=cmd_circuits)
+
+    strategy_parser = commands.add_parser("strategy", help="cheapest plans for one circuit")
+    strategy_parser.add_argument("circuit")
+    strategy_parser.add_argument("--season", type=int, default=2026, help="whose tyre behaviour to use")
+    strategy_parser.add_argument("--laps", type=int, help="race distance; defaults to this circuit's usual")
+    strategy_parser.add_argument("--scale", type=float, default=1.0,
+                                 help="multiply measured degradation; 1.5 best reproduces real stop counts")
+    strategy_parser.add_argument("--top", type=int, default=6)
+    strategy_parser.add_argument("--step", type=int, default=1)
+    strategy_parser.set_defaults(handler=cmd_strategy)
 
     circuit_parser = commands.add_parser("circuit", help="everything known about one circuit")
     circuit_parser.add_argument("name")
