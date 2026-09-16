@@ -5,3 +5,6 @@ __pycache__/
 data/
 web/node_modules/
 web/dist/
+# The legacy engine regenerates its own data with run_pipeline.py
+legacy/**/data/
+legacy/**/__pycache__/

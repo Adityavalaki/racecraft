@@ -1,0 +1,7 @@
+# Downloaded and generated data: all of it is reproducible with run_pipeline.py
+data/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

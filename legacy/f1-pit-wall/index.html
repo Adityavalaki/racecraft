@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pit Wall — Live F1 Timing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090c;
+    --surface: #12151b;
+    --surface-2: #1a1e26;
+    --border: #262b35;
+    --text: #ecedf1;
+    --text-dim: #8b92a0;
+    --live: #23e6c9;
+    --green: #35d07f;
+    --amber: #ffb020;
+    --red: #ff4757;
+    --sc: #4d9fff;
+    --flag-color: var(--green);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  .mono { font-family: 'JetBrains Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+
+  /* Signature element: flag-state bar, live-driven color */
+  #flagBar {
+    height: 6px;
+    width: 100%;
+    background: var(--flag-color);
+    transition: background 0.6s ease;
+  }
+
+  header {
+    padding: 14px 20px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 {
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  header .session-name {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin-left: 10px;
+    font-weight: 500;
+  }
+  .live-pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--live);
+  }
+  .live-pulse::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--live);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(35,230,201,0.5); }
+    50% { opacity: 0.5; box-shadow: 0 0 0 6px rgba(35,230,201,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-pulse::before { animation: none; }
+  }
+
+  .weather-strip {
+    display: flex;
+    gap: 24px;
+    padding: 8px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .weather-strip b { color: var(--text); font-weight: 600; }
+
+  #config {
+    padding: 10px 20px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  #config input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    width: 110px;
+  }
+  #config button {
+    background: var(--live);
+    color: #07090c;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
+  #config button:hover { opacity: 0.85; }
+  #config .hint { color: var(--text-dim); font-size: 12px; }
+
+  #banner {
+    display: none;
+    padding: 10px 20px;
+    background: rgba(255,176,32,0.12);
+    border-bottom: 1px solid var(--amber);
+    color: var(--amber);
+    font-size: 13px;
+  }
+
+  main { padding: 16px 20px 40px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s ease;
+  }
+  tbody tr:hover { background: var(--surface); }
+  tbody td {
+    padding: 8px 10px;
+    font-size: 15px;
+  }
+  .pos { font-weight: 700; width: 32px; }
+  .team-bar {
+    display: inline-block;
+    width: 4px;
+    height: 18px;
+    border-radius: 2px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .drv-code { font-weight: 700; letter-spacing: 0.03em; }
+  .team-name { color: var(--text-dim); font-size: 12px; display: block; }
+  .compound {
+    display: inline-block;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 22px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .compound.SOFT { background: #ff4757; color: #fff; }
+  .compound.MEDIUM { background: #ffd23f; color: #07090c; }
+  .compound.HARD { background: #eceff1; color: #07090c; }
+  .compound.INTERMEDIATE { background: #35d07f; color: #07090c; }
+  .compound.WET { background: #4d9fff; color: #07090c; }
+  .compound.UNKNOWN { background: var(--surface-2); color: var(--text-dim); }
+  .gap-leader { color: var(--live); font-weight: 700; }
+
+  footer {
+    padding: 10px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #rcTicker {
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 60%;
+  }
+
+  @media (max-width: 640px) {
+    thead th:nth-child(5), tbody td:nth-child(5) { display: none; } /* hide LAST on mobile */
+    #rcTicker { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="flagBar"></div>
+
+<header>
+  <div>
+    <h1>Pit Wall</h1>
+    <span class="session-name" id="sessionName">Not connected</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <span id="lapCounter" class="mono" style="color:var(--text-dim); font-size:13px;"></span>
+    <span class="live-pulse" id="liveIndicator">CONNECTING</span>
+  </div>
+</header>
+
+<div class="weather-strip" id="weatherStrip">
+  Waiting for weather data&hellip;
+</div>
+
+<div id="config">
+  <label class="hint">Session key</label>
+  <input id="sessionKeyInput" placeholder="latest" class="mono">
+  <button id="connectBtn">Connect</button>
+  <span class="hint">
+    Leave blank + Connect to follow the current/most recent session.
+    <b style="color:var(--amber)">Note:</b> per OpenF1's current docs, historical data
+    (any finished session) is free — live data during an ongoing session now
+    requires a paid OpenF1 subscription. Without one, this will likely work
+    right after a session ends but not during it. Check openf1.org/docs for
+    current pricing before relying on this live.
+  </span>
+</div>
+
+<div id="banner"></div>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th class="pos">P</th>
+        <th>Driver</th>
+        <th>Gap</th>
+        <th>Interval</th>
+        <th>Last lap</th>
+        <th>Tyre</th>
+        <th>Age</th>
+        <th>Pits</th>
+      </tr>
+    </thead>
+    <tbody id="timingBody">
+      <tr><td colspan="8" style="text-align:center; color:var(--text-dim); padding: 30px;">
+        Enter a session key (or leave blank for latest) and hit Connect.
+      </td></tr>
+    </tbody>
+  </table>
+</main>
+
+<footer>
+  <span id="rcTicker">Race control: —</span>
+  <span id="lastUpdate" class="mono">—</span>
+</footer>
+
+<script>
+/*
+  Pit Wall — live F1 timing dashboard sourced from OpenF1's public REST API.
+
+  DESIGN NOTE ON POLLING: naive full-history re-fetch per poll would pull
+  tens of thousands of rows by the back half of a race (intervals/positions
+  update roughly every 4s per driver for ~90 minutes). Instead this uses
+  `date>` filters against each endpoint's own last-seen timestamp and merges
+  new rows into a per-driver cache, so each poll only pulls what's new.
+
+  VERIFICATION STATUS: field names below (gap_to_leader, tyre_age_at_start,
+  team_colour, race_control's flag/category/message, etc.) were checked
+  against OpenF1's public docs, not run against the live API — this was
+  built somewhere without network access to api.openf1.org. Expect to
+  debug real API quirks (rate limits, occasional missing fields, schema
+  drift) the first time you actually run this during a session. Open the
+  browser console if rows look wrong — errors are logged, not swallowed.
+*/
+
+const BASE = 'https://api.openf1.org/v1';
+const POLL_INTERVAL_MS = 8000; // stays comfortably under OpenF1's rate limit
+
+let state = {
+  sessionKey: null,
+  sessionInfo: null,
+  drivers: {},        // driver_number -> {full_name, name_acronym, team_name, team_colour}
+  positions: {},       // driver_number -> latest position
+  intervals: {},        // driver_number -> {gap_to_leader, interval, date}
+  stints: {},           // driver_number -> latest stint {compound, lap_start, tyre_age_at_start}
+  pitCounts: {},         // driver_number -> count
+  lastLap: {},            // driver_number -> {lap_duration, date}
+  lastFetch: {             // per-endpoint incremental cursor
+    position: null,
+    intervals: null,
+    laps: null,
+    pit: null,
+    race_control: null,
+    weather: null,
+  },
+  raceControlLog: [],
+  pollHandle: null,
+};
+
+function qs(params) {
+  return Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+}
+
+async function apiGet(endpoint, params) {
+  const url = `${BASE}/${endpoint}?${qs(params)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`${endpoint} returned ${resp.status}`);
+  return resp.json();
+}
+
+function setLive(status) {
+  const el = document.getElementById('liveIndicator');
+  el.textContent = status;
+}
+
+function setFlag(colorVar) {
+  document.documentElement.style.setProperty('--flag-color', `var(${colorVar})`);
+}
+
+function flagColorFor(flag) {
+  if (!flag) return '--green';
+  const f = flag.toUpperCase();
+  if (f.includes('RED')) return '--red';
+  if (f.includes('SAFETY CAR') || f.includes('VIRTUAL SAFETY')) return '--sc';
+  if (f.includes('YELLOW') || f.includes('DOUBLE YELLOW')) return '--amber';
+  if (f.includes('CHEQUERED')) return '--live';
+  return '--green';
+}
+
+async function resolveSession(requestedKey) {
+  const params = requestedKey ? { session_key: requestedKey } : { session_key: 'latest' };
+  const sessions = await apiGet('sessions', params);
+  if (!sessions || sessions.length === 0) {
+    throw new Error('No session found for that key.');
+  }
+  return sessions[0];
+}
+
+async function loadDrivers(sessionKey) {
+  const drivers = await apiGet('drivers', { session_key: sessionKey });
+  const map = {};
+  for (const d of drivers) {
+    map[d.driver_number] = {
+      full_name: d.full_name || d.broadcast_name || `#${d.driver_number}`,
+      code: d.name_acronym || String(d.driver_number),
+      team_name: d.team_name || 'Unknown',
+      team_colour: d.team_colour ? `#${d.team_colour}` : '#666',
+    };
+  }
+  return map;
+}
+
+async function pollIncremental(endpoint, cursorKey, extraParams = {}) {
+  const params = { session_key: state.sessionKey, ...extraParams };
+  if (state.lastFetch[cursorKey]) {
+    params.date = `>${state.lastFetch[cursorKey]}`;
+  }
+  const rows = await apiGet(endpoint, params);
+  if (rows.length > 0) {
+    // OpenF1 returns chronological order; last row is most recent.
+    state.lastFetch[cursorKey] = rows[rows.length - 1].date;
+  }
+  return rows;
+}
+
+function mergeLatestByDriver(target, rows, fields) {
+  for (const row of rows) {
+    const dn = row.driver_number;
+    if (dn === undefined) continue;
+    const existing = target[dn];
+    if (!existing || row.date > existing.date) {
+      const entry = { date: row.date };
+      for (const f of fields) entry[f] = row[f];
+      target[dn] = entry;
+    }
+  }
+}
+
+async function pollAll() {
+  try {
+    const [positions, intervals, laps, pits, rc, weather] = await Promise.all([
+      pollIncremental('position', 'position'),
+      pollIncremental('intervals', 'intervals'),
+      pollIncremental('laps', 'laps'),
+      pollIncremental('pit', 'pit'),
+      pollIncremental('race_control', 'race_control'),
+      pollIncremental('weather', 'weather'),
+    ]);
+
+    mergeLatestByDriver(state.intervals, intervals, ['gap_to_leader', 'interval']);
+    mergeLatestByDriver(state.lastLap, laps, ['lap_duration', 'lap_number']);
+
+    for (const p of positions) {
+      state.positions[p.driver_number] = p.position;
+    }
+
+    // Stints: track lap_start of the latest stint per driver, plus a
+    // running pit count (each new stint after the first = one more pit stop).
+    if (pits.length > 0) {
+      for (const p of pits) {
+        state.pitCounts[p.driver_number] = (state.pitCounts[p.driver_number] || 0) + 1;
+      }
+    }
+
+    if (rc.length > 0) {
+      for (const msg of rc) {
+        if (msg.category === 'Flag' || msg.flag) {
+          setFlag(flagColorFor(msg.flag));
+        }
+        state.raceControlLog.push(msg);
+      }
+      state.raceControlLog = state.raceControlLog.slice(-20);
+      const latest = state.raceControlLog[state.raceControlLog.length - 1];
+      document.getElementById('rcTicker').textContent = `Race control: ${latest.message || latest.flag || '—'}`;
+    }
+
+    if (weather.length > 0) {
+      const w = weather[weather.length - 1];
+      document.getElementById('weatherStrip').innerHTML = `
+        Air <b>${w.air_temperature ?? '—'}&deg;C</b> &nbsp;
+        Track <b>${w.track_temperature ?? '—'}&deg;C</b> &nbsp;
+        Humidity <b>${w.humidity ?? '—'}%</b> &nbsp;
+        Wind <b>${w.wind_speed ?? '—'} m/s</b> &nbsp;
+        ${w.rainfall ? '<b style="color:var(--sc)">RAIN</b>' : ''}
+      `;
+    }
+
+    // Stints need a full (not incremental) refresh periodically since
+    // they're low-frequency and we need current tyre age, not just deltas.
+    const stints = await apiGet('stints', { session_key: state.sessionKey });
+    const latestStintByDriver = {};
+    for (const s of stints) {
+      const dn = s.driver_number;
+      if (!latestStintByDriver[dn] || s.lap_start > latestStintByDriver[dn].lap_start) {
+        latestStintByDriver[dn] = s;
+      }
+    }
+    state.stints = latestStintByDriver;
+
+    render();
+    setLive('LIVE');
+    document.getElementById('lastUpdate').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    console.error('[pollAll]', err);
+    setLive('ERROR — see console');
+  }
+}
+
+function currentLapEstimate() {
+  // Best-effort: max lap_number seen across all drivers' last laps.
+  let maxLap = 0;
+  for (const dn in state.lastLap) {
+    const ln = state.lastLap[dn].lap_number;
+    if (ln && ln > maxLap) maxLap = ln;
+  }
+  return maxLap;
+}
+
+function fmtGap(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'string') return v; // e.g. "+1 LAP"
+  if (v === 0) return 'LEADER';
+  return '+' + v.toFixed(3);
+}
+
+function fmtLapTime(seconds) {
+  if (!seconds) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = (seconds - m * 60).toFixed(3);
+  return `${m}:${s.padStart(6, '0')}`;
+}
+
+function render() {
+  const driverNumbers = Object.keys(state.drivers);
+  if (driverNumbers.length === 0) return;
+
+  const rows = driverNumbers.map((dn) => {
+    const driver = state.drivers[dn];
+    const pos = state.positions[dn] ?? 99;
+    const interval = state.intervals[dn] || {};
+    const stint = state.stints[dn];
+    const lastLap = state.lastLap[dn];
+    const pitCount = state.pitCounts[dn] || 0;
+
+    let tyreAge = '—';
+    let compound = 'UNKNOWN';
+    if (stint) {
+      compound = (stint.compound || 'UNKNOWN').toUpperCase();
+      const lapsSinceStintStart = Math.max(0, currentLapEstimate() - stint.lap_start);
+      tyreAge = (stint.tyre_age_at_start ?? 0) + lapsSinceStintStart;
+    }
+
+    return { dn, driver, pos, interval, compound, tyreAge, lastLap, pitCount };
+  }).sort((a, b) => a.pos - b.pos);
+
+  const tbody = document.getElementById('timingBody');
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td class="pos mono">${r.pos === 99 ? '—' : r.pos}</td>
+      <td>
+        <span class="team-bar" style="background:${r.driver.team_colour}"></span>
+        <span class="drv-code">${r.driver.code}</span>
+        <span class="team-name">${r.driver.team_name}</span>
+      </td>
+      <td class="mono ${r.interval.gap_to_leader === 0 ? 'gap-leader' : ''}">${fmtGap(r.interval.gap_to_leader)}</td>
+      <td class="mono">${fmtGap(r.interval.interval)}</td>
+      <td class="mono">${r.lastLap ? fmtLapTime(r.lastLap.lap_duration) : '—'}</td>
+      <td><span class="compound ${r.compound}">${r.compound === 'UNKNOWN' ? '—' : r.compound[0]}</span></td>
+      <td class="mono">${r.tyreAge}</td>
+      <td class="mono">${r.pitCount}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('lapCounter').textContent =
+    currentLapEstimate() > 0 ? `LAP ${currentLapEstimate()}` : '';
+}
+
+async function connect(requestedKey) {
+  setLive('CONNECTING');
+  document.getElementById('banner').style.display = 'none';
+  if (state.pollHandle) clearInterval(state.pollHandle);
+
+  try {
+    const session = await resolveSession(requestedKey);
+    state.sessionKey = session.session_key;
+    state.sessionInfo = session;
+
+    document.getElementById('sessionName').textContent =
+      `${session.session_name} — ${session.location}, ${session.country_name} (${session.year})`;
+
+    const now = new Date();
+    const sessionEnd = session.date_end ? new Date(session.date_end) : null;
+    const isPast = sessionEnd && sessionEnd < now;
+
+    if (isPast) {
+      const banner = document.getElementById('banner');
+      banner.style.display = 'block';
+      banner.textContent =
+        `This session ended ${sessionEnd.toLocaleString()}. Showing its final state as a ` +
+        `static snapshot — auto-refresh is paused since there's nothing new to poll for. ` +
+        `Connect with a session_key from an ongoing weekend to see live updates.`;
+    }
+
+    // Reset per-session state
+    state.positions = {}; state.intervals = {}; state.stints = {};
+    state.pitCounts = {}; state.lastLap = {}; state.raceControlLog = [];
+    state.lastFetch = { position: null, intervals: null, laps: null, pit: null, race_control: null, weather: null };
+
+    state.drivers = await loadDrivers(state.sessionKey);
+    await pollAll();
+
+    if (!isPast) {
+      state.pollHandle = setInterval(pollAll, POLL_INTERVAL_MS);
+    } else {
+      setLive('SESSION ENDED');
+    }
+  } catch (err) {
+    console.error('[connect]', err);
+    setLive('ERROR');
+    const banner = document.getElementById('banner');
+    banner.style.display = 'block';
+    banner.textContent = `Could not connect: ${err.message}`;
+  }
+}
+
+document.getElementById('connectBtn').addEventListener('click', () => {
+  const val = document.getElementById('sessionKeyInput').value.trim();
+  connect(val || null);
+});
+
+document.getElementById('sessionKeyInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('connectBtn').click();
+});
+
+// Auto-connect to "latest" on load so it's useful the moment you open it.
+connect(null);
+</script>
+</body>
+</html>

@@ -419,6 +419,14 @@ sessions, including every race file written before those columns existed.
 - **Parquet is the source of truth.** DuckDB runs in memory over it; there is
   no database file to lock or keep in sync.
 
+## Where this came from
+
+`legacy/` holds the two projects Racecraft replaced: an earlier strategy
+engine and a single-page live pit wall. They are kept for their mistakes,
+which shaped this one — a pit model that scored 1.22 laps of error while
+knowing nothing, and the second leak found inside its own replacement. See
+[legacy/README.md](legacy/README.md).
+
 ## Layout
 
 ```
