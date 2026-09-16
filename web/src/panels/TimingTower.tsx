@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { COMPOUND_COLORS, formatLapTime, type DriverTiming } from "../api";
+import { COMPOUND_COLORS, formatLapTime, formatSector, type DriverTiming } from "../api";
 
 interface Props {
   drivers: DriverTiming[];
@@ -25,6 +25,9 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
         <span className="num">GAP</span>
         <span className="num">INT</span>
         <span className="num">LAST LAP</span>
+        <span className="num">S1</span>
+        <span className="num">S2</span>
+        <span className="num">S3</span>
         <span>TYRE</span>
         <span className="num">PIT</span>
       </div>
@@ -52,6 +55,14 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
               >
                 {formatLapTime(driver.last_lap_s)}
               </span>
+              {[1, 2, 3].map((number) => {
+                const sector = driver.sectors?.find((s) => s.sector === number);
+                return (
+                  <span key={number} className={`num sector is-${sector?.state ?? "none"}`}>
+                    {formatSector(sector?.seconds)}
+                  </span>
+                );
+              })}
               <span className="tyre">
                 {driver.compound ? (
                   <>

@@ -72,9 +72,18 @@ in `web/` for hot reload; it proxies `/api` to the server on port 8000.
 
 Three panels, one clock:
 
-- **Timing tower** — order, gap, interval, last lap, tyre and age, stops.
-  Purple marks the session's fastest lap, green a driver's own best.
+- **Timing tower** — order, gap, interval, last lap, all three sector times,
+  tyre and age, stops. Purple marks the session's fastest, green a driver's
+  own best, for the lap and for each sector independently.
+- **Best sectors** — who holds each sector and the ideal lap they add up to,
+  which is a lap nobody has driven. The gap between it and the fastest real
+  lap is the time still on the table.
 - **Track map** — cars from GPS on the racing line of the fastest lap.
+  Positions are fetched at 10 Hz and drawn along a curve through the samples,
+  so cars follow the arc of a corner instead of cutting it in facets. The
+  curve passes exactly through the real samples, and reflects rather than
+  duplicates a missing neighbour, so a straight stays straight at the seam
+  between two fetched windows.
 - **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
   stops marked. Click to jump the clock to that lap.
 

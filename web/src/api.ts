@@ -54,6 +54,20 @@ export interface DriverTiming {
   tyre_life: number | null;
   laps_in_stint: number | null;
   stops: number;
+  sectors: SectorTime[];
+}
+
+export interface SectorTime {
+  sector: number;
+  seconds: number | null;
+  state: "session_best" | "personal_best" | "normal" | "none";
+}
+
+export interface BestSector {
+  sector: number;
+  seconds: number | null;
+  driver_number: number | null;
+  driver: string | null;
 }
 
 export interface CarState {
@@ -70,6 +84,8 @@ export interface CarState {
 export interface SessionState {
   t: number;
   leader_lap: number;
+  best_sectors: BestSector[];
+  ideal_lap_s: number | null;
   drivers: DriverTiming[];
   cars: Record<string, CarState>;
   track_status: { status: string; message: string } | null;
@@ -124,6 +140,11 @@ export function formatLapTime(seconds: number | null | undefined): string {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds - minutes * 60;
   return minutes > 0 ? `${minutes}:${rest.toFixed(3).padStart(6, "0")}` : rest.toFixed(3);
+}
+
+/** A sector time: shorter than a lap, so no minutes. */
+export function formatSector(seconds: number | null | undefined): string {
+  return seconds === null || seconds === undefined || !Number.isFinite(seconds) ? "—" : seconds.toFixed(3);
 }
 
 /** Session time as a clock, for the scrubber. */

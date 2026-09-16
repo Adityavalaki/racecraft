@@ -94,3 +94,36 @@ describe("usePositions", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("curved interpolation", () => {
+  const curve: Frames = {
+    t: [0, 1, 2, 3],
+    drivers: { "1": { x: [0, 10, 20, 30], y: [0, 10, 0, -10] } },
+  };
+
+  it("passes exactly through the real samples", () => {
+    // Smoothing must not move a car away from where the feed says it was.
+    expect(sample(curve, 1)["1"]!.x).toBeCloseTo(10, 6);
+    expect(sample(curve, 1)["1"]!.y).toBeCloseTo(10, 6);
+    expect(sample(curve, 2)["1"]!.y).toBeCloseTo(0, 6);
+  });
+
+  it("follows the arc between samples rather than cutting across it", () => {
+    // Straight-line interpolation would put y at exactly 5 halfway; a curve
+    // through the neighbouring points bulges towards the outside.
+    expect(sample(curve, 1.5)["1"]!.y).toBeGreaterThan(5.1);
+  });
+
+  it("still moves steadily along a straight line", () => {
+    const straight: Frames = { t: [0, 1, 2, 3], drivers: { "1": { x: [0, 10, 20, 30], y: [0, 0, 0, 0] } } };
+    expect(sample(straight, 1.5)["1"]!.x).toBeCloseTo(15, 6);
+    expect(sample(straight, 1.5)["1"]!.y).toBeCloseTo(0, 6);
+  });
+
+  it("keeps a straight line straight at the edge of the buffer", () => {
+    // The seam between two fetched windows must not look like a hesitation.
+    const edge: Frames = { t: [10, 11, 12], drivers: { "1": { x: [0, 100, 200], y: [0, 0, 0] } } };
+    expect(sample(edge, 10.5)["1"]!.x).toBeCloseTo(50, 6);
+    expect(sample(edge, 11.5)["1"]!.x).toBeCloseTo(150, 6);
+  });
+});

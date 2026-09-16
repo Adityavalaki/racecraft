@@ -16,8 +16,8 @@ import { api, type Frames } from "./api";
  * Instead a timer looks at the latest clock value held in a ref, and requests
  * are only aborted when the session changes or the component goes away.
  */
-const WINDOW_S = 30;
-const SAMPLE_HZ = 5;
+const WINDOW_S = 24;
+const SAMPLE_HZ = 10;   // twice the old rate: less to invent between samples
 const REFETCH_AT = 0.6; // fraction of the window consumed before fetching the next
 const CHECK_MS = 120;
 
@@ -105,7 +105,15 @@ export function mergeFrames(a: Frames, b: Frames): Frames {
   return merged;
 }
 
-/** Linear interpolation between the two samples either side of `time`. */
+/**
+ * Where every car is at `time`, interpolated between samples.
+ *
+ * Straight lines between samples make a car visibly corner in facets and
+ * change speed at every sample. A Catmull-Rom curve through the surrounding
+ * four points follows the arc instead, and because the curve passes exactly
+ * through the real samples it smooths the path without inventing a different
+ * one. Two samples are enough for a straight line if neighbours are missing.
+ */
 export function sample(frames: Frames | null, time: number): Record<number, { x: number; y: number }> {
   const out: Record<number, { x: number; y: number }> = {};
   if (!frames || frames.t.length === 0) return out;
@@ -118,14 +126,40 @@ export function sample(frames: Frames | null, time: number): Record<number, { x:
   const mix = t1 > t0 ? Math.min(1, Math.max(0, (time - t0) / (t1 - t0))) : 0;
 
   for (const [number, series] of Object.entries(frames.drivers)) {
-    const x0 = series.x[lo];
-    const y0 = series.y[lo];
-    const x1 = series.x[hi];
-    const y1 = series.y[hi];
-    if (x0 === null || y0 === null || x0 === undefined || y0 === undefined) continue;
-    const x = x1 === null || x1 === undefined ? x0 : x0 + (x1 - x0) * mix;
-    const y = y1 === null || y1 === undefined ? y0 : y0 + (y1 - y0) * mix;
-    out[Number(number)] = { x, y };
+    const x1 = series.x[lo];
+    const y1 = series.y[lo];
+    if (x1 === null || y1 === null || x1 === undefined || y1 === undefined) continue;
+    const x2 = series.x[hi];
+    const y2 = series.y[hi];
+    if (x2 === null || y2 === null || x2 === undefined || y2 === undefined) {
+      out[Number(number)] = { x: x1, y: y1 };     // hold position rather than guess
+      continue;
+    }
+    // At the ends of the buffer the missing neighbour is reflected rather than
+    // duplicated: duplicating bends a straight line, so a car on a straight
+    // would appear to slow down at the seam between two fetched windows.
+    const x0 = valueOr(series.x[lo - 1], 2 * x1 - x2);
+    const y0 = valueOr(series.y[lo - 1], 2 * y1 - y2);
+    const x3 = valueOr(series.x[hi + 1], 2 * x2 - x1);
+    const y3 = valueOr(series.y[hi + 1], 2 * y2 - y1);
+    out[Number(number)] = {
+      x: catmullRom(x0, x1, x2, x3, mix),
+      y: catmullRom(y0, y1, y2, y3, mix),
+    };
   }
   return out;
+}
+
+function valueOr(value: number | null | undefined, fallback: number): number {
+  return value === null || value === undefined ? fallback : value;
+}
+
+/** Curve through p1 and p2, shaped by their neighbours. */
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * ((2 * p1)
+    + (-p0 + p2) * t
+    + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+    + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 }

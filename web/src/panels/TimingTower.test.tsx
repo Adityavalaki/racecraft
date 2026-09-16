@@ -9,7 +9,13 @@ function driver(overrides: Partial<DriverTiming>): DriverTiming {
     position: 1, status: "racing", laps_completed: 10, gap_to_leader_s: null, gap_text: "",
     interval_s: null, interval_text: "", laps_down: 0, last_lap_s: 92.608, best_lap_s: 92.608,
     is_session_best: true, is_personal_best: true, compound: "HARD", tyre_life: 12,
-    laps_in_stint: 8, stops: 1, ...overrides,
+    laps_in_stint: 8, stops: 1,
+    sectors: [
+      { sector: 1, seconds: 29.741, state: "session_best" },
+      { sector: 2, seconds: 39.916, state: "personal_best" },
+      { sector: 3, seconds: 22.951, state: "normal" },
+    ],
+    ...overrides,
   };
 }
 
@@ -54,5 +60,26 @@ describe("TimingTower", () => {
     render(<TimingTower drivers={[driver({ driver_number: 44 })]} selected={[44]} onSelect={onSelect} sessionBest={null} />);
     screen.getByRole("button", { pressed: true }).click();
     expect(onSelect).toHaveBeenCalledWith(44);
+  });
+
+  it("shows each sector separately, coloured by how it stands", () => {
+    const { container } = render(
+      <TimingTower drivers={[driver({})]} selected={[]} onSelect={vi.fn()} sessionBest={92.608} />,
+    );
+    expect(screen.getByText("29.741")).toBeDefined();
+    expect(screen.getByText("39.916")).toBeDefined();
+    expect(screen.getByText("22.951")).toBeDefined();
+    expect(container.querySelectorAll(".sector.is-session_best")).toHaveLength(1);
+    expect(container.querySelectorAll(".sector.is-personal_best")).toHaveLength(1);
+  });
+
+  it("shows a dash for a sector the feed never delivered", () => {
+    render(
+      <TimingTower
+        drivers={[driver({ sectors: [{ sector: 1, seconds: null, state: "none" }] })]}
+        selected={[]} onSelect={vi.fn()} sessionBest={null}
+      />,
+    );
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
   });
 });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -21,17 +21,30 @@ function mockApi() {
     bounds: { min_x: 0, max_x: 100, min_y: 0, max_y: 100 },
     has_position_data: true,
   };
+  const sectors = (a: number, b: number, c: number) => [
+    { sector: 1, seconds: a, state: "normal" as const },
+    { sector: 2, seconds: b, state: "normal" as const },
+    { sector: 3, seconds: c, state: "normal" as const },
+  ];
   const state = {
     t: 1000, leader_lap: 12,
+    best_sectors: [
+      { sector: 1, seconds: 29.741, driver_number: 1, driver: "VER" },
+      { sector: 2, seconds: 39.916, driver_number: 11, driver: "PER" },
+      { sector: 3, seconds: 22.951, driver_number: 1, driver: "VER" },
+    ],
+    ideal_lap_s: 92.608,
     drivers: [
       { driver_number: 1, abbreviation: "VER", team_name: "Red Bull", team_color: "3671C6", position: 1,
         status: "racing", laps_completed: 12, gap_to_leader_s: null, gap_text: "", interval_s: null,
         interval_text: "", laps_down: 0, last_lap_s: 92.608, best_lap_s: 92.608, is_session_best: true,
-        is_personal_best: true, compound: "HARD", tyre_life: 9, laps_in_stint: 5, stops: 1 },
+        is_personal_best: true, compound: "HARD", tyre_life: 9, laps_in_stint: 5, stops: 1,
+        sectors: sectors(29.741, 39.916, 22.951) },
       { driver_number: 11, abbreviation: "PER", team_name: "Red Bull", team_color: "3671C6", position: 2,
         status: "racing", laps_completed: 12, gap_to_leader_s: 6.213, gap_text: "+6.213", interval_s: 6.213,
         interval_text: "+6.213", laps_down: 0, last_lap_s: 93.104, best_lap_s: 93.0, is_session_best: false,
-        is_personal_best: false, compound: "SOFT", tyre_life: 3, laps_in_stint: 3, stops: 1 },
+        is_personal_best: false, compound: "SOFT", tyre_life: 3, laps_in_stint: 3, stops: 1,
+        sectors: sectors(30.1, 40.2, 23.0) },
     ],
     cars: { "1": { x: 10, y: 10, speed: 280 }, "11": { x: 20, y: 20, speed: 275 } },
     track_status: { status: "1", message: "AllClear" },
@@ -65,12 +78,16 @@ afterEach(() => vi.unstubAllGlobals());
 describe("App", () => {
   it("loads a session and fills the tower, the clock and the flag bar", async () => {
     mockApi();
-    render(<App />);
+    const { container } = render(<App />);
 
-    await waitFor(() => expect(screen.getByText("VER")).toBeDefined());
+    // Scoped to the tower: driver codes and sector times also appear in the
+    // best-sectors strip beneath it.
+    await waitFor(() => expect(container.querySelector(".tower-rows")).not.toBeNull());
+    const tower = within(container.querySelector(".tower-rows") as HTMLElement);
+    await waitFor(() => expect(tower.getByText("VER")).toBeDefined());
     expect(screen.getByText("LEADER")).toBeDefined();
     // Both the gap and the interval columns: PER is second and 6.213 s behind.
-    expect(screen.getAllByText("+6.213")).toHaveLength(2);
+    expect(tower.getAllByText("+6.213")).toHaveLength(2);
     expect(screen.getByText("TRACK CLEAR")).toBeDefined();
     expect(screen.getByText("LAP 12 / 57")).toBeDefined();
     expect(screen.getByText("TRACK 32°C")).toBeDefined();
@@ -80,7 +97,7 @@ describe("App", () => {
   it("selecting a driver in the tower marks that row", async () => {
     mockApi();
     render(<App />);
-    await waitFor(() => expect(screen.getByText("PER")).toBeDefined());
+    await waitFor(() => expect(screen.getAllByText("PER").length).toBeGreaterThan(0));
 
     const rows = screen.getAllByRole("button", { pressed: false });
     const perRow = rows.find((row) => row.textContent?.includes("PER"))!;
@@ -94,5 +111,15 @@ describe("App", () => {
     } as Response)));
     render(<App />);
     await waitFor(() => expect(screen.getByText("lake not found")).toBeDefined());
+  });
+
+  it("shows who holds each sector and what an ideal lap would be", async () => {
+    mockApi();
+    const { container } = render(<App />);
+    await waitFor(() => expect(container.querySelector(".best-sectors")).not.toBeNull());
+    const strip = within(container.querySelector(".best-sectors") as HTMLElement);
+    expect(strip.getByText("29.741")).toBeDefined();     // fastest S1, held by VER
+    expect(strip.getByText("IDEAL")).toBeDefined();
+    expect(strip.getByText("1:32.608")).toBeDefined();   // the three best sectors added up
   });
 });

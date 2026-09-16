@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
+import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
 import { RaceTrace } from "./panels/RaceTrace";
 import { TimingTower } from "./panels/TimingTower";
@@ -145,6 +146,11 @@ export default function App() {
               selected={selected}
               onSelect={toggleDriver}
               sessionBest={sessionBest}
+            />
+            <BestSectors
+              sectors={state?.best_sectors ?? []}
+              idealLap={state?.ideal_lap_s ?? null}
+              fastestLap={sessionBest}
             />
           </section>
 

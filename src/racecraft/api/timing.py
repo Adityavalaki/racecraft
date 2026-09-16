@@ -44,6 +44,9 @@ class DriverTiming:
     tyre_life: int | None = None
     laps_in_stint: int | None = None
     stops: int = 0
+    # Last lap's sectors, each with how it stands: 'session_best' (purple),
+    # 'personal_best' (green) or 'normal', the way a timing screen shows them.
+    sectors: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in self.__dict__.items()}
@@ -54,9 +57,53 @@ class Classification:
     t: float
     leader_lap: int
     drivers: list[DriverTiming] = field(default_factory=list)
+    # Who holds each sector, and the lap that would result from stringing the
+    # three fastest together - a lap nobody has driven but everyone is chasing.
+    best_sectors: list[dict] = field(default_factory=list)
+    ideal_lap_s: float | None = None
 
     def as_dict(self) -> dict:
-        return {"t": self.t, "leader_lap": self.leader_lap, "drivers": [d.as_dict() for d in self.drivers]}
+        return {"t": self.t, "leader_lap": self.leader_lap,
+                "drivers": [d.as_dict() for d in self.drivers],
+                "best_sectors": self.best_sectors, "ideal_lap_s": self.ideal_lap_s}
+
+
+SECTOR_COLUMNS = ("sector1_s", "sector2_s", "sector3_s")
+
+
+def _sector_bests(done: pd.DataFrame) -> list[dict]:
+    """The quickest time set in each sector so far, and who set it."""
+    out = []
+    for index, column in enumerate(SECTOR_COLUMNS, start=1):
+        if column not in done.columns or done[column].notna().sum() == 0:
+            out.append({"sector": index, "seconds": None, "driver_number": None, "driver": None})
+            continue
+        row = done.loc[done[column].idxmin()]
+        out.append({"sector": index, "seconds": float(row[column]),
+                    "driver_number": int(row["driver_number"]),
+                    "driver": row.get("driver")})
+    return out
+
+
+def _driver_sectors(last_lap: pd.Series, driver_laps: pd.DataFrame, session_best: list[dict]) -> list[dict]:
+    """This driver's last sectors, marked against their own best and the session's."""
+    out = []
+    for index, column in enumerate(SECTOR_COLUMNS, start=1):
+        value = last_lap.get(column)
+        if pd.isna(value):
+            out.append({"sector": index, "seconds": None, "state": "none"})
+            continue
+        value = float(value)
+        personal = driver_laps[column].min(skipna=True)
+        overall = session_best[index - 1]["seconds"]
+        if overall is not None and value <= overall + 1e-9:
+            state = "session_best"
+        elif pd.notna(personal) and value <= personal + 1e-9:
+            state = "personal_best"
+        else:
+            state = "normal"
+        out.append({"sector": index, "seconds": value, "state": state})
+    return out
 
 
 def _format_gap(seconds: float | None, laps_down: int) -> str:
@@ -113,6 +160,7 @@ def _classify_race(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -> Class
 
     session_best = done["lap_time_s"].min(skipna=True)
     finished = _finished_drivers(laps, t)
+    sector_bests = _sector_bests(done)
 
     rows: list[DriverTiming] = []
     for number in order.index:
@@ -147,6 +195,7 @@ def _classify_race(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -> Class
             tyre_life=_int_or_none(row["tyre_life"]),
             laps_in_stint=_int_or_none(row["laps_in_stint"]),
             stops=int(driver_laps["is_pit_in_lap"].sum()),
+            sectors=_driver_sectors(row, driver_laps, sector_bests),
         ))
 
     # Drivers with no completed lap yet (retired on lap 1, or never started).
@@ -159,7 +208,8 @@ def _classify_race(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -> Class
                                  position=len(rows) + 1, status="out"))
 
     _fill_intervals(rows)
-    return Classification(t=t, leader_lap=leader_lap, drivers=rows)
+    return Classification(t=t, leader_lap=leader_lap, drivers=rows,
+                          best_sectors=sector_bests, ideal_lap_s=_ideal_lap(sector_bests))
 
 
 def _classify_by_best_lap(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -> Classification:
@@ -170,6 +220,7 @@ def _classify_by_best_lap(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -
             .sort_values("lap_time_s").set_index("driver_number"))
 
     rows: list[DriverTiming] = []
+    sector_bests = _sector_bests(timed)
     fastest = float(best["lap_time_s"].iloc[0]) if len(best) else None
     for number in best.index:
         row = best.loc[number]
@@ -189,6 +240,7 @@ def _classify_by_best_lap(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -
             tyre_life=_int_or_none(row["tyre_life"]),
             laps_in_stint=_int_or_none(row["laps_in_stint"]),
             stops=int(driver_laps["is_pit_in_lap"].sum()),
+            sectors=_driver_sectors(row, driver_laps, sector_bests),
         ))
 
     for number in sorted(set(laps["driver_number"]) | set(drivers["driver_number"])):
@@ -202,7 +254,8 @@ def _classify_by_best_lap(laps: pd.DataFrame, drivers: pd.DataFrame, t: float) -
                                  laps_completed=ran))
 
     _fill_intervals(rows)
-    return Classification(t=t, leader_lap=int(done["lap_number"].max()) if len(done) else 0, drivers=rows)
+    return Classification(t=t, leader_lap=int(done["lap_number"].max()) if len(done) else 0, drivers=rows,
+                          best_sectors=sector_bests, ideal_lap_s=_ideal_lap(sector_bests))
 
 
 def _fill_intervals(rows: list[DriverTiming]) -> None:
@@ -236,6 +289,12 @@ def _status(number: int, finished: set[int], meta: dict) -> str:
         return "racing"
     classified = str(meta.get("classified_position") or "").strip()
     return "finished" if classified.isdigit() else "out"
+
+
+def _ideal_lap(sector_bests: list[dict]) -> float | None:
+    """The three fastest sectors added together."""
+    times = [entry["seconds"] for entry in sector_bests]
+    return float(sum(times)) if times and all(t is not None for t in times) else None
 
 
 def _float_or_none(value) -> float | None:
