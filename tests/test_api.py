@@ -82,7 +82,6 @@ def client(tmp_path, monkeypatch):
     }
     lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
-    session_store._cache.clear()
     return TestClient(app)
 
 
@@ -143,3 +142,19 @@ def test_positions_are_null_past_the_end_of_the_telemetry(client):
     body = client.get(f"/api/sessions/{KEY}/state", params={"t": START + 3 * LAP + 60}).json()
     assert body["cars"]["1"]["x"] is None
     assert body["drivers"][0]["status"] == "finished"
+
+
+def test_the_cache_does_not_confuse_two_lakes(client, tmp_path, monkeypatch):
+    """A session key names different data in a different lake."""
+    from_test_lake = session_store.load(KEY)
+    assert from_test_lake.meta["fastf1_version"] == "test"
+
+    other = tmp_path.parent / "other-lake"
+    monkeypatch.setattr(config, "LAKE_DIR", other)
+    with pytest.raises(KeyError):
+        session_store.load(KEY)      # not the cached one from the first lake
+
+
+def test_an_empty_lake_is_a_404_not_a_server_error(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LAKE_DIR", tmp_path.parent / "nothing-here")
+    assert client.get(f"/api/sessions/{KEY}").status_code == 404

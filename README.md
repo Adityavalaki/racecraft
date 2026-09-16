@@ -78,6 +78,35 @@ Three panels, one clock:
 - **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
   stops marked. Click to jump the clock to that lap.
 
+### Track map accuracy
+
+The outline is the median of the twelve fastest laps' position traces, each
+resampled at even distances around the lap. A single lap makes a poor outline:
+samples are spread by time, so straights are sparse, and any dropout becomes a
+chord cutting across a corner. Measured against published circuit lengths the
+result is consistently 1-2% short, which is what cutting the apexes costs:
+
+| Circuit | Measured | Official |
+|---|---|---|
+| Bahrain | 5.333 km | 5.412 km |
+| Silverstone | 5.822 | 5.891 |
+| Monza | 5.757 | 5.793 |
+| Zandvoort | 4.204 | 4.259 |
+| Monaco | 3.265 | 3.337 |
+
+`tests/test_outline_realdata.py` keeps this honest; it skips when the lake is
+missing.
+
+**The position feed is not perfectly clean, and is served unsmoothed.**
+Timestamps jitter (intervals of 0.08-0.50 s where the cadence is 0.24 s) and
+the feed occasionally lags and catches up in one step: about 0.1% of samples
+jump over 60 m, the worst 137 m. Median filtering, trajectory smoothing,
+distance-vs-time smoothing and an even cadence were all measured, and every
+one made implied speeds *worse*, because smoothing spreads a jump across its
+neighbours. The data is left faithful and the artefact documented instead.
+
+### Gaps
+
 Gaps are derived the way broadcast timing derives them, from line-crossing
 times, because the public feed carries no interval field. A car is only shown
 as lapped when the leader had completed more laps *at the moment that car last

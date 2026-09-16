@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
@@ -61,11 +61,14 @@ export default function App() {
     if (!sessionKey || !info) return;
     let active = true;
     let inFlight = false;
+    let lastT: number | null = null;
     const fetchState = () => {
       if (inFlight || !active) return;
-      inFlight = true;
       const { key, t } = latest.current;
       if (!key) return;
+      if (lastT !== null && Math.abs(t - lastT) < 0.05) return;   // paused and nothing moved
+      inFlight = true;
+      lastT = t;
       api.state(key, t)
         .then((next) => active && setState(next))
         .catch(() => undefined)
@@ -87,20 +90,27 @@ export default function App() {
     return times.length ? Math.min(...times) : null;
   }, [laps]);
 
-  const toggleDriver = (driverNumber: number) =>
+  // Stable callbacks: the tower and the trace are memoised, and a new function
+  // on every frame would re-render them 60 times a second for nothing.
+  const toggleDriver = useCallback((driverNumber: number) => {
     setSelected((current) =>
       current.includes(driverNumber)
         ? current.filter((n) => n !== driverNumber)
         : [...current, driverNumber].slice(-4),
     );
+  }, []);
 
   // Jumping to a lap means the moment that lap began, which is the leader's
   // crossing of the lap before it.
-  const seekToLap = (lap: number) => {
-    if (!crossings || !info) return;
-    const index = crossings.laps.indexOf(lap - 1);
-    clock.seek(index === -1 ? info.t_start : crossings.t[index] ?? info.t_start);
-  };
+  const seek = clock.seek;
+  const seekToLap = useCallback(
+    (lap: number) => {
+      if (!crossings || !info) return;
+      const index = crossings.laps.indexOf(lap - 1);
+      seek(index === -1 ? info.t_start : crossings.t[index] ?? info.t_start);
+    },
+    [crossings, info, seek],
+  );
 
   return (
     <div className="app">

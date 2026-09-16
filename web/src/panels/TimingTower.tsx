@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { COMPOUND_COLORS, formatLapTime, type DriverTiming } from "../api";
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
  * lap, green a driver's own best, and the tyre chip uses Pirelli's compound
  * colours. Team colour is a bar, never text, so it never fights the numbers.
  */
-export function TimingTower({ drivers, selected, onSelect, sessionBest }: Props) {
+export const TimingTower = memo(function TimingTower({ drivers, selected, onSelect, sessionBest }: Props) {
   return (
     <div className="tower">
       <div className="tower-head">
@@ -74,4 +75,4 @@ export function TimingTower({ drivers, selected, onSelect, sessionBest }: Props)
       </div>
     </div>
   );
-}
+});

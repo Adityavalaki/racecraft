@@ -19,19 +19,25 @@ import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import duckdb
 import numpy as np
 import pandas as pd
 
+from racecraft import config
 from racecraft.api import timing
 from racecraft.store.db import connect
 
 log = logging.getLogger(__name__)
 
 MAX_CACHED_SESSIONS = 2
-OUTLINE_POINTS = 400
-# Position samples arrive about every 0.24 s. Beyond a second, the car has
-# moved far enough that interpolating across the gap would invent a path.
-MAX_INTERPOLATION_GAP_S = 1.0
+OUTLINE_POINTS = 600
+OUTLINE_LAPS = 12          # fast laps blended into the track shape
+MAX_OUTLINE_STEP_FACTOR = 12   # a step this many times the usual spacing means a dropout
+# Position samples arrive about every 0.24 s. Gaps over a second are rare
+# (0.11% of intervals in 2024 Bahrain, the longest 1.3 s), so interpolating
+# across them keeps a car moving instead of blinking it off the map; beyond
+# two seconds the gap is long enough that a straight line would invent a path.
+MAX_INTERPOLATION_GAP_S = 2.0
 
 
 @dataclass
@@ -59,7 +65,12 @@ class SessionData:
     def __init__(self, session_key: str, con=None):
         con = con or connect()
         self.session_key = session_key
-        meta = con.sql(f"select * from sessions where session_key = '{session_key}'").df()
+        try:
+            meta = con.sql(f"select * from sessions where session_key = '{session_key}'").df()
+        except duckdb.CatalogException as e:
+            # An empty lake has no views at all. That is a missing session, not
+            # a server fault, so it must reach the caller as a 404.
+            raise KeyError(f"{session_key} (empty lake at {config.LAKE_DIR})") from e
         if meta.empty:
             raise KeyError(session_key)
         self.meta = meta.iloc[0].to_dict()
@@ -106,22 +117,59 @@ class SessionData:
         return out
 
     def _build_outline(self) -> list[list[float]]:
-        """The track shape, taken from the position trace of the fastest lap."""
-        timed = self.laps[self.laps["lap_time_s"].notna()]
+        """
+        The track shape, from the position traces of the fastest clean laps.
+
+        A single lap makes a poor outline: samples are spread by time, so
+        straights are sparse and any dropout in that one lap becomes a chord
+        cutting across a corner (2025 Monaco had a 77 m gap). Instead several
+        fast laps are each resampled at even distances around the lap, which
+        puts every lap on the same scale from the start line, and the median
+        is taken point by point. One lap's dropout can then no longer move the
+        line, and the result is evenly spaced and closes on itself.
+        """
+        timed = self.laps[self.laps["lap_time_s"].notna()
+                          & ~self.laps["is_pit_in_lap"].fillna(False)
+                          & ~self.laps["is_pit_out_lap"].fillna(False)]
         if timed.empty or not self.position:
             return []
-        for _, lap in timed.sort_values("lap_time_s").head(5).iterrows():
-            channel = self.position.get(int(lap["driver_number"]))
-            if channel is None or len(channel.t) == 0:
-                continue
-            start, end = lap["lap_start_t"], lap["lap_end_t"]
-            mask = (channel.t >= start) & (channel.t <= end)
-            if mask.sum() < 50:
-                continue
-            x, y = channel.values["x"][mask], channel.values["y"][mask]
-            step = max(1, len(x) // OUTLINE_POINTS)
-            return [[round(float(a), 1), round(float(b), 1)] for a, b in zip(x[::step], y[::step])]
-        return []
+
+        paths = []
+        for _, lap in timed.sort_values("lap_time_s").head(OUTLINE_LAPS).iterrows():
+            path = self._resample_lap(lap)
+            if path is not None:
+                paths.append(path)
+        if not paths:
+            return []
+
+        outline = np.median(np.stack(paths), axis=0)
+        outline = np.vstack([outline, outline[:1]])           # close the loop
+        return [[round(float(x), 1), round(float(y), 1)] for x, y in outline]
+
+    def _resample_lap(self, lap) -> np.ndarray | None:
+        """One lap's positions at OUTLINE_POINTS even steps of distance, or None if too sparse."""
+        channel = self.position.get(int(lap["driver_number"]))
+        if channel is None or len(channel.t) == 0:
+            return None
+        mask = (channel.t >= lap["lap_start_t"]) & (channel.t <= lap["lap_end_t"])
+        if mask.sum() < 100:
+            return None
+        x, y = channel.values["x"][mask], channel.values["y"][mask]
+        finite = np.isfinite(x) & np.isfinite(y)
+        x, y = x[finite], y[finite]
+        if len(x) < 100:
+            return None
+
+        steps = np.hypot(np.diff(x), np.diff(y))
+        distance = np.concatenate([[0.0], np.cumsum(steps)])
+        if distance[-1] <= 0:
+            return None
+        # A gap far larger than the usual spacing means the feed dropped out;
+        # that lap would only invent a straight line across the circuit.
+        if steps.max() > MAX_OUTLINE_STEP_FACTOR * np.median(steps[steps > 0]):
+            return None
+        even = np.linspace(0, distance[-1], OUTLINE_POINTS, endpoint=False)
+        return np.column_stack([np.interp(even, distance, x), np.interp(even, distance, y)])
 
     def _bounds(self) -> dict[str, float]:
         xs = [c.values["x"] for c in self.position.values() if len(c.t)]
@@ -251,19 +299,22 @@ class SessionData:
         return _records(past)
 
 
-_cache: OrderedDict[str, SessionData] = OrderedDict()
+# Keyed by lake as well as session: the same key names different data in a
+# different lake, and handing back the wrong one would be silent and wrong.
+_cache: OrderedDict[tuple[str, str], SessionData] = OrderedDict()
 _lock = threading.Lock()
 
 
 def load(session_key: str) -> SessionData:
+    key = (str(config.LAKE_DIR.resolve()), session_key)
     with _lock:
-        if session_key in _cache:
-            _cache.move_to_end(session_key)
-            return _cache[session_key]
+        if key in _cache:
+            _cache.move_to_end(key)
+            return _cache[key]
     data = SessionData(session_key)          # loaded outside the lock: it takes about a second
     with _lock:
-        _cache[session_key] = data
-        _cache.move_to_end(session_key)
+        _cache[key] = data
+        _cache.move_to_end(key)
         while len(_cache) > MAX_CACHED_SESSIONS:
             _cache.popitem(last=False)
     return data

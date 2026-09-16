@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
+import { useCanvasSize } from "../useCanvasSize";
 import type { LapSeries } from "../api";
 
 interface Props {
@@ -16,21 +17,20 @@ interface Props {
  * crossing another between stops. Selected drivers are drawn in team colour
  * over a muted field, so a pair can be compared without losing the context.
  */
-export function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) {
-  const canvas = useRef<HTMLCanvasElement>(null);
+export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) {
+  const { ref: canvas, size } = useCanvasSize<HTMLCanvasElement>();
   const geometry = useRef({ left: 0, width: 1, maxLap: 1 });
 
   useEffect(() => {
     const element = canvas.current;
-    if (!element) return;
+    if (!element || size.width === 0) return;
     const context = element.getContext("2d");
     if (!context) return;
 
     const ratio = window.devicePixelRatio || 1;
-    const width = element.clientWidth;
-    const height = element.clientHeight;
-    element.width = width * ratio;
-    element.height = height * ratio;
+    const { width, height } = size;
+    element.width = Math.round(width * ratio);
+    element.height = Math.round(height * ratio);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
 
@@ -106,7 +106,7 @@ export function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) 
     context.fillStyle = "#6b7887";
     context.fillText("LAP 1", padding.left, height - 8);
     context.fillText(`LAP ${maxLap}`, width - padding.right - 46, height - 8);
-  }, [series, selected, currentLap]);
+  }, [canvas, series, selected, currentLap, size.width, size.height]);
 
   return (
     <canvas
@@ -120,7 +120,7 @@ export function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) 
       }}
     />
   );
-}
+});
 
 function percentile(values: number[], fraction: number): number {
   const sorted = [...values].sort((a, b) => a - b);

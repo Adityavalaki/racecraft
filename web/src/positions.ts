@@ -5,14 +5,21 @@ import { api, type Frames } from "./api";
  * Car positions for the track map, buffered ahead of the clock.
  *
  * Asking the server for every animation frame would mean dozens of requests a
- * second. Instead a window of positions is fetched at a fixed rate and the map
- * interpolates between samples locally; the next window is fetched once the
- * clock passes most of the way through the current one. Scrubbing far away
- * throws the buffer out and starts again.
+ * second, so a window of positions is fetched at a fixed rate and the map
+ * interpolates locally between samples.
+ *
+ * The fetching deliberately does not live in an effect keyed on the clock.
+ * An earlier version did, and since the clock changes ~60 times a second, each
+ * tick tore down the previous effect and aborted the request it had started:
+ * the buffer never arrived and the cars sat still. Anything that re-rendered
+ * the app — selecting a driver, for instance — froze the map the same way.
+ * Instead a timer looks at the latest clock value held in a ref, and requests
+ * are only aborted when the session changes or the component goes away.
  */
 const WINDOW_S = 30;
 const SAMPLE_HZ = 5;
-const REFETCH_AT = 0.7; // fraction of the window consumed before fetching the next
+const REFETCH_AT = 0.6; // fraction of the window consumed before fetching the next
+const CHECK_MS = 120;
 
 export interface Positions {
   at: (t: number) => Record<number, { x: number; y: number }>;
@@ -21,52 +28,60 @@ export interface Positions {
 
 export function usePositions(sessionKey: string | null, t: number, enabled: boolean): Positions {
   const buffer = useRef<Frames | null>(null);
-  const pending = useRef<{ start: number; end: number } | null>(null);
+  const clock = useRef(t);
+  const fetching = useRef(false);
   const [, setVersion] = useState(0);
   const [loading, setLoading] = useState(false);
+  clock.current = t;
 
   useEffect(() => {
     buffer.current = null;
-    pending.current = null;
-  }, [sessionKey]);
-
-  useEffect(() => {
     if (!sessionKey || !enabled) return;
-    const current = buffer.current;
-    const covered = current && current.t.length > 0;
-    const first = covered ? current.t[0]! : 0;
-    const last = covered ? current.t[current.t.length - 1]! : 0;
-    const consumed = covered ? (t - first) / Math.max(1e-6, last - first) : 1;
-    const needsMore = !covered || t < first || t > last || consumed > REFETCH_AT;
-    if (!needsMore) return;
-
-    const start = !covered || t < first || t > last ? t : last;
-    if (pending.current && pending.current.start === start) return;
-    pending.current = { start, end: start + WINDOW_S };
 
     const controller = new AbortController();
-    setLoading(true);
-    api
-      .frames(sessionKey, start, start + WINDOW_S, SAMPLE_HZ, controller.signal)
-      .then((frames) => {
-        const previous = buffer.current;
-        // Keep the tail of the old window so the map does not blink while the
-        // clock crosses the seam between two fetches.
-        buffer.current =
-          previous && previous.t.length && start === previous.t[previous.t.length - 1]
-            ? mergeFrames(previous, frames)
-            : frames;
-        setVersion((v) => v + 1);
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") console.error(error);
-      })
-      .finally(() => {
-        pending.current = null;
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [sessionKey, t, enabled]);
+    let stopped = false;
+
+    const maybeFetch = () => {
+      if (stopped || fetching.current) return;
+      const held = buffer.current;
+      const now = clock.current;
+      const covered = held !== null && held.t.length > 0;
+      const first = covered ? held!.t[0]! : 0;
+      const last = covered ? held!.t[held!.t.length - 1]! : 0;
+      const outside = !covered || now < first - 1 || now > last;
+      const consumed = covered && last > first ? (now - first) / (last - first) : 1;
+      if (!outside && consumed < REFETCH_AT) return;
+
+      // Continue from the end of the buffer when merely running low, and
+      // start fresh at the clock after a seek that landed outside it.
+      const start = outside ? now : last;
+      fetching.current = true;
+      setLoading(true);
+      api
+        .frames(sessionKey, start, start + WINDOW_S, SAMPLE_HZ, controller.signal)
+        .then((frames) => {
+          if (stopped) return;
+          const previous = buffer.current;
+          buffer.current = !outside && previous ? mergeFrames(previous, frames) : frames;
+          setVersion((v) => v + 1);
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") console.error(error);
+        })
+        .finally(() => {
+          fetching.current = false;
+          if (!stopped) setLoading(false);
+        });
+    };
+
+    maybeFetch();
+    const timer = setInterval(maybeFetch, CHECK_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [sessionKey, enabled]);
 
   return {
     loading,
@@ -74,15 +89,17 @@ export function usePositions(sessionKey: string | null, t: number, enabled: bool
   };
 }
 
-function mergeFrames(a: Frames, b: Frames): Frames {
-  const keep = Math.max(0, a.t.length - SAMPLE_HZ * 5); // about five seconds of history
-  const merged: Frames = { t: [...a.t.slice(keep), ...b.t], drivers: {} };
+/** Join a new window onto the tail of the old one, keeping a little history. */
+export function mergeFrames(a: Frames, b: Frames): Frames {
+  const keep = Math.max(0, a.t.length - SAMPLE_HZ * 5);
+  const overlap = b.t.length && a.t.length && b.t[0]! <= a.t[a.t.length - 1]! ? 1 : 0;
+  const merged: Frames = { t: [...a.t.slice(keep), ...b.t.slice(overlap)], drivers: {} };
   for (const number of new Set([...Object.keys(a.drivers), ...Object.keys(b.drivers)])) {
     const left = a.drivers[number] ?? { x: [], y: [] };
     const right = b.drivers[number] ?? { x: [], y: [] };
     merged.drivers[number] = {
-      x: [...left.x.slice(keep), ...right.x],
-      y: [...left.y.slice(keep), ...right.y],
+      x: [...left.x.slice(keep), ...right.x.slice(overlap)],
+      y: [...left.y.slice(keep), ...right.y.slice(overlap)],
     };
   }
   return merged;

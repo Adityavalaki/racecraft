@@ -31,4 +31,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["network: needs internet access to F1 live timing (deselect with -m 'not network')"]
+markers = [
+    "network: needs internet access to F1 live timing (deselect with -m 'not network')",
+    "realdata: needs the ingested lake (skips automatically when a session is missing)",
+]
