@@ -4,8 +4,10 @@ An F1 strategy workbench. It learns tyre, pace and pit behaviour from historic
 timing data, models the car state the public feed doesn't expose (tyre wear,
 fuel load), and simulates races to find strategy windows.
 
-The build plan lives at the published *Racecraft Build Plan* artifact. This
-repository has finished **Phase 2: replay interface**; Phase 3 (estimators) is next.
+The build plan lives at the published *Racecraft Build Plan* artifact. Phases
+0–4 are built and the models now reach the interface: the replay panels answer
+*what happened*, and two further panels answer *what the models make of it*.
+Phase 5 (live timing) is next.
 
 ## Setup
 
@@ -70,7 +72,8 @@ Pick a session, scrub or play, click drivers in the tower to follow them on
 the map and in the trace. While developing the interface, run `npm run dev`
 in `web/` for hot reload; it proxies `/api` to the server on port 8000.
 
-Three panels, one clock:
+Five panels, one clock. The lower-right panel carries three tabs: the race
+trace, and the two that show the models rather than the feed.
 
 - **Timing tower** — order, gap, interval, last lap, all three sector times,
   tyre and age, stops. Purple marks the session's fastest, green a driver's
@@ -86,6 +89,34 @@ Three panels, one clock:
   between two fetched windows.
 - **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
   stops marked. Click to jump the clock to that lap.
+- **Tyre model** — modelled wear per compound against what this race's tyres
+  actually did. See below: the line is a prediction, not a description.
+- **Strategy** — measured pit loss and neutralisation risk for the circuit, the
+  cheapest plans ranked with their cost split between tyres and pit lane, and
+  the list of what the model cannot see, shown beside the ranking rather than
+  hidden behind it.
+
+### The tyre model panel is a prediction, not a fit
+
+Degradation drawn over a race is combined from the season's **other** races.
+The race being watched is never in its own fit, so the line was not shown the
+laps the dots come from — a model fitted on the race it is drawn over hugs the
+data and tells you nothing. The panel names how many races went into it.
+
+The dots are that race's own partial residuals: lap time with driver, fuel and
+track evolution removed. Getting this right took three attempts, and the two
+failures are instructive enough to keep in `api/insight.py`:
+
+| Attempt | Result |
+|---|---|
+| Each lap against the driver's own early-stint pace | Hard tyres 1 s/lap **faster** by age 22 — the track rubbering in, not the tyre |
+| Each lap against the field's median on that lap | Track evolution gone, but medium tyres flattened to zero: early in a stint the whole field shares a tyre age, so the median moves with them and the wear vanishes into it |
+| The regression's own partial residuals | Lap effects estimated *jointly* with the wear slope, so fuel and track come out while degradation stays in |
+
+Two lines are drawn per compound: solid is the ×1.5 figure the plans are costed
+on, dashed is the raw measurement. The gap between them is the cliff nobody
+records. An adjusted number shown without its raw value is how a model starts
+lying quietly.
 
 ### Track map accuracy
 
@@ -147,10 +178,18 @@ crossed the line*; comparing current lap counts would label the whole field
 | `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry |
 | `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
 | `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
+| `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans |
+| `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
 A session is read into memory once (about 1.6 s), after which a state costs
 ~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
 server-side; the browser never sees raw samples.
+
+`/insight` is the expensive one: the first call for a season fits every race in
+it, about 13 s, and later calls are served from that fit in under a second.
+Each race is fitted separately rather than the season as a whole, which is what
+makes holding one out free. The interface does not ask for it until a tab that
+needs it is opened, so a replay never pays for a fit nobody looked at.
 
 ## Analysis commands
 

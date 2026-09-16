@@ -332,42 +332,8 @@ def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
     degradation number is.
     """
     df = laps
-    if len(df) < MIN_LAPS_TO_FIT:
-        raise ValueError(f"only {len(df)} clean laps; need at least {MIN_LAPS_TO_FIT}")
-
-    drivers = sorted(df["driver_number"].unique())
-    lap_numbers = sorted(df["lap_number"].unique())
-    compounds = [c for c in DRY_COMPOUNDS if c in set(df["compound"])]
-    tyre_age = df["tyre_life"].to_numpy(dtype=float)
-
-    columns, names = [], []
-    for driver in drivers:
-        columns.append((df["driver_number"] == driver).to_numpy(dtype=float))
-        names.append(f"driver_{driver}")
-    for lap in lap_numbers[1:]:                      # first lap is the reference
-        columns.append((df["lap_number"] == lap).to_numpy(dtype=float))
-        names.append(f"lap_{lap}")
-    for compound in compounds[1:]:
-        columns.append((df["compound"] == compound).to_numpy(dtype=float))
-        names.append(f"offset_{compound}")
-    for compound in compounds:
-        columns.append(np.where(df["compound"] == compound, tyre_age, 0.0))
-        names.append(f"deg_{compound}")
-    if curved:
-        # A tyre rarely wears in a straight line: it holds on, then falls away.
-        # The squared term is that bend, so `deg_` becomes the slope when the
-        # tyre is new and `curve_` how fast the drop-off accelerates.
-        for compound in compounds:
-            columns.append(np.where(df["compound"] == compound, tyre_age**2, 0.0))
-            names.append(f"curve_{compound}")
-
-    design = np.column_stack(columns)
+    design, names, compounds, drivers = _lap_effects_design(df, curved)
     observed = df["lap_time_s"].to_numpy(dtype=float)
-    if np.linalg.matrix_rank(design) < design.shape[1]:
-        keep = _independent_columns(design)
-        design, names = design[:, keep], [n for n, k in zip(names, keep) if k]
-        if not any(n.startswith("deg_") for n in names):
-            raise Confounded("no degradation slope survives: every driver is on the same tyre age each lap")
 
     coefficients, *_ = np.linalg.lstsq(design, observed, rcond=None)
     residuals = observed - design @ coefficients
@@ -401,6 +367,89 @@ def fit_lap_effects(laps: pd.DataFrame, curved: bool = False) -> PaceModel:
         curvature_s_per_lap2={c: float(by_name[f"curve_{c}"]) for c in compounds if f"curve_{c}" in by_name},
         condition_number=float(np.linalg.cond(design)),
     )
+
+
+def _lap_effects_design(df: pd.DataFrame, curved: bool = False):
+    """
+    The design matrix behind `fit_lap_effects`: driver, lap, compound, wear.
+
+    Kept separate so that the fit and the partial residuals below are built
+    from one definition rather than two that can drift apart.
+    """
+    if len(df) < MIN_LAPS_TO_FIT:
+        raise ValueError(f"only {len(df)} clean laps; need at least {MIN_LAPS_TO_FIT}")
+
+    drivers = sorted(df["driver_number"].unique())
+    lap_numbers = sorted(df["lap_number"].unique())
+    compounds = [c for c in DRY_COMPOUNDS if c in set(df["compound"])]
+    tyre_age = df["tyre_life"].to_numpy(dtype=float)
+
+    columns, names = [], []
+    for driver in drivers:
+        columns.append((df["driver_number"] == driver).to_numpy(dtype=float))
+        names.append(f"driver_{driver}")
+    for lap in lap_numbers[1:]:                      # first lap is the reference
+        columns.append((df["lap_number"] == lap).to_numpy(dtype=float))
+        names.append(f"lap_{lap}")
+    for compound in compounds[1:]:
+        columns.append((df["compound"] == compound).to_numpy(dtype=float))
+        names.append(f"offset_{compound}")
+    for compound in compounds:
+        columns.append(np.where(df["compound"] == compound, tyre_age, 0.0))
+        names.append(f"deg_{compound}")
+    if curved:
+        # A tyre rarely wears in a straight line: it holds on, then falls away.
+        # The squared term is that bend, so `deg_` becomes the slope when the
+        # tyre is new and `curve_` how fast the drop-off accelerates.
+        for compound in compounds:
+            columns.append(np.where(df["compound"] == compound, tyre_age**2, 0.0))
+            names.append(f"curve_{compound}")
+
+    design = np.column_stack(columns)
+    if np.linalg.matrix_rank(design) < design.shape[1]:
+        keep = _independent_columns(design)
+        design, names = design[:, keep], [n for n, k in zip(names, keep) if k]
+        if not any(n.startswith("deg_") for n in names):
+            raise Confounded("no degradation slope survives: every driver is on the same tyre age each lap")
+    return design, names, compounds, drivers
+
+
+def partial_residuals(laps: pd.DataFrame, curved: bool = False) -> pd.DataFrame:
+    """
+    What each lap says about tyre wear once everything else is taken out.
+
+    This is the observed counterpart to the fitted degradation line, and it has
+    to come from the same regression to be comparable. Subtracting a plain
+    per-lap median instead looks equivalent and is not: early in a stint the
+    whole field is on tyres of the same age, so the median moves with them and
+    the wear disappears into it. Estimating the lap effects *jointly* with the
+    slope is what keeps the two apart.
+
+    Returns one row per clean lap with the wear term added back to the
+    residual, so a scatter of `partial_s` against `tyre_life` is the cloud the
+    fitted line runs through.
+    """
+    df = laps
+    design, names, compounds, _ = _lap_effects_design(df, curved)
+    observed = df["lap_time_s"].to_numpy(dtype=float)
+    coefficients, *_ = np.linalg.lstsq(design, observed, rcond=None)
+    residuals = observed - design @ coefficients
+    by_name = dict(zip(names, coefficients))
+
+    age = df["tyre_life"].to_numpy(dtype=float)
+    slope = df["compound"].map(lambda c: by_name.get(f"deg_{c}", 0.0)).to_numpy(dtype=float)
+    partial = residuals + slope * age
+    if curved:
+        bend = df["compound"].map(lambda c: by_name.get(f"curve_{c}", 0.0)).to_numpy(dtype=float)
+        partial = partial + bend * age * age
+
+    return pd.DataFrame({
+        "driver_number": df["driver_number"].to_numpy(),
+        "lap_number": df["lap_number"].to_numpy(),
+        "compound": df["compound"].to_numpy(),
+        "tyre_life": age,
+        "partial_s": partial,
+    })
 
 
 def _relative_driver_pace(by_name: dict[str, float], drivers: list) -> dict[int, float]:
