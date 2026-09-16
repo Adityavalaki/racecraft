@@ -5,7 +5,7 @@ timing data, models the car state the public feed doesn't expose (tyre wear,
 fuel load), and simulates races to find strategy windows.
 
 The build plan lives at the published *Racecraft Build Plan* artifact. This
-repository has finished **Phase 1: ingest at scale**; Phase 2 (replay interface) is next.
+repository has finished **Phase 2: replay interface**; Phase 3 (estimators) is next.
 
 ## Setup
 
@@ -59,6 +59,45 @@ power settings if you need that too.
 
 Add `--verbose` to see full tracebacks for failed sessions.
 
+## Replay interface
+
+```powershell
+cd web; npm install; npm run build; cd ..     # once
+racecraft-serve                                # http://127.0.0.1:8000
+```
+
+Pick a session, scrub or play, click drivers in the tower to follow them on
+the map and in the trace. While developing the interface, run `npm run dev`
+in `web/` for hot reload; it proxies `/api` to the server on port 8000.
+
+Three panels, one clock:
+
+- **Timing tower** — order, gap, interval, last lap, tyre and age, stops.
+  Purple marks the session's fastest lap, green a driver's own best.
+- **Track map** — cars from GPS on the racing line of the fastest lap.
+- **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
+  stops marked. Click to jump the clock to that lap.
+
+Gaps are derived the way broadcast timing derives them, from line-crossing
+times, because the public feed carries no interval field. A car is only shown
+as lapped when the leader had completed more laps *at the moment that car last
+crossed the line*; comparing current lap counts would label the whole field
+"+1 LAP" for most of every lap.
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/sessions` | every session in the lake |
+| `GET /api/sessions/{key}` | drivers, track outline, session bounds |
+| `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry |
+| `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
+| `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
+
+A session is read into memory once (about 1.6 s), after which a state costs
+~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
+server-side; the browser never sees raw samples.
+
 ## Query
 
 ```python
@@ -102,7 +141,11 @@ src/racecraft/
   store/schema.py          Arrow schemas for every table
   store/lake.py            atomic Parquet writes, hive partitioning
   store/db.py              DuckDB views over the lake
+  api/timing.py            running order and gaps at any instant
+  api/session.py           one session held in memory, ready to replay
+  api/app.py               FastAPI routes
 tests/                     offline tests, no network
+web/                       React + Vite interface (npm test, npm run build)
 ```
 
 ## Verification status

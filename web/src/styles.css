@@ -1,0 +1,256 @@
+/*
+  Broadcast pit-wall palette: a cool near-black ground so team colours and the
+  timing colours (purple, green, yellow) stay legible, and monospaced tabular
+  figures so digits do not jitter as they update.
+*/
+:root {
+  --ground: #0c1015;
+  --panel: #141a21;
+  --panel-2: #1a222b;
+  --rule: #262f3a;
+  --rule-strong: #39434f;
+  --ink: #e4e9ef;
+  --ink-mid: #a8b4c1;
+  --ink-soft: #6b7887;
+  --signal: #ff7a33;
+  --purple: #b980f5;
+  --green: #45c77f;
+  --red: #f0656a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Saira Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 15px;
+  overflow: hidden;
+}
+
+button { font-family: inherit; color: inherit; cursor: pointer; }
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+/* ---------- top bar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--signal);
+}
+.session-select {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  min-width: 26rem;
+}
+.session-meta {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.session-meta .warn { color: var(--signal); }
+.error {
+  margin-left: auto;
+  color: var(--red);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+}
+
+/* ---------- layout ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.05fr) minmax(0, 1.6fr);
+  grid-template-rows: 1.15fr 1fr;
+  gap: 6px;
+  padding: 6px;
+  min-height: 0;
+}
+.grid.loading {
+  place-items: center;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.panel h2 {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+}
+.panel h2 small { text-transform: none; letter-spacing: 0.04em; color: var(--rule-strong); }
+.panel-tower { grid-row: 1 / 3; }
+.panel-map { grid-column: 2; }
+.panel-trace { grid-column: 2; }
+
+/* ---------- timing tower ---------- */
+
+.tower { display: flex; flex-direction: column; min-height: 0; }
+.tower-head,
+.tower-row {
+  display: grid;
+  grid-template-columns: 2rem 4px 3.2rem 1fr 4.6rem 5.4rem 3.4rem 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.6rem;
+}
+.tower-head {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  padding-block: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+}
+.tower-rows { overflow-y: auto; min-height: 0; }
+.tower-row {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid #1b222a;
+  padding-block: 0.3rem;
+  text-align: left;
+  font-size: 0.95rem;
+}
+.tower-row:hover { background: var(--panel-2); }
+.tower-row.is-selected { background: #1f2a35; box-shadow: inset 2px 0 0 var(--signal); }
+.tower-row.is-out { opacity: 0.45; }
+.tower-row:focus-visible { outline: 1px solid var(--signal); outline-offset: -1px; }
+
+.pos { font-weight: 600; color: var(--ink-mid); text-align: right; }
+.team-bar { height: 1.1rem; border-radius: 1px; }
+.code { font-weight: 700; letter-spacing: 0.04em; }
+.num {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  text-align: right;
+}
+.gap { color: var(--ink); }
+.int { color: var(--ink-soft); }
+.last.is-session-best { color: var(--purple); }
+.last.is-personal-best { color: var(--green); }
+.stops { color: var(--ink-soft); }
+.tyre { display: flex; align-items: center; gap: 0.35rem; }
+.tyre-chip {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  color: #10151a;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.tyre-age {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- canvases ---------- */
+
+.track-map,
+.race-trace { flex: 1; width: 100%; min-height: 0; display: block; }
+.race-trace { cursor: crosshair; }
+
+/* ---------- clock bar ---------- */
+
+.clockbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+}
+.flag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #0c1015;
+  font-weight: 700;
+  padding: 0.3rem 0.6rem;
+  border-radius: 2px;
+  min-width: 11rem;
+  text-align: center;
+}
+.transport {
+  background: var(--panel-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+.transport:hover { border-color: var(--signal); }
+.speeds { display: flex; gap: 2px; }
+.speed {
+  background: var(--panel-2);
+  border: 1px solid var(--rule);
+  padding: 0.25rem 0.45rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+.speed.is-active { color: var(--signal); border-color: var(--signal); }
+.scrub { flex: 1; accent-color: var(--signal); }
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  color: var(--ink-mid);
+}
+.readout .time { color: var(--ink); }
+.readout .weather { color: var(--ink-soft); font-size: 0.7rem; }
+.readout .weather.wet { color: #2f7fd8; }
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.dot.is-loading { background: var(--signal); }
+
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .panel-tower, .panel-map, .panel-trace { grid-column: 1; grid-row: auto; }
+  body { overflow: auto; }
+  .app { height: auto; }
+}

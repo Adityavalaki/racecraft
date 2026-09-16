@@ -15,13 +15,16 @@ dependencies = [
     "numpy>=2.0",
     "scipy>=1.13",
     "requests>=2.31",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]
 racecraft-ingest = "racecraft.ingest.cli:main"
+racecraft-serve = "racecraft.api.serve:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

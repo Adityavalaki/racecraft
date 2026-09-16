@@ -1,0 +1,98 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
+
+/** Enough of the API to drive the whole app, so the wiring is exercised end to end. */
+function mockApi() {
+  const sessions = [
+    { session_key: "2024_01_R", year: 2024, round: 1, session: "R", event_name: "Bahrain Grand Prix",
+      location: "Sakhir", session_name: "Race", date_utc: "2024-03-02 15:00:00+00:00", total_laps: 57 },
+  ];
+  const info = {
+    session: { event_name: "Bahrain Grand Prix", session_name: "Race", location: "Sakhir", circuit_rotation_deg: 0 },
+    t_start: 1000, t_end: 1600, total_laps: 57,
+    drivers: [
+      { driver_number: 1, abbreviation: "VER", full_name: "Max Verstappen", team_name: "Red Bull",
+        team_color: "3671C6", grid_position: 1, position: 1, classified_position: "1", status: "Finished" },
+      { driver_number: 11, abbreviation: "PER", full_name: "Sergio Perez", team_name: "Red Bull",
+        team_color: "3671C6", grid_position: 5, position: 2, classified_position: "2", status: "Finished" },
+    ],
+    outline: [[0, 0], [100, 0], [100, 100], [0, 100]],
+    bounds: { min_x: 0, max_x: 100, min_y: 0, max_y: 100 },
+    has_position_data: true,
+  };
+  const state = {
+    t: 1000, leader_lap: 12,
+    drivers: [
+      { driver_number: 1, abbreviation: "VER", team_name: "Red Bull", team_color: "3671C6", position: 1,
+        status: "racing", laps_completed: 12, gap_to_leader_s: null, gap_text: "", interval_s: null,
+        interval_text: "", laps_down: 0, last_lap_s: 92.608, best_lap_s: 92.608, is_session_best: true,
+        is_personal_best: true, compound: "HARD", tyre_life: 9, laps_in_stint: 5, stops: 1 },
+      { driver_number: 11, abbreviation: "PER", team_name: "Red Bull", team_color: "3671C6", position: 2,
+        status: "racing", laps_completed: 12, gap_to_leader_s: 6.213, gap_text: "+6.213", interval_s: 6.213,
+        interval_text: "+6.213", laps_down: 0, last_lap_s: 93.104, best_lap_s: 93.0, is_session_best: false,
+        is_personal_best: false, compound: "SOFT", tyre_life: 3, laps_in_stint: 3, stops: 1 },
+    ],
+    cars: { "1": { x: 10, y: 10, speed: 280 }, "11": { x: 20, y: 20, speed: 275 } },
+    track_status: { status: "1", message: "AllClear" },
+    weather: { air_temp: 25, track_temp: 31.5, rainfall: false },
+  };
+  const laps = {
+    drivers: [
+      { driver_number: 1, abbreviation: "VER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [0, 0],
+        lap_time_s: [93.0, 92.608], compound: ["SOFT", "SOFT"], pit_in: [false, false] },
+      { driver_number: 11, abbreviation: "PER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [2.1, 6.2],
+        lap_time_s: [94.0, 93.104], compound: ["SOFT", "SOFT"], pit_in: [false, true] },
+    ],
+    leader_crossings: { laps: [1, 2], t: [1090, 1182] },
+  };
+  const frames = {
+    t: [1000, 1001], drivers: { "1": { x: [10, 12], y: [10, 12] }, "11": { x: [20, 22], y: [20, 22] } },
+  };
+
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    const body = url.includes("/state") ? state
+      : url.includes("/frames") ? frames
+      : url.includes("/laps") ? laps
+      : url.match(/sessions\/[^/?]+$/) ? info
+      : sessions;
+    return { ok: true, json: async () => body } as Response;
+  }));
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("App", () => {
+  it("loads a session and fills the tower, the clock and the flag bar", async () => {
+    mockApi();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("VER")).toBeDefined());
+    expect(screen.getByText("LEADER")).toBeDefined();
+    // Both the gap and the interval columns: PER is second and 6.213 s behind.
+    expect(screen.getAllByText("+6.213")).toHaveLength(2);
+    expect(screen.getByText("TRACK CLEAR")).toBeDefined();
+    expect(screen.getByText("LAP 12 / 57")).toBeDefined();
+    expect(screen.getByText("TRACK 32°C")).toBeDefined();
+    expect(screen.getByRole("slider", { name: /session time/i })).toBeDefined();
+  });
+
+  it("selecting a driver in the tower marks that row", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("PER")).toBeDefined());
+
+    const rows = screen.getAllByRole("button", { pressed: false });
+    const perRow = rows.find((row) => row.textContent?.includes("PER"))!;
+    perRow.click();
+    await waitFor(() => expect(perRow.getAttribute("aria-pressed")).toBe("true"));
+  });
+
+  it("shows the error when the API is unreachable, rather than an empty screen", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false, statusText: "Service Unavailable", json: async () => ({ detail: "lake not found" }),
+    } as Response)));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("lake not found")).toBeDefined());
+  });
+});
