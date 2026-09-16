@@ -127,6 +127,48 @@ A session is read into memory once (about 1.6 s), after which a state costs
 ~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
 server-side; the browser never sees raw samples.
 
+## Pace model (Phase 3, in progress)
+
+`racecraft.model.pace` separates the two things that change a lap time as a
+stint goes on: fuel burning off (faster) and the tyre wearing (slower).
+
+Within a stint they cannot be separated at all — one more lap of tyre age is
+always exactly one less lap of fuel. The split only exists across stints: the
+same tyre age at two different fuel loads. So the model is fitted over a whole
+race, with a baseline per driver, a fuel slope, and a degradation slope per
+compound. When a race cannot support that split (every driver stopping on the
+same lap), `fit` raises `Confounded` instead of returning a number. Least
+squares would happily answer, splitting the effect arbitrarily while reporting
+an excellent fit.
+
+Fitted across the lake: **78 of 84 races fit, 4 refused as confounded, 2 had no
+dry laps** (wet races).
+
+Single races are too noisy to trust for degradation — the scatter in clean lap
+times is 0.5-1.1 s against an effect near 0.05 s per lap, and individual races
+come back negative. `fit_pooled` shares degradation across a season while each
+race keeps its own fuel slope and baselines:
+
+| Season | Fuel s/lap | Soft | Medium | Hard |
+|---|---|---|---|---|
+| 2026 | 0.050 | 0.025 ± 0.003 | 0.038 ± 0.002 | 0.041 ± 0.001 |
+| 2025 | 0.054 | 0.060 ± 0.002 | 0.043 ± 0.001 | 0.035 ± 0.001 |
+| 2024 | 0.061 | 0.080 ± 0.004 | 0.058 ± 0.001 | 0.054 ± 0.001 |
+| 2023 | 0.058 | 0.046 ± 0.002 | 0.047 ± 0.001 | 0.042 ± 0.001 |
+
+Fuel lands at 0.05-0.06 s per lap every season, which is the expected size.
+2023-2025 order as you would expect: soft wears fastest, hard slowest.
+
+**Open question: 2026 comes out backwards**, with soft degrading least. It
+survives restricting every compound to the same 3-20 lap age window, and the
+age distributions match earlier seasons, so it is not obvious selection. But
+race by race it is a coin flip — only 6 of 13 races show soft below hard — so
+it is being treated as unresolved, not as a finding. The likely culprit is the
+fuel term: it also absorbs track evolution, and softs are used disproportionately
+in short late-race stints, where that absorption is least accurate. Phase 3
+should give track evolution its own term and allow degradation a cliff rather
+than a straight line.
+
 ## Query
 
 ```python
@@ -173,6 +215,7 @@ src/racecraft/
   api/timing.py            running order and gaps at any instant
   api/session.py           one session held in memory, ready to replay
   api/app.py               FastAPI routes
+  model/pace.py            fuel vs tyre degradation
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
 ```
