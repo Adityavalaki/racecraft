@@ -127,6 +127,52 @@ A session is read into memory once (about 1.6 s), after which a state costs
 ~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
 server-side; the browser never sees raw samples.
 
+## Analysis commands
+
+```sh
+racecraft-analyse pace                 # fuel and degradation, per season
+racecraft-analyse pace --season 2026   # one season, race by race
+racecraft-analyse circuits             # pit loss and neutralisation risk
+racecraft-analyse circuit Baku         # everything known about one circuit
+```
+
+Every model number quoted below comes from these, so they can be reproduced
+rather than taken on trust. For example:
+
+```
+Baku
+  pit lane costs      21.0s  (± 1.0s, 42 green-flag stops, 3 seasons)
+  neutralised         100% of 3 races, 0.83 allowing for the short history
+  when it happens     4.1 laps under SC or VSC
+  races in the lake:
+    2023  51 laps, 1.20 stops per driver, hard 82%, medium 18%, soft 0%
+    2024  51 laps, 1.20 stops per driver, hard 77%, medium 23%, soft 1%
+    2025  51 laps, 1.05 stops per driver, hard 62%, medium 38%
+```
+
+## Circuit-owned estimates (Phase 3, in progress)
+
+Tyre wear and relative pace belong to the car, so 2026 can only be learned
+from 2026. Pit loss and safety car likelihood belong to the circuit — the
+length of the pit lane, the walls and run-off — so they pool across every
+season, which is what makes them usable for a circuit the current cars have
+not raced on yet.
+
+Pit loss is a driver's own in-lap and out-lap against their pace either side
+of the stop, which cancels car, fuel and track. Stops under a safety car are
+excluded: they are far cheaper, and including them would understate what a
+green-flag stop costs. Spa is cheapest at 18.0 s, Imola dearest at 27.8 s.
+
+Safety car risk counts SC and VSC together and is shrunk toward the league
+average by four races, so a short history reads as "probably high" rather than
+"always": Baku 0.83 rather than 1.00, Monza 0.47 rather than 0.25.
+
+**A trap worth knowing about:** FastF1's location names drift between seasons.
+Monaco became "Monte Carlo" in 2026 and Miami became "Miami Gardens" in 2025,
+so keying on the raw name silently splits a circuit's history in half. Event
+names drift too — Barcelona stopped being the "Spanish Grand Prix" when Madrid
+took the title — which is why location, aliased, is the key.
+
 ## Pace model (Phase 3, in progress)
 
 `racecraft.model.pace` separates the two things that change a lap time as a
@@ -216,6 +262,8 @@ src/racecraft/
   api/session.py           one session held in memory, ready to replay
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation
+  model/circuit.py         pit loss, safety car risk
+  model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
 ```
