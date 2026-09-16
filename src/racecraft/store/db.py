@@ -37,6 +37,9 @@ def connect(lake: Path | None = None) -> duckdb.DuckDBPyConnection:
         glob = (table_dir / "*" / "*" / "*" / FILE_NAME).as_posix()
         con.execute(
             f"create or replace view {table} as "
-            f"select * from read_parquet('{glob}', hive_partitioning = true, hive_types = {HIVE_TYPES})"
+            f"select * from read_parquet('{glob}', hive_partitioning = true, hive_types = {HIVE_TYPES}, "
+            # Match columns by name: files written before a column was added
+            # (results.q1_s) read it as null instead of failing the query.
+            f"union_by_name = true)"
         )
     return con

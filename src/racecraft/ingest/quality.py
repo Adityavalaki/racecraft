@@ -34,6 +34,7 @@ class Finding:
 def check_session(tables: dict[str, pd.DataFrame]) -> list[Finding]:
     out: list[Finding] = []
     laps, results, sessions = tables["laps"], tables["results"], tables["sessions"]
+    is_race = sessions["session_name"].iloc[0] in ("Race", "Sprint")
 
     # -- structure -------------------------------------------------------
     if laps.empty:
@@ -61,9 +62,17 @@ def check_session(tables: dict[str, pd.DataFrame]) -> list[Finding]:
     if life_back.any():
         out.append(Finding(ERROR, "laps.tyre_life_monotonic", f"tyre_life decreases within a stint on {int(life_back.sum())} laps"))
 
-    end_back = by_driver["lap_end_t"].diff() <= 0
-    if end_back.any():
-        out.append(Finding(ERROR, "laps.time_monotonic", f"lap_end_t does not increase on {int(end_back.sum())} laps"))
+    # Practice and qualifying open with cars already circulating, so FastF1
+    # emits placeholder laps: the first ends before t0 (negative lap_end_t) and
+    # the next two can share a timestamp of exactly 0, with no lap time
+    # (2025 Spain FP3: 21 such laps across 15 drivers). Repeated timestamps are
+    # that artefact; time running backwards is real corruption.
+    end_diff = by_driver["lap_end_t"].diff()
+    if (end_diff < 0).any():
+        out.append(Finding(ERROR, "laps.time_monotonic", f"lap_end_t goes backwards on {int((end_diff < 0).sum())} laps"))
+    elif (end_diff == 0).any():
+        out.append(Finding(WARN, "laps.time_repeated",
+                           f"{int((end_diff == 0).sum())} laps share a lap_end_t with the previous lap (placeholder laps at session start)"))
 
     # -- ranges ----------------------------------------------------------
     green = laps[(laps["track_status"] == "1") & ~laps["is_pit_in_lap"] & ~laps["is_pit_out_lap"]
@@ -73,8 +82,11 @@ def check_session(tables: dict[str, pd.DataFrame]) -> list[Finding]:
         out.append(Finding(WARN, "laps.green_lap_range",
                            f"{len(bad)} green-flag laps outside 55-180 s, e.g. {bad['lap_time_s'].head(3).round(1).tolist()}"))
 
+    # Practice and qualifying are full of untimed laps by design: 49-74% of
+    # pit in/out laps and the slow cool-down laps between runs carry no lap
+    # time. Only in races and sprints is a missing time worth reporting.
     missing = laps["lap_time_s"].isna().mean()
-    if missing > 0.05:
+    if is_race and missing > 0.05:
         out.append(Finding(WARN, "laps.lap_time_coverage", f"{missing:.1%} of laps have no lap time"))
 
     if "car_data" in tables and not tables["car_data"].empty:
@@ -101,6 +113,9 @@ def check_session(tables: dict[str, pd.DataFrame]) -> list[Finding]:
                                    f"{share:.2%} of samples null after removing invalid readings"))
 
     # -- cross-checks against the official result ------------------------
+    # Only races and sprints have a winner, a scheduled distance and a race time.
+    if not is_race:
+        return out
     total_laps = sessions["total_laps"].iloc[0]
     winner = results[results["position"] == 1]
     if len(winner) == 1:

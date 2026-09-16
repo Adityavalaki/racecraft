@@ -28,6 +28,21 @@ FASTF1_CACHE_DIR = Path(os.environ.get("RACECRAFT_FASTF1_CACHE", DATA_DIR / "fas
 # safety-car likelihood. Pre-2022 is excluded entirely.
 DEFAULT_SEASONS = (2026, 2025, 2024, 2023)
 
-# FastF1 session identifiers. Race strategy is the thesis, so races (and
-# sprints, which share tyre behaviour) are what gets ingested by default.
+# Lake session codes, keyed by the name FastF1's schedule uses. Sprint
+# qualifying was "Sprint Shootout" in 2023; both map to SQ. Sessions are
+# loaded by schedule name because FastF1 can't resolve "SQ" for 2023.
+SESSION_CODES = {
+    "Practice 1": "FP1",
+    "Practice 2": "FP2",
+    "Practice 3": "FP3",
+    "Sprint Shootout": "SQ",
+    "Sprint Qualifying": "SQ",
+    "Qualifying": "Q",
+    "Sprint": "S",
+    "Race": "R",
+}
+ALL_SESSIONS = ("FP1", "FP2", "FP3", "SQ", "Q", "S", "R")
+
+# Races and sprints are where strategy happens; the quality checks that
+# compare against an official race time only apply to these.
 RACE_SESSIONS = ("R", "S")

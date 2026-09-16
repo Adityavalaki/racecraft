@@ -28,8 +28,9 @@ def make_session_key(year: int, round_number: int, session: str) -> str:
     return f"{year}_{round_number:02d}_{session}"
 
 
-def load_session(year: int, round_number: int, session: str, telemetry: bool = True) -> fastf1.core.Session:
-    ses = fastf1.get_session(year, round_number, session)
+def load_session(year: int, round_number: int, session_name: str, telemetry: bool = True) -> fastf1.core.Session:
+    """Load by FastF1 schedule name ("Practice 2", "Sprint Shootout"), not by code."""
+    ses = fastf1.get_session(year, round_number, session_name)
     ses.load(laps=True, telemetry=telemetry, weather=True, messages=True)
     return ses
 
@@ -76,7 +77,10 @@ def build_sessions(ses, key: str) -> pd.DataFrame:
         ci_rotation = float(ses.get_circuit_info().rotation)
     except Exception as e:  # circuit info is a nice-to-have, never worth failing an ingest
         log.warning("%s: no circuit info (%s)", key, e)
-    total_laps = getattr(ses, "total_laps", None)
+    try:
+        total_laps = ses.total_laps
+    except Exception:  # practice and qualifying have no scheduled distance; FastF1 raises
+        total_laps = None
     return _frame({
         "session_key": [key],
         "event_name": [ses.event["EventName"]],
@@ -110,7 +114,16 @@ def build_results(results: pd.DataFrame, key: str) -> pd.DataFrame:
         "points": r["Points"],
         "laps": r["Laps"],
         "result_time_s": seconds(r["Time"]),
+        "q1_s": _optional_seconds(r, "Q1"),
+        "q2_s": _optional_seconds(r, "Q2"),
+        "q3_s": _optional_seconds(r, "Q3"),
     }, "results")
+
+
+def _optional_seconds(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series(float("nan"), index=df.index)
+    return seconds(pd.to_timedelta(df[col]))
 
 
 def build_laps(laps: pd.DataFrame, key: str) -> pd.DataFrame:

@@ -16,7 +16,7 @@ def tables(fastf1_laps):
         "laps": [3] * 10,
         "result_time_s": [laps.loc[laps.driver_number == 1, "lap_time_s"].sum()] + [5.0] * 9,
     })
-    sessions = pd.DataFrame({"total_laps": [3]})
+    sessions = pd.DataFrame({"total_laps": [3], "session_name": ["Race"]})
     return {"laps": laps, "results": results, "sessions": sessions}
 
 
@@ -71,3 +71,32 @@ def test_missing_position_feed_warns(tables):
 def test_normal_position_coverage_is_silent(tables):
     tables["car_data"], tables["pos_data"] = _telemetry(1000, 1020)
     assert "pos_data.coverage" not in severities(quality.check_session(tables))
+
+
+def test_practice_skips_race_only_checks(tables):
+    tables["sessions"]["session_name"] = "Practice 2"
+    tables["sessions"]["total_laps"] = None
+    tables["results"]["result_time_s"] = float("nan")
+    tables["laps"]["lap_time_s"] = float("nan")  # cool-down and pit laps are untimed in practice
+    checks = severities(quality.check_session(tables))
+    assert "results.winner_time_reconciles" not in checks
+    assert "laps.lap_time_coverage" not in checks
+    assert not quality.has_errors(quality.check_session(tables))
+
+
+def test_time_going_backwards_is_an_error(tables):
+    laps = tables["laps"]
+    laps.loc[(laps.driver_number == 1) & (laps.lap_number == 3), "lap_end_t"] = 0.0
+    assert severities(quality.check_session(tables))["laps.time_monotonic"] == quality.ERROR
+
+
+def test_placeholder_laps_sharing_a_timestamp_only_warn(tables):
+    # 2025 Spain FP3: practice opens with laps ending at -74 s and twice at 0.000.
+    laps = tables["laps"]
+    first = (laps.driver_number == 1) & (laps.lap_number == 1)
+    second = (laps.driver_number == 1) & (laps.lap_number == 2)
+    laps.loc[first, "lap_end_t"] = 0.0
+    laps.loc[second, "lap_end_t"] = 0.0
+    found = severities(quality.check_session(tables))
+    assert found["laps.time_repeated"] == quality.WARN
+    assert "laps.time_monotonic" not in found

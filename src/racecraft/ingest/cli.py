@@ -1,9 +1,9 @@
 """
 Ingest F1 sessions from FastF1 into the Parquet lake.
 
-    racecraft-ingest --season 2024 --rounds 1              # one race
-    racecraft-ingest --season 2024                         # every completed race + sprint
-    racecraft-ingest --season 2023 2024 2025 --prune-cache # full backfill, bounded disk
+    racecraft-ingest --season 2024 --rounds 1 --sessions R   # one race
+    racecraft-ingest --season 2026 --sessions FP2 Q          # every completed FP2 and qualifying
+    racecraft-ingest --season 2026 2025 --prune-cache        # every session type, bounded disk
 
 Already-ingested sessions are skipped, so an interrupted backfill resumes by
 running the same command again.
@@ -33,8 +33,9 @@ from racecraft.store import lake
 log = logging.getLogger("racecraft.ingest")
 
 
-def completed_sessions(season: int, rounds: list[int] | None, sessions: tuple[str, ...]) -> list[tuple[int, str, str]]:
-    """(round, session identifier, event name) for sessions that have already happened."""
+def completed_sessions(season: int, rounds: list[int] | None,
+                       sessions: tuple[str, ...]) -> list[tuple[int, str, str, str]]:
+    """(round, lake session code, event name, FastF1 session name) for sessions that have already happened."""
     schedule = fastf1.get_event_schedule(season, include_testing=False)
     now = datetime.now(timezone.utc)
     out = []
@@ -45,13 +46,13 @@ def completed_sessions(season: int, rounds: list[int] | None, sessions: tuple[st
         for i in range(1, 6):
             name = ev.get(f"Session{i}")
             date = ev.get(f"Session{i}DateUtc")
-            ident = {"Race": "R", "Sprint": "S"}.get(name)
+            ident = config.SESSION_CODES.get(name)
             if ident not in sessions or pd.isna(date):
                 continue
-            # Timing data is published a little after the chequered flag.
+            # Timing data is published a little after the session ends.
             if pd.Timestamp(date).tz_localize("UTC") + pd.Timedelta(hours=4) > now:
                 continue
-            out.append((rnd, ident, ev["EventName"]))
+            out.append((rnd, ident, ev["EventName"], name))
     return out
 
 
@@ -108,13 +109,14 @@ def wait_for_api_budget(key: str) -> None:
     time.sleep(wait)
 
 
-def ingest_one(season: int, rnd: int, ident: str, *, telemetry: bool, force: bool, prune: bool) -> str:
+def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
+               telemetry: bool, force: bool, prune: bool) -> str:
     key = fastf1_source.make_session_key(season, rnd, ident)
     if lake.is_ingested(season, rnd, ident) and not force:
         return "skipped"
 
     t, calls_before = time.time(), api_budget.calls_recorded()
-    ses = fastf1_source.load_session(season, rnd, ident, telemetry=telemetry)
+    ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
     tables = fastf1_source.extract(ses, key, telemetry=telemetry)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
@@ -138,14 +140,14 @@ def ingest_one(season: int, rnd: int, ident: str, *, telemetry: bool, force: boo
     return "written"
 
 
-def ingest_with_limits(season: int, rnd: int, ident: str, **kwargs) -> str:
+def ingest_with_limits(season: int, rnd: int, ident: str, session_name: str, **kwargs) -> str:
     """ingest_one, pausing for FastF1's rate limit instead of failing the session."""
     key = fastf1_source.make_session_key(season, rnd, ident)
     for attempt in range(1, 5):
         if kwargs["force"] or not lake.is_ingested(season, rnd, ident):
             wait_for_api_budget(key)
         try:
-            return ingest_one(season, rnd, ident, **kwargs)
+            return ingest_one(season, rnd, ident, session_name, **kwargs)
         except RateLimitExceededError as e:
             # Only reachable if the budget estimate was short or the limiter
             # can't be inspected. Responses already fetched are cached, so the
@@ -194,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--season", type=int, nargs="+", default=list(config.DEFAULT_SEASONS))
     ap.add_argument("--rounds", type=int, nargs="+", help="round numbers; default is every completed round")
-    ap.add_argument("--sessions", nargs="+", default=list(config.RACE_SESSIONS), choices=["R", "S"])
+    ap.add_argument("--sessions", nargs="+", default=list(config.ALL_SESSIONS), choices=config.ALL_SESSIONS,
+                    help="session codes to ingest; default is all of them")
     ap.add_argument("--no-telemetry", action="store_true", help="skip car and position data (much faster)")
     ap.add_argument("--force", action="store_true", help="re-ingest sessions already in the lake")
     ap.add_argument("--prune-cache", action="store_true", help="delete each session's FastF1 cache after writing")
@@ -209,26 +212,26 @@ def main(argv: list[str] | None = None) -> int:
     plan = []
     for season in args.season:
         todo = completed_sessions(season, args.rounds, tuple(args.sessions))
-        done = sum(lake.is_ingested(season, rnd, ident) for rnd, ident, _ in todo)
+        done = sum(lake.is_ingested(season, rnd, ident) for rnd, ident, _, _ in todo)
         log.info("%d: %d completed sessions, %d already in the lake", season, len(todo), done)
-        plan += [(season, rnd, ident, name) for rnd, ident, name in todo]
+        plan += [(season, rnd, ident, event, name) for rnd, ident, event, name in todo]
 
     if args.prune_cache and not args.force:
         # Earlier runs may have left raw responses for sessions that are already
         # safely in the lake. Clear them in one pass before starting.
-        in_lake = {fastf1.get_session(season, rnd, ident).api_path
-                   for season, rnd, ident, _ in plan if lake.is_ingested(season, rnd, ident)}
+        in_lake = {fastf1.get_session(season, rnd, name).api_path
+                   for season, rnd, ident, _, name in plan if lake.is_ingested(season, rnd, ident)}
         if in_lake:
             log.info("clearing cached HTTP responses for %d sessions already in the lake", len(in_lake))
             log.info("removed %d responses", purge_http_cache(in_lake))
 
     counts = {"written": 0, "skipped": 0, "failed": 0}
-    for season, rnd, ident, name in plan:
+    for season, rnd, ident, event, name in plan:
         try:
-            status = ingest_with_limits(season, rnd, ident, telemetry=not args.no_telemetry,
+            status = ingest_with_limits(season, rnd, ident, name, telemetry=not args.no_telemetry,
                                         force=args.force, prune=args.prune_cache)
         except Exception as e:  # one broken session must not stop a season backfill
-            log.error("%s round %d %s (%s) failed: %s: %s", season, rnd, ident, name,
+            log.error("%s round %d %s (%s) failed: %s: %s", season, rnd, ident, event,
                       type(e).__name__, e, exc_info=args.verbose)
             status = "failed"
         counts[status] += 1

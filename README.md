@@ -18,9 +18,14 @@ python -m venv .venv
 ## Ingest
 
 ```sh
-racecraft-ingest --season 2024 --rounds 1                 # one race
-racecraft-ingest --season 2023 2024 2025 2026 --prune-cache    # full backfill
+racecraft-ingest --season 2024 --rounds 1 --sessions R   # one race
+racecraft-ingest --season 2026 --sessions FP2 Q          # one session type
+racecraft-ingest --prune-cache                           # everything, 2026 back to 2023
 ```
+
+Every session type is ingested by default: `FP1`, `FP2`, `FP3`, `SQ` (sprint
+qualifying, called Sprint Shootout in 2023), `Q`, `S` and `R`. Practice long
+runs, FP2 above all, are the standard pre-race source for tyre degradation.
 
 Sessions already in the lake are skipped, so an interrupted backfill resumes
 by re-running the same command.
@@ -38,6 +43,19 @@ will resume. Leave it running: restarting resets FastF1's counter, but the
 limit protects F1's servers and FastF1 warns that ignoring it can get you
 blocked. A rejected request also counts against the limit, so retrying in a
 loop makes the wait longer, not shorter.
+
+**Windows: run a long backfill through `scripts\backfill.ps1`.** It keeps
+the machine awake until ingest exits, then restores the normal setting. Idle
+sleep otherwise kills the process during a rate-limit wait and the backfill
+stops silently.
+
+```powershell
+.\scripts\backfill.ps1                      # everything, same defaults
+.\scripts\backfill.ps1 --season 2023 --prune-cache
+```
+
+Closing the lid still sleeps the machine; change the lid action in Windows
+power settings if you need that too.
 
 Add `--verbose` to see full tracebacks for failed sessions.
 
@@ -57,6 +75,8 @@ con.sql("""
 Views: `sessions`, `results`, `laps`, `car_data`, `pos_data`, `weather`,
 `race_control`, `track_status`, `session_status`, `circuit_markers`. Every
 view also exposes `year`, `round` and `session` from the partition path.
+`results.q1_s`/`q2_s`/`q3_s` hold qualifying times and are null for other
+sessions, including every race file written before those columns existed.
 
 ## Conventions
 
@@ -87,15 +107,31 @@ tests/                     offline tests, no network
 
 ## Verification status
 
-Full backfill complete: every race and sprint from 2023 to 2026 round 14,
-107 sessions, 621 MB. Audited across the whole lake:
+Backfill complete: **420 sessions** covering every practice, qualifying,
+sprint qualifying, sprint and race from 2023 to 2026 round 14. 1.53 GB,
+229,816 laps, 370 million telemetry rows, 0 failures.
 
-- **Race time:** 104 of 107 sessions reconcile within +0.33 s of the official
-  time (median +0.25 s). The three outliers are all interrupted, mostly wet
-  races: 2025 Miami sprint (-4.9 s, suspended start), 2023 Dutch GP (-1.8 s),
-  2026 Dutch GP (-1.3 s). Their laps are internally consistent; the session
-  start marker is a few seconds off.
+| Season | FP1 | FP2 | FP3 | SQ | Q | S | R |
+|---|---|---|---|---|---|---|---|
+| 2026 (to round 14) | 14 | 9 | 9 | 5 | 14 | 5 | 14 |
+| 2025 | 24 | 18 | 18 | 6 | 24 | 6 | 24 |
+| 2024 | 24 | 18 | 18 | 6 | 24 | 6 | 24 |
+| 2023 | 22 | 16 | 16 | 6 | 22 | 6 | 22 |
+
+Audited across the whole lake:
+
+- **Race time:** 104 of 107 races and sprints reconcile within +0.33 s of the
+  official time (median +0.25 s). The three outliers are interrupted, mostly
+  wet races: 2025 Miami sprint (-4.9 s, suspended start), 2023 Dutch GP
+  (-1.8 s), 2026 Dutch GP (-1.3 s). Their laps are internally consistent; the
+  session start marker is a few seconds off.
+- **Qualifying:** in 83 of 84 sessions the fastest lap matches a recorded
+  Q1/Q2/Q3 time exactly. Pole is not always the session's fastest lap, which
+  is correct: in wet 2023 Canada the fastest lap was 7.1 s quicker than pole.
 - **Position data:** median 1.02 position samples per car sample.
+- **FP2 long runs** (5+ timed green laps on one compound): 243 in 2026, 396
+  in 2025, 493 in 2024, 444 in 2023, averaging about 8 laps. This is the
+  degradation training set.
 
 ## Known data gaps
 
@@ -103,9 +139,10 @@ Problems in the source feed, not in ingest. Re-downloading does not fix them.
 
 | Session | Gap | Consequence |
 |---|---|---|
-| 2026 Monaco (`2026_06_R`) | Position feed stops before the race: 18% of normal coverage, almost none after lights out | No track map for the race; no position-derived features. OpenF1's free historical `/location` data is a possible fill |
+| 2026 Monaco (`2026_06_R`) | Position feed stops before the race: 18% of normal coverage, almost none after lights out | No track map for the race; no position-derived features. Permanent: OpenF1's `/location` has the same gap (positions at lap 5, none by lap 30), because both record the same feed |
 | 2026 Monaco, 2026 Spain (Madrid) | No `circuit_markers` (Madrid is a new circuit; Monaco follows from the position gap) | Corners must be derived from position data where it exists |
 | All 2026 sessions | Throttle missing on 3.1% of samples at racing speed (2023-2025: under 0.1%). Varies by session (up to 18.9%, 2026 China sprint), not by team | Throttle-based analysis must tolerate gaps |
+| 2025 Miami qualifying (`2025_06_Q`) | No Q1/Q2/Q3 times; FastF1 has none either. Positions and laps are complete | Segment times must be derived from laps if needed |
 | 2025 Miami sprint, 2023 and 2026 Dutch GPs | Session clock a few seconds off | Negligible for strategy work; worth excluding from anything timing-precise |
 
 New ingests warn on the position gap (`pos_data.coverage`), so a repeat is

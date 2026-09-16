@@ -19,6 +19,7 @@ def tables(fastf1_laps, fastf1_race_control):
         "grid_position": [1, 2], "position": [1, 2], "classified_position": ["1", "2"],
         "status": ["Finished", "Finished"], "points": [25.0, 18.0], "laps": [3, 3],
         "result_time_s": [288.6, 5.0],
+        "q1_s": [None, None], "q2_s": [None, None], "q3_s": [None, None],
     })
     sessions = pd.DataFrame({
         "session_key": [KEY], "event_name": ["Bahrain Grand Prix"], "country": ["Bahrain"],
@@ -66,3 +67,20 @@ def test_partial_ingest_is_not_counted_as_ingested(tables, tmp_path):
     # Simulate a crash after laps were written but before sessions.
     lake.write_session({"laps": tables["laps"]}, 2024, 1, "R", lake=tmp_path)
     assert not lake.is_ingested(2024, 1, "R", lake=tmp_path)
+
+
+def test_files_written_before_a_column_existed_still_read(tables, tmp_path):
+    # Race files from before results.q1_s existed sit beside new qualifying files.
+    import pyarrow.parquet as pq
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    old_file = lake.partition_dir("results", 2024, 1, "R", tmp_path) / lake.FILE_NAME
+    pq.write_table(pq.read_table(old_file).drop(["q1_s", "q2_s", "q3_s"]), old_file)
+
+    quali = {name: df.copy() for name, df in tables.items()}
+    for df in quali.values():
+        df["session_key"] = "2024_01_Q"
+    quali["results"]["q1_s"] = [90.1, 90.4]
+    lake.write_session(quali, 2024, 1, "Q", lake=tmp_path)
+
+    rows = connect(tmp_path).sql("select session, q1_s from results order by session, q1_s").fetchall()
+    assert rows == [("Q", 90.1), ("Q", 90.4), ("R", None), ("R", None)]

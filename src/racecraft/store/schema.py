@@ -52,6 +52,9 @@ RESULTS = pa.schema([
     ("points", pa.float32()),
     ("laps", pa.int16()),
     ("result_time_s", pa.float64()),    # winner: total race time; others: gap to winner
+    ("q1_s", pa.float64()),             # qualifying and sprint qualifying lap times; null otherwise
+    ("q2_s", pa.float64()),
+    ("q3_s", pa.float64()),
 ])
 
 LAPS = pa.schema([
