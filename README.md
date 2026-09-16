@@ -546,6 +546,50 @@ Audited across the whole lake:
   in 2025, 493 in 2024, 444 in 2023, averaging about 8 laps. This is the
   degradation training set.
 
+## Negative results
+
+Kept because they cost as much to find as the positive ones, and because a
+model is shaped as much by what it refuses to include.
+
+### The rejoin penalty is not measurable from where a car leaves the pits
+
+The strategy model counts seconds and cannot see that a plan two seconds
+quicker may rejoin behind a car it will never pass. The obvious fix is to
+measure what rejoining in traffic costs and add it. It does not work.
+
+`python scripts/traffic_probe.py` takes every green-flag stop since 2024 — 1,328
+of them, 30 drivers, 60 races — and measures each driver's pace over the three
+green laps after the out-lap against the field's median on those same laps,
+against the gap to the car ahead when they rejoined.
+
+Raw, the bands span 0.13 s/lap and are not even ordered: cars rejoining 5–8 s
+behind someone are the *quickest* of all. Fitting proximity properly, with
+driver fixed effects — the least you must do when quick cars rejoin in clear air
+*because* they are quick — the effect dies:
+
+| Proximity decay | Traffic penalty |
+|---|---|
+| 1.0 s | −0.028 ± 0.156 s/lap |
+| 2.0 s | +0.040 ± 0.127 s/lap |
+| 4.0 s | +0.059 ± 0.117 s/lap |
+
+Every estimate is inside its own error bar, and the sign is not even stable.
+
+This is not evidence that traffic is free. The project measures a following
+penalty of +0.55 s/lap inside 0.5 s elsewhere, over whole races. It is evidence
+that *this* design cannot see it, and the reasons are identifiable: three laps
+is a short window, the car ahead may itself pit on the next lap, and a fresh
+tyre is worth about 0.6 s/lap, which swamps what is being looked for.
+
+So no traffic term went into the strategy model. A number of 0.04 ± 0.13 dressed
+up as a penalty would have made every plan look more considered and none of them
+more correct.
+
+**What to try instead.** The information is not missing, it is in the wrong
+model. Knowing where a plan rejoins requires a field to rejoin *into*, which the
+seconds-based model does not have and `model/race.py` does. Joining them is the
+remaining work, and it is a simulation problem rather than a measurement one.
+
 ## Known data gaps
 
 Problems in the source feed, not in ingest. Re-downloading does not fix them.
