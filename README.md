@@ -270,6 +270,37 @@ The model prints its own limits every time it runs, because a number this
 simple should not travel without them. Notably it counts **seconds, not
 places**, and races are scored in places.
 
+### Safety cars
+
+```sh
+racecraft-analyse strategy Baku --laps 51 --scale 1.5 --safety-car
+```
+
+Green-flag costing assumes a race that runs start to finish without
+interruption. Races do not: one is neutralised 1.27 times on average, and a
+stop taken entirely under a full safety car costs **61% of a green one** —
+13.7 s against 22.5 s, measured against the drivers who stayed out on the same
+laps. (Measuring it against green-flag pace instead gives 274%, which is not a
+stop cost at all but the fact that every lap under a safety car is slow.)
+
+`racecraft.model.simulate` therefore runs each plan through hundreds of races,
+drawing neutralisations from that circuit's own rate, and follows the strategy
+teams actually use: stop as planned, unless the race is neutralised while a
+stop is still owed and the tyres have done enough laps.
+
+This changes the answer, which is the point. At Baku:
+
+| Plan | Expected | If green | Cheap stop |
+|---|---|---|---|
+| medium 30 > soft 21 | **51.8 s** | 53.5 s | 40% |
+| medium 26 > soft 25 | 51.8 s | 52.6 s | 34% |
+| medium 34 > soft 17 | 53.0 s | **56.2 s** | 45% |
+
+Stopping later is the worst plan if the race stays green and among the best
+once safety cars are allowed for, because a stop still owed is a stop that
+might come cheap. Its downside is also bounded: the worst a plan can do is its
+own green-flag race, since a neutralisation only ever makes a stop cheaper.
+
 ## Query
 
 ```python
@@ -319,6 +350,7 @@ src/racecraft/
   model/pace.py            fuel vs tyre degradation
   model/circuit.py         pit loss, safety car risk
   model/strategy.py        costing and ranking race plans
+  model/simulate.py        plans under safety car uncertainty
   model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)

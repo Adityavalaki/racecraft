@@ -140,6 +140,7 @@ class SafetyCarRisk:
     races: int
     share_of_races: float        # raw: races with at least one safety car or VSC
     probability: float           # shrunk toward the league average; use this one
+    periods_per_race: float      # how many separate neutralisations, on average
     per_lap: float               # chance a given lap is neutralised
     median_laps_lost: float      # laps spent neutralised, when it happens
 
@@ -147,6 +148,7 @@ class SafetyCarRisk:
         return {"circuit": self.circuit, "races": self.races,
                 "share_of_races": round(self.share_of_races, 3),
                 "probability": round(self.probability, 3),
+                "periods_per_race": round(self.periods_per_race, 2),
                 "per_lap": round(self.per_lap, 4),
                 "median_laps_lost": round(self.median_laps_lost, 1)}
 
@@ -165,15 +167,16 @@ def safety_car_risk(track_status: pd.DataFrame, sessions: pd.DataFrame, laps: pd
     meta = meta.assign(circuit=canonical_circuit(meta["location"]))
 
     out: list[SafetyCarRisk] = []
-    tally: list[tuple[str, int, int, list[float], list[float]]] = []
+    tally: list[tuple[str, int, int, list[float], list[float], list[int]]] = []
     for circuit, group in meta.groupby("circuit"):
-        races, neutralised, shares, durations = 0, 0, [], []
+        races, neutralised, shares, durations, periods = 0, 0, [], [], []
         for session_key, race in group.iterrows():
             status = track_status[track_status["session_key"] == session_key].sort_values("t")
             if status.empty or pd.isna(race["total_laps"]):
                 continue
             races += 1
             spans = _neutralised_spans(status)
+            periods.append(len(spans))
             if not spans:
                 shares.append(0.0)
                 continue
@@ -185,16 +188,16 @@ def safety_car_risk(track_status: pd.DataFrame, sessions: pd.DataFrame, laps: pd
             shares.append(min(1.0, neutral_seconds / total_seconds))
             durations.append(neutral_seconds / lap_seconds)
         if races >= 2:
-            tally.append((str(circuit), races, neutralised, shares, durations))
+            tally.append((str(circuit), races, neutralised, shares, durations, periods))
 
     # Three races out of three is not certainty. Each circuit is pulled toward
     # the league average by the weight of PRIOR_RACES races, so a short history
     # reads as "probably high" rather than "always".
-    total_races = sum(races for _, races, _, _, _ in tally)
-    total_neutralised = sum(n for _, _, n, _, _ in tally)
+    total_races = sum(races for _, races, _, _, _, _ in tally)
+    total_neutralised = sum(n for _, _, n, _, _, _ in tally)
     league = total_neutralised / total_races if total_races else 0.0
 
-    for name, races, neutralised, shares, durations in tally:
+    for name, races, neutralised, shares, durations, periods in tally:
         out.append(SafetyCarRisk(
             circuit=name,
             races=races,
@@ -202,6 +205,7 @@ def safety_car_risk(track_status: pd.DataFrame, sessions: pd.DataFrame, laps: pd
             probability=(neutralised + league * PRIOR_RACES) / (races + PRIOR_RACES),
             per_lap=float(np.mean(shares)) if shares else 0.0,
             median_laps_lost=float(np.median(durations)) if durations else 0.0,
+            periods_per_race=float(np.mean(periods)) if periods else 0.0,
         ))
     return sorted(out, key=lambda r: -r.probability)
 

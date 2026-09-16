@@ -151,15 +151,40 @@ def cmd_strategy(args) -> int:
     print(f"  pace at equal age: " + ", ".join(f"{c.lower()} {v:+.2f}s" for c, v in offsets.items()))
     print()
 
-    for costed in strategy_model.best_plans(total, degradation, loss.seconds,
-                                            compound_offset_s=offsets, top=args.top, step=args.step):
-        d = costed.as_dict()
-        print(f"  {d['plan']:<30} {d['stops']} stop   {d['seconds_lost']:6.1f}s lost   "
-              f"(tyres {d['tyre_seconds']:5.1f}, compound {d['compound_seconds']:+5.1f}, pits {d['pit_seconds']:4.0f})")
+    if args.safety_car:
+        from racecraft.model import simulate as simulate_model
+
+        sessions = con.sql("select session_key, location from sessions where session='R'").df()
+        track_status = con.sql("select session_key, t, status from track_status").df()
+        risk = next((r for r in circuit_model.safety_car_risk(track_status, sessions, laps_all)
+                     if r.circuit == name), None)
+        periods = risk.periods_per_race if risk else 1.27
+        neutralisation = simulate_model.Neutralisation.for_circuit(periods, total)
+        print(f"  safety cars:       {periods:.2f} per race here, "
+              f"{neutralisation.per_lap:.3f} chance per lap, a stop under one costs "
+              f"{neutralisation.stop_discount:.0%}")
+        print()
+        plans = strategy_model.enumerate_plans(total, tuple(degradation), max_stops=2,
+                                               min_stint=10, step=max(2, args.step))
+        ranked = simulate_model.best_plans_with_risk(plans, degradation, loss.seconds, neutralisation,
+                                                     compound_offset_s=offsets, runs=args.runs, top=args.top)
+        print(f"  {'plan':<28} {'expected':>9} {'if green':>9} {'lucky':>7} {'unlucky':>8} {'cheap stop':>11}")
+        for costed in ranked:
+            d = costed.as_dict()
+            print(f"  {d['plan']:<28} {d['expected_s']:>9.1f} {d['green_s']:>9.1f} "
+                  f"{d['best_case_s']:>7.1f} {d['worst_case_s']:>8.1f} {d['cheap_stop_share']:>10.0%}")
+    else:
+        for costed in strategy_model.best_plans(total, degradation, loss.seconds,
+                                                compound_offset_s=offsets, top=args.top, step=args.step):
+            d = costed.as_dict()
+            print(f"  {d['plan']:<30} {d['stops']} stop   {d['seconds_lost']:6.1f}s lost   "
+                  f"(tyres {d['tyre_seconds']:5.1f}, compound {d['compound_seconds']:+5.1f}, pits {d['pit_seconds']:4.0f})")
 
     print()
     print("  This counts seconds, not places. It leaves out:")
     for omission in strategy_model.KNOWN_OMISSIONS:
+        if args.safety_car and omission.startswith("safety cars"):
+            continue          # simulated here, so no longer a limitation
         print(f"    - {omission}")
     return 0
 
@@ -244,6 +269,9 @@ def main(argv: list[str] | None = None) -> int:
                                  help="multiply measured degradation; 1.5 best reproduces real stop counts")
     strategy_parser.add_argument("--top", type=int, default=6)
     strategy_parser.add_argument("--step", type=int, default=1)
+    strategy_parser.add_argument("--safety-car", action="store_true",
+                                 help="simulate races with safety cars instead of assuming green throughout")
+    strategy_parser.add_argument("--runs", type=int, default=600, help="simulated races per plan")
     strategy_parser.set_defaults(handler=cmd_strategy)
 
     circuit_parser = commands.add_parser("circuit", help="everything known about one circuit")
