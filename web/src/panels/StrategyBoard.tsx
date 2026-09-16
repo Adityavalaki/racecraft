@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
-import { COMPOUND_COLORS, type Insight, type Plan, type RiskyPlan } from "../api";
+import { COMPOUND_COLORS, type Insight, type Plan, type RiskyPlan, type StintRun } from "../api";
+import { StintChart } from "./StintChart";
 
 interface Props {
   insight: Insight | null;
@@ -117,6 +118,13 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
         <p className="panel-note">{insight.plans_unavailable ?? "No plans for this session."}</p>
       )}
 
+      <StintChart
+        stints={insight.stints}
+        totalLaps={insight.total_laps}
+        modelStints={best ? planToStints(best.plan) : null}
+        modelLabel={best ? best.plan : ""}
+      />
+
       <div className="omissions">
         <h3>
           {showRisk
@@ -209,6 +217,21 @@ function Constant({ label, value, detail }: { label: string; value: string; deta
       <span className="constant-detail">{detail}</span>
     </div>
   );
+}
+
+/**
+ * "soft 25 > medium 26" -> stints on the same shape the race data uses, so the
+ * model's plan can be drawn on the same scale as what the cars actually ran.
+ */
+function planToStints(plan: string): StintRun[] {
+  let lap = 1;
+  return plan.split(" > ").map((part) => {
+    const [compound = "", length = "0"] = part.split(" ");
+    const laps = Number(length) || 0;
+    const stint = { compound: compound.toUpperCase(), laps, first_lap: lap, last_lap: lap + laps - 1 };
+    lap += laps;
+    return stint;
+  });
 }
 
 /** "traffic: a car released into a queue…" -> bold term, plain rest. */
