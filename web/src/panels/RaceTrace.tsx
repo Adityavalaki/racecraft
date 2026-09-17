@@ -9,31 +9,34 @@ interface Props {
   onSelectLap: (lap: number) => void;
 }
 
-const PADDING = { left: 30, right: 34, top: 12, bottom: 22 };
+const PADDING = { left: 28, right: 46, top: 10, bottom: 22 };
+const LAP_GRID = 10;
 
 /**
- * The race as positions, lap by lap.
+ * Race progression: every driver's position, lap by lap.
  *
- * This was a gap chart — every driver's distance behind the leader in seconds
- * — which is the more precise view and the harder one to read. Twenty lines of
- * gap tell you how far apart cars are and almost nothing about what happened,
- * because the shape that matters is buried in a band of similar curves near
- * the top.
+ * This follows the standard convention — position down the left, lap across
+ * the bottom, one line per car in its team colour, driver codes down the
+ * right-hand edge — because it is a chart people already know how to read, and
+ * being legible beats being novel.
  *
- * Positions instead. A pit stop is a drop and a climb back, an overtake is one
- * line crossing another, and a strategy that worked is a line that ends higher
- * than it started. All twenty stay legible because there are only as many
- * levels as there are cars, and each is a step rather than a slope.
+ * What it shows that a gap chart does not: a pit stop is a dive and a climb
+ * back, an overtake is one line crossing another, a safety car is the whole
+ * field converging at once, and a retirement is a line that stops. The cost is
+ * distance — half a second and thirty seconds are both one place — and the gap
+ * is on the timing tower, where a number belongs.
  *
- * What it gives up is distance: half a second and thirty seconds both show as
- * one place. The gap is still on the tower, where a number belongs.
+ * Transitions are ramps rather than right-angle steps. A place does change at
+ * one crossing of the line, so the step is the truer shape, but with twenty
+ * cars the steps stack into a grid of verticals that hides which line went
+ * where. The ramp keeps each line followable, which is the entire job.
  *
  * It draws only as far as the clock has reached, so the lines grow across the
  * panel while the race runs and retreat when you scrub back. The axis stays
- * fixed to the full distance rather than rescaling to what has been drawn:
- * a chart whose axis moves under a line makes the line look like it is doing
- * something it is not, and how much race is left is half of what a strategy
- * call turns on.
+ * pinned to the full distance rather than rescaling to what has been drawn: an
+ * axis that moves under a line makes the line look like it is doing something
+ * it is not, and how much race is left is half of what a strategy call turns
+ * on.
  */
 export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) {
   const { ref: canvas, size } = useCanvasSize<HTMLCanvasElement>();
@@ -66,15 +69,13 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     geometry.current = { left: PADDING.left, width: plotWidth, maxLap };
 
     const x = (lap: number) => PADDING.left + ((lap - 1) / Math.max(1, maxLap - 1)) * plotWidth;
-    // P1 at the top, and each place gets the middle of its own band so a line
-    // never sits on a gridline.
-    const y = (place: number) => PADDING.top + ((place - 0.5) / lastPlace) * plotHeight;
+    const y = (place: number) => PADDING.top + ((place - 1) / Math.max(1, lastPlace - 1)) * plotHeight;
 
-    context.font = "10px 'JetBrains Mono', monospace";
+    context.font = "9px 'JetBrains Mono', monospace";
     context.textBaseline = "middle";
+    const rowHeight = plotHeight / Math.max(1, lastPlace - 1);
+    const labelEvery = rowHeight < 11 ? 2 : 1;      // skip every other number when tight
 
-    // A faint line per place. Every tenth of the panel's height is a position,
-    // so the levels themselves carry the scale and only a few need labelling.
     context.strokeStyle = "#1b222a";
     context.lineWidth = 1;
     for (let place = 1; place <= lastPlace; place += 1) {
@@ -83,42 +84,51 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
       context.moveTo(PADDING.left, py);
       context.lineTo(width - PADDING.right, py);
       context.stroke();
-      if (place === 1 || place % 5 === 0 || place === lastPlace) {
+      if (place === 1 || place === lastPlace || place % labelEvery === 0) {
         context.fillStyle = "#6b7887";
         context.textAlign = "right";
-        context.fillText(`P${place}`, PADDING.left - 6, py);
+        context.fillText(String(place), PADDING.left - 5, py);
       }
     }
+    for (let lap = LAP_GRID; lap < maxLap; lap += LAP_GRID) {
+      context.beginPath();
+      context.moveTo(x(lap), PADDING.top);
+      context.lineTo(x(lap), height - PADDING.bottom);
+      context.stroke();
+      context.fillStyle = "#6b7887";
+      context.textAlign = "center";
+      context.textBaseline = "top";
+      context.fillText(String(lap), x(lap), height - PADDING.bottom + 6);
+      context.textBaseline = "middle";
+    }
+
+    const anySelected = selected.length > 0;
 
     const drawSeries = (item: LapSeries, emphasised: boolean) => {
-      // Stepped: a car holds a place for a whole lap and then changes it, so a
-      // sloped line would draw an overtake that happened gradually.
       context.beginPath();
-      let previous: number | null = null;
+      let started = false;
       let head: { px: number; py: number } | null = null;
       item.laps.forEach((lap, index) => {
         if (lap > shownLap) return;                 // not run yet at this point in the race
         const place = item.position[index];
         if (place === null || place === undefined) {
-          previous = null;
+          started = false;
           return;
         }
         const px = x(lap);
         const py = y(place);
-        if (previous === null) {
-          context.moveTo(px, py);
-        } else {
-          context.lineTo(px, previous);
-          context.lineTo(px, py);
-        }
-        previous = py;
+        started ? context.lineTo(px, py) : context.moveTo(px, py);
+        started = true;
         head = { px, py };
       });
-      context.strokeStyle = emphasised ? `#${item.team_color ?? "cccccc"}` : "#39434f";
-      context.lineWidth = emphasised ? 2.25 : 1;
-      context.globalAlpha = emphasised ? 1 : 0.5;
+
+      const colour = `#${item.team_color ?? "8c98a5"}`;
+      context.strokeStyle = colour;
+      context.lineWidth = emphasised ? 2.5 : 1.4;
+      // Every car keeps its own colour. Selecting some dims the rest rather
+      // than draining them grey, so the field stays readable underneath.
+      context.globalAlpha = emphasised ? 1 : anySelected ? 0.22 : 0.82;
       context.stroke();
-      context.globalAlpha = 1;
 
       if (emphasised) {
         item.pit_in.forEach((pitted, index) => {
@@ -130,27 +140,34 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
           context.fillStyle = "#ff7a33";
           context.fill();
         });
-      }
-
-      // The driver's code rides the head of their own line, so the order reads
-      // off the right-hand edge at whatever point the race has reached.
-      const tip = head as { px: number; py: number } | null;
-      if (tip) {
-        const colour = emphasised ? `#${item.team_color ?? "cccccc"}` : "#6b7887";
-        if (emphasised) {
+        const tip = head as { px: number; py: number } | null;
+        if (tip) {
           context.beginPath();
           context.arc(tip.px, tip.py, 2.5, 0, Math.PI * 2);
           context.fillStyle = colour;
           context.fill();
         }
-        context.fillStyle = colour;
-        context.textAlign = "left";
-        context.fillText(item.abbreviation ?? String(item.driver_number), tip.px + 5, tip.py);
       }
+      context.globalAlpha = 1;
     };
 
     series.filter((s) => !selected.includes(s.driver_number)).forEach((s) => drawSeries(s, false));
     series.filter((s) => selected.includes(s.driver_number)).forEach((s) => drawSeries(s, true));
+
+    // Driver codes down the right-hand edge, each at the place its car holds
+    // right now. Complete, that is the finishing order; mid-race it is the
+    // running order, which makes the gutter a legend and a leaderboard at once.
+    for (const item of series) {
+      const place = placeAt(item, shownLap);
+      if (place === null) continue;
+      const emphasised = selected.includes(item.driver_number);
+      context.fillStyle = `#${item.team_color ?? "8c98a5"}`;
+      context.globalAlpha = emphasised ? 1 : anySelected ? 0.4 : 0.9;
+      context.textAlign = "left";
+      context.fillText(item.abbreviation ?? String(item.driver_number),
+                       width - PADDING.right + 6, y(place));
+      context.globalAlpha = 1;
+    }
 
     // The leading edge: where the race has got to, and where the lines stop.
     const px = x(shownLap);
@@ -163,16 +180,15 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     context.stroke();
     context.globalAlpha = 1;
 
+    context.textBaseline = "top";
     context.fillStyle = "#6b7887";
     context.textAlign = "left";
-    context.fillText("LAP 1", PADDING.left, height - 8);
+    context.fillText("LAP", PADDING.left, height - PADDING.bottom + 6);
     context.fillStyle = "#ff7a33";
     context.textAlign = "center";
-    context.fillText(`LAP ${shownLap}`, Math.min(width - PADDING.right - 24, Math.max(PADDING.left + 24, px)),
-                     height - 8);
-    context.fillStyle = "#6b7887";
-    context.textAlign = "right";
-    context.fillText(`${maxLap}`, width - PADDING.right, height - 8);
+    context.fillText(`LAP ${shownLap}`,
+                     Math.min(width - PADDING.right - 22, Math.max(PADDING.left + 26, px)),
+                     height - PADDING.bottom + 6);
   }, [canvas, series, selected, currentLap, size.width, size.height]);
 
   return (
@@ -188,3 +204,14 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     />
   );
 });
+
+/** Where a driver stood on `lap`, or on the last lap they completed before it. */
+function placeAt(item: LapSeries, lap: number): number | null {
+  let found: number | null = null;
+  for (let index = 0; index < item.laps.length; index += 1) {
+    if (item.laps[index]! > lap) break;
+    const place = item.position[index];
+    if (place !== null && place !== undefined) found = place;
+  }
+  return found;
+}

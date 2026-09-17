@@ -25,12 +25,16 @@ function driver(code: string, positions: number[]): LapSeries {
 }
 
 function record() {
-  const calls: { text: string[]; lineTo: number[] } = { text: [], lineTo: [] };
+  const calls: { text: string[]; lineTo: number[]; labels: Record<string, number> } =
+    { text: [], lineTo: [], labels: {} };
   const context = {
     setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(),
     stroke: vi.fn(), fill: vi.fn(), arc: vi.fn(), setLineDash: vi.fn(),
     lineTo: vi.fn((x: number) => calls.lineTo.push(x)),
-    fillText: vi.fn((t: string) => calls.text.push(t)),
+    fillText: vi.fn((t: string, _x: number, y: number) => {
+      calls.text.push(t);
+      calls.labels[t] = y;          // last write wins: the right-hand gutter
+    }),
     font: "", textAlign: "", textBaseline: "", fillStyle: "", strokeStyle: "",
     lineWidth: 1, globalAlpha: 1,
   };
@@ -70,6 +74,21 @@ describe("RaceTrace", () => {
     render(<RaceTrace series={FIELD} selected={[]} currentLap={10} onSelectLap={vi.fn()} />);
     expect(calls.text).toContain("VER");
     expect(calls.text).toContain("NOR");
+  });
+
+
+  it("orders the right-hand codes by where cars stand now, not where they finish", () => {
+    // VER runs 1st, drops to 3rd, and wins; NOR does the reverse. The gutter is
+    // a legend and a live leaderboard at once, so at lap 3 it has to show NOR
+    // above VER even though VER ends up on top.
+    const early = record();
+    render(<RaceTrace series={FIELD} selected={[]} currentLap={3} onSelectLap={vi.fn()} />);
+    expect(early.labels["NOR"]).toBeLessThan(early.labels["VER"]!);
+    vi.restoreAllMocks();
+
+    const late = record();
+    render(<RaceTrace series={FIELD} selected={[]} currentLap={10} onSelectLap={vi.fn()} />);
+    expect(late.labels["VER"]).toBeLessThan(late.labels["NOR"]!);
   });
 
   it("draws something at a standing start instead of an empty panel", () => {
