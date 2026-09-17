@@ -551,6 +551,71 @@ Audited across the whole lake:
 Kept because they cost as much to find as the positive ones, and because a
 model is shaped as much by what it refuses to include.
 
+### Tyre wear is not a circuit property, however much it looks like one
+
+Wear obviously differs between circuits — Sakhir eats tyres, Monaco does not —
+so the strategy model ought to carry a per-circuit multiplier alongside the
+per-circuit pit loss and safety-car risk it already has. It should not.
+
+Measuring each race's wear against its own season's average gives a ratio that
+strips out how that year's tyres behave and leaves the circuit. Ranked, the
+result looks exactly like a finding: Sakhir 2.21, Suzuka 1.62, Barcelona 1.48 at
+one end; Lusail 0.31, Montreal 0.41, Miami 0.48 at the other.
+
+It is noise. The spread *between* circuits is 0.424, and the wobble *within* one
+circuit from season to season is 0.490 — bigger. A quantity that varies more
+against itself than against its peers is not a property of the thing.
+
+The out-of-sample test agrees. Applying each circuit's multiplier, measured from
+the seasons other than the one being scored, to the 2026 stop-count prediction:
+
+| | Mean error in stops |
+|---|---|
+| Season wear alone | 0.571 |
+| With a per-circuit multiplier | 0.571 |
+
+Identical. It fixes Austria and Hungary and breaks Canada and Zandvoort. The
+giveaway is Melbourne's multiplier of 0.07, which would mean a circuit that
+barely wears tyres at all.
+
+### The 1.5 degradation scale was already right
+
+Race data cannot see past the tyre age teams accept, so measured wear understates
+a long stint and the strategy model multiplies it by 1.5. That constant was
+picked by eye. `python scripts/calibrate_scale.py` checks it against every dry
+race in the lake — 76 of them, four seasons — by costing every plan at each scale
+and scoring the cheapest plan's stop count against what the field ran:
+
+| Scale | Mean error | Exact | Bias |
+|---|---|---|---|
+| 1.00 | 0.737 | 32/76 | −0.66 |
+| **1.50** | **0.553** | **41/76** | −0.38 |
+| 1.75 | 0.566 | 40/76 | −0.26 |
+| 2.00 | 0.566 | 38/76 | −0.11 |
+| 3.00 | 0.803 | 21/76 | +0.55 |
+
+Leave-one-season-out, choosing the scale on three seasons and scoring it on the
+fourth, picks 1.50 in three years of four and averages 0.618. So the constant
+stands, and it stands on a measurement rather than on the first number tried.
+
+Worth reading the bias column beside the error. At 1.5 the model under-stops by
+0.38 stops on average; at 2.0 that bias nearly vanishes, and the per-race error
+gets *worse*. One constant can correct the average or the individual races, not
+both, which is the clearest sign available that what is missing is not a number.
+
+### What all three have in common
+
+The model says one stop where Barcelona, Silverstone, Hungary and Austria ran
+two, and two where Monaco ran four. It under-stops, and it under-stops because
+teams buy **track position** with a stop, not lap time — a plan two seconds
+quicker that rejoins behind a car it cannot pass has lost, and a model counting
+seconds in a vacuum cannot see that.
+
+No constant fixes it. Scoring plans in places rather than seconds does, which
+means joining the strategy model to `model/race.py`, where a field to rejoin
+into already exists. That is the remaining modelling work, and three measured
+dead ends are what establish it as the only one left worth doing.
+
 ### The rejoin penalty is not measurable from where a car leaves the pits
 
 The strategy model counts seconds and cannot see that a plan two seconds
