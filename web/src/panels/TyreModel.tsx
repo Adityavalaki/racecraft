@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 import { useCanvasSize } from "../useCanvasSize";
 import { COMPOUND_COLORS, type Insight } from "../api";
 
@@ -18,17 +18,31 @@ const AXIS = { left: 44, right: 14, top: 14, bottom: 30 };
  * The dots are this race's own partial residuals — lap time with driver, fuel
  * and track evolution removed — which is the same quantity the line measures.
  *
- * Two lines are drawn per compound. The solid one is what the strategy model
- * actually uses, degradation multiplied by 1.5; the faint one is the raw
- * measurement. The gap between them is the cliff nobody records, and putting
- * both on screen is the only honest way to show a number that was adjusted.
+ * One compound at a time. All three at once meant six lines and three clouds of
+ * dots overlapping in a panel a few hundred pixels tall, and the comparison
+ * that matters — this compound's line against this compound's dots — was the
+ * one the clutter hid. The rates sit side by side above the chart, so the
+ * comparison between compounds is still a glance away.
+ *
+ * Two lines are drawn. The solid one is what the strategy model actually uses,
+ * degradation multiplied by 1.5; the faint one is the raw measurement. The gap
+ * between them is the cliff nobody records, and putting both on screen is the
+ * only honest way to show a number that was adjusted.
  */
 export const TyreModel = memo(function TyreModel({ insight, loading, error }: Props) {
   const { ref: canvas, size } = useCanvasSize<HTMLCanvasElement>();
+  const [chosen, setChosen] = useState<string | null>(null);
+
+  const available = (insight?.degradation_curve ?? []).filter((c) => c.points.length > 0);
+  // Default to the softest compound present, which is the one whose wear
+  // decides most stop calls.
+  const order = ["SOFT", "MEDIUM", "HARD"];
+  const ordered = [...available].sort((a, b) => order.indexOf(a.compound) - order.indexOf(b.compound));
+  const active = ordered.find((c) => c.compound === chosen) ?? ordered[0] ?? null;
 
   useEffect(() => {
     const element = canvas.current;
-    if (!element || size.width === 0 || !insight) return;
+    if (!element || size.width === 0 || !insight || !active) return;
     const context = element.getContext("2d");
     if (!context) return;
 
@@ -39,8 +53,7 @@ export const TyreModel = memo(function TyreModel({ insight, loading, error }: Pr
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    const curves = insight.degradation_curve.filter((c) => c.points.length > 0);
-    if (curves.length === 0) return;
+    const curves = [active];
 
     const plotWidth = width - AXIS.left - AXIS.right;
     const plotHeight = height - AXIS.top - AXIS.bottom;
@@ -119,27 +132,33 @@ export const TyreModel = memo(function TyreModel({ insight, loading, error }: Pr
       }
       context.globalAlpha = 1;
     }
-  }, [canvas, size, insight]);
+  }, [canvas, size, insight, active]);
 
   if (loading) return <div className="panel-note">Fitting the season… this takes a few seconds the first time.</div>;
   if (error) return <div className="panel-note error">{error}</div>;
   if (!insight) return <div className="panel-note">No model for this session.</div>;
 
-  const curves = insight.degradation_curve.filter((c) => c.points.length > 0);
-  if (curves.length === 0) {
+  if (!active) {
     return <div className="panel-note">No dry-tyre laps here to measure wear from.</div>;
   }
 
   return (
     <div className="tyre-model">
-      <div className="tyre-legend">
-        {curves.map((curve) => (
-          <span key={curve.compound} className="legend-item">
+      <div className="tyre-legend" role="radiogroup" aria-label="Compound">
+        {ordered.map((curve) => (
+          <button
+            key={curve.compound}
+            type="button"
+            role="radio"
+            aria-checked={curve.compound === active.compound}
+            className={`legend-item${curve.compound === active.compound ? " is-active" : ""}`}
+            onClick={() => setChosen(curve.compound)}
+          >
             <i className="swatch" style={{ background: COMPOUND_COLORS[curve.compound] ?? "#a8b4c1" }} />
             {curve.compound.toLowerCase()}
             <b>{(insight.degradation_used[curve.compound] ?? 0).toFixed(3)}</b>
             <small>s/lap</small>
-          </span>
+          </button>
         ))}
       </div>
       <canvas ref={canvas} className="tyre-canvas" />

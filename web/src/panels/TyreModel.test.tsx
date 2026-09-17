@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { TyreModel } from "./TyreModel";
 import type { DegradationCurve, Insight } from "../api";
@@ -57,6 +57,32 @@ describe("TyreModel", () => {
     render(<TyreModel insight={insight()} loading={false} error={null} />);
     expect(screen.getByText("soft")).toBeDefined();
     expect(screen.getByText("0.050")).toBeDefined();      // 0.0495 rounded, the scaled figure
+    expect(screen.getByText("0.072")).toBeDefined();
+  });
+
+
+  it("shows one compound at a time, starting with the softest present", () => {
+    // All three at once was six lines and three clouds of dots in a panel a few
+    // hundred pixels tall, and the comparison that matters — this compound's
+    // line against its own dots — was the one the clutter hid.
+    render(<TyreModel insight={insight()} loading={false} error={null} />);
+    const soft = screen.getByRole("radio", { name: /soft/i });
+    const hard = screen.getByRole("radio", { name: /hard/i });
+    expect(soft.getAttribute("aria-checked")).toBe("true");
+    expect(hard.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("switches compound when another is picked", () => {
+    render(<TyreModel insight={insight()} loading={false} error={null} />);
+    fireEvent.click(screen.getByRole("radio", { name: /hard/i }));
+    expect(screen.getByRole("radio", { name: /hard/i }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: /soft/i }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("still lists every compound's rate, so comparing them is a glance away", () => {
+    render(<TyreModel insight={insight()} loading={false} error={null} />);
+    expect(screen.getAllByRole("radio")).toHaveLength(2);   // this fixture carries soft and hard
+    expect(screen.getByText("0.050")).toBeDefined();
     expect(screen.getByText("0.072")).toBeDefined();
   });
 

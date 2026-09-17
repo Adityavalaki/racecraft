@@ -261,8 +261,13 @@ class SessionData:
 
     def lap_chart(self) -> dict:
         """
-        Race trace: each driver's gap to the lap leader at every crossing.
-        This is the view where a strategy shows up as a shape.
+        The whole race, lap by lap: position and gap to the leader.
+
+        Position comes from the timing feed's own classification rather than
+        from ranking the crossing times, because ranking by time puts a lapped
+        car ahead of the leader it is a lap behind. It is missing on 0.13% of
+        race laps, and a chart drawing it should break its line there rather
+        than join across the hole.
         """
         laps = self.laps[self.laps["lap_end_t"].notna()]
         if laps.empty:
@@ -279,6 +284,7 @@ class SessionData:
                 "team_color": None if meta.empty else meta.iloc[0]["team_color"],
                 "laps": [int(v) for v in group["lap_number"]],
                 "gap_to_leader_s": [_round(v, 2) for v in gaps],
+                "position": [None if pd.isna(v) else int(v) for v in group["position"]],
                 "lap_time_s": [_round(v, 3) for v in group["lap_time_s"]],
                 "compound": [None if pd.isna(v) else v for v in group["compound"]],
                 "pit_in": [bool(v) for v in group["is_pit_in_lap"]],

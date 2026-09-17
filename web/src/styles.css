@@ -379,7 +379,23 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   font-size: 0.78rem;
   color: var(--ink-mid);
 }
-.legend-item { display: flex; align-items: center; gap: 0.35rem; }
+/* The legend is the control: each entry picks the compound the chart shows. */
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 0.12rem 0.4rem;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: inherit;
+}
+.legend-item:hover { color: var(--ink-mid); background: var(--panel-2); }
+.legend-item.is-active { color: var(--ink); border-color: var(--rule-strong); background: var(--panel-2); }
+.legend-item:not(.is-active) b { color: var(--ink-soft); }
+.legend-item:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
 .legend-item b {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;

@@ -103,6 +103,8 @@ export interface LapSeries {
   team_color: string | null;
   laps: number[];
   gap_to_leader_s: (number | null)[];
+  /** Classified position on that lap, from the feed. Null where it is missing. */
+  position: (number | null)[];
   lap_time_s: (number | null)[];
   compound: (string | null)[];
   pit_in: boolean[];

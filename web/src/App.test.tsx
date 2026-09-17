@@ -52,9 +52,9 @@ function mockApi() {
   };
   const laps = {
     drivers: [
-      { driver_number: 1, abbreviation: "VER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [0, 0],
+      { driver_number: 1, abbreviation: "VER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [0, 0], position: [1, 1],
         lap_time_s: [93.0, 92.608], compound: ["SOFT", "SOFT"], pit_in: [false, false] },
-      { driver_number: 11, abbreviation: "PER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [2.1, 6.2],
+      { driver_number: 11, abbreviation: "PER", team_color: "3671C6", laps: [1, 2], gap_to_leader_s: [2.1, 6.2], position: [2, 2],
         lap_time_s: [94.0, 93.104], compound: ["SOFT", "SOFT"], pit_in: [false, true] },
     ],
     leader_crossings: { laps: [1, 2], t: [1090, 1182] },
