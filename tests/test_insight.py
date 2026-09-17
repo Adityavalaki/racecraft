@@ -388,3 +388,46 @@ def test_circuits_endpoint_lists_the_constants(client):
     rows = client.get("/api/circuits").json()
     assert {r["circuit"] for r in rows} == {"Sakhir", "Jeddah", "Melbourne"}
     assert all(r["pit_loss"]["seconds"] > 0 for r in rows)
+
+
+def test_a_practice_session_ships_no_observed_wear_or_stints(lake_dir, tmp_path, monkeypatch):
+    """
+    A practice session mixes fuel runs, qualifying simulations and out-laps, and
+    its "stints" are cars going through the pit lane — a field average of four
+    stops, which is not a strategy. The modelled line still holds, because it is
+    fitted on races and belongs to the season. The observed side does not.
+    """
+    session_key = f"{YEAR}_01_FP1"
+    laps = _race(session_key, seed=9)
+    tables = {
+        "sessions": pd.DataFrame({
+            "session_key": [session_key], "event_name": ["Sakhir Grand Prix"],
+            "country": ["Sakhir"], "location": ["Sakhir"], "session_name": ["Practice 1"],
+            "date_utc": [pd.Timestamp(f"{YEAR}-03-01 11:00", tz="UTC")],
+            "t0_utc": [pd.Timestamp(f"{YEAR}-03-01 10:00", tz="UTC")],
+            "start_t": [0.0], "total_laps": [None], "circuit_rotation_deg": [0.0],
+            "fastf1_version": ["test"], "ingested_at": [pd.Timestamp.now(tz="UTC")]}),
+        "laps": laps,
+        "track_status": pd.DataFrame({"session_key": [session_key], "t": [0.0],
+                                      "status": ["1"], "message": ["AllClear"]}),
+    }
+    lake.write_session(tables, YEAR, 1, "FP1", lake=lake_dir)
+    insight._season_cache.clear()
+
+    out = insight.for_session(session_key)
+    assert out["is_race"] is False
+    assert out["stints"] == []
+    assert "observed_unavailable" in out
+    assert all(point["observed_s"] is None
+               for curve in out["degradation_curve"] for point in curve["points"])
+
+    # What belongs to the circuit and the season is still served: the line, the
+    # pit loss and the plans are all measured from races, not from this session.
+    assert out["degradation_measured"]
+    assert out["plans"]
+    assert out["pit_loss"]["seconds"] == pytest.approx(PIT_LOSS, abs=2.0)
+
+    race = insight.for_session(f"{YEAR}_01_R")
+    assert race["is_race"] is True
+    assert race["stints"]
+    assert "observed_unavailable" not in race

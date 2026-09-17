@@ -20,6 +20,11 @@ function curve(compound: string, slope: number, ages: number): DegradationCurve 
   };
 }
 
+function curveWithoutObservations(compound: string, slope: number, ages: number): DegradationCurve {
+  const full = curve(compound, slope, ages);
+  return { ...full, observed_to_age: 0, points: full.points.map((p) => ({ ...p, observed_s: null, laps: 0 })) };
+}
+
 function insight(overrides: Partial<Insight> = {}): Insight {
   return {
     session_key: "2026_14_R",
@@ -66,6 +71,28 @@ describe("TyreModel", () => {
     render(<TyreModel insight={insight()} loading={false} error={null} />);
     expect(screen.getByText(/raw measurement/i)).toBeDefined();
     expect(screen.getByText(/×1.5/)).toBeDefined();
+  });
+
+
+  it("explains the missing dots on a non-race session rather than drawing a bare line", () => {
+    // Practice mixes fuel runs, qualifying simulations and out-laps, so its
+    // observed wear is not comparable with anything. The line still holds — it
+    // is fitted on races — but the panel has to say why the dots are absent.
+    render(
+      <TyreModel
+        insight={insight({
+          is_race: false,
+          observed_unavailable: "this is not a race: practice and qualifying laps mix fuel loads",
+          degradation_curve: [curveWithoutObservations("SOFT", 0.033, 12)],
+        })}
+        loading={false}
+        error={null}
+      />,
+    );
+    expect(screen.getByText(/this is not a race/i)).toBeDefined();
+    const note = screen.getByText(/fitted on/i);
+    expect(note.textContent).not.toContain("never this one");
+    expect(note.textContent).not.toContain("what this race did");
   });
 
   it("says so plainly when a session has no dry laps to measure", () => {

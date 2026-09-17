@@ -172,6 +172,41 @@ describe("StrategyBoard", () => {
     expect(screen.getByRole("radio", { name: /safety cars/i }).hasAttribute("disabled")).toBe(true);
   });
 
+
+  it("does not report a stop average for a session that is not a race", () => {
+    // Practice stops are cars trundling through the pit lane. Quoting a field
+    // average of four stops beside a modelled one would be nonsense presented
+    // with a decimal point.
+    render(
+      <StrategyBoard
+        insight={insight({ is_race: false, stints: [] })}
+        loading={false}
+        error={null}
+        actualStops={4.18}
+      />,
+    );
+    expect(screen.queryByText(/race ran/i)).toBeNull();
+    expect(screen.getByText("cheapest plan")).toBeDefined();
+  });
+
+  it("says plainly that a non-race session measured none of what it shows", () => {
+    render(
+      <StrategyBoard
+        insight={insight({ is_race: false, stints: [] })}
+        loading={false}
+        error={null}
+        actualStops={null}
+      />,
+    );
+    expect(screen.getByText(/nothing here is measured from this session/i)).toBeDefined();
+  });
+
+  it("keeps the race comparison when it is a race", () => {
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={1.1} />);
+    expect(screen.getByText("race ran 1.10 avg")).toBeDefined();
+    expect(screen.queryByText(/nothing here is measured/i)).toBeNull();
+  });
+
   it("reports an error instead of pretending it has a model", () => {
     render(<StrategyBoard insight={null} loading={false} error="lake unreachable" actualStops={null} />);
     expect(screen.getByText("lake unreachable")).toBeDefined();

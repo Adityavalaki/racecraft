@@ -144,10 +144,12 @@ export const TyreModel = memo(function TyreModel({ insight, loading, error }: Pr
       </div>
       <canvas ref={canvas} className="tyre-canvas" />
       <p className="tyre-note">
-        Line: fitted on {insight.fitted_on_count} other {insight.year} race
-        {insight.fitted_on_count === 1 ? "" : "s"}, never this one. Dots: what this race did.
-        Dashed is the raw measurement, solid the ×{insight.scale} used for plans — race data cannot
-        see past the age teams accept, so the raw figure understates a long stint.
+        Line: fitted on {insight.fitted_on_count} {insight.is_race ? "other " : ""}
+        {insight.year} race{insight.fitted_on_count === 1 ? "" : "s"}
+        {insight.is_race ? ", never this one" : ""}. Dashed is the raw measurement, solid the
+        ×{insight.scale} used for plans — race data cannot see past the age teams accept, so the
+        raw figure understates a long stint.{" "}
+        {insight.is_race ? "Dots: what this race did." : insight.observed_unavailable}
       </p>
     </div>
   );

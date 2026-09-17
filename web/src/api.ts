@@ -215,6 +215,8 @@ export interface Insight {
   plans: Plan[];
   plans_with_risk: RiskyPlan[];
   plans_unavailable?: string;
+  /** Set when the session is not a race, so nothing observed is comparable. */
+  observed_unavailable?: string;
   stints: DriverStints[];
 }
 

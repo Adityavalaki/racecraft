@@ -37,6 +37,9 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
   const riskAvailable = insight.plans_with_risk.length > 0;
   const showRisk = mode === "risk" && riskAvailable;
   const best = showRisk ? insight.plans_with_risk[0] : insight.plans[0];
+  // Stop counts off a practice session are cars trundling through the pit lane,
+  // not a strategy, so the comparison is only offered for a race.
+  const ranAverage = insight.is_race ? actualStops : null;
 
   return (
     <div className="strategy">
@@ -59,9 +62,16 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
         <Constant
           label="Model says"
           value={best ? `${best.stops} stop${best.stops === 1 ? "" : "s"}` : "—"}
-          detail={actualStops === null ? "cheapest plan" : `race ran ${actualStops.toFixed(2)} avg`}
+          detail={ranAverage === null ? "cheapest plan" : `race ran ${ranAverage.toFixed(2)} avg`}
         />
       </div>
+
+      {!insight.is_race && (
+        <p className="scope-note">
+          Not a race. The plans below are for the {insight.total_laps}-lap race at this circuit,
+          from this season's tyres — nothing here is measured from this session.
+        </p>
+      )}
 
       {insight.plans.length > 0 ? (
         <>
@@ -161,8 +171,10 @@ function PlanRow({ plan, worst }: { plan: Plan; worst: Plan }) {
         {plan.behind_best_s === 0 ? "best" : `+${plan.behind_best_s.toFixed(1)}s`}
       </span>
       <span className="plan-bar" role="cell" aria-label={`${plan.seconds_lost.toFixed(1)} seconds lost`}>
-        <i className="bar-tyre" style={{ width: `${(plan.tyre_seconds / span) * 100}%` }} title="tyres" />
-        <i className="bar-pit" style={{ width: `${(plan.pit_seconds / span) * 100}%` }} title="pit lane" />
+        <span className="bars">
+          <i className="bar-tyre" style={{ width: `${(plan.tyre_seconds / span) * 100}%` }} title="tyres" />
+          <i className="bar-pit" style={{ width: `${(plan.pit_seconds / span) * 100}%` }} title="pit lane" />
+        </span>
         <b>{plan.seconds_lost.toFixed(1)}s</b>
       </span>
     </div>

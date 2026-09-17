@@ -112,13 +112,14 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
 
     fits = _season_fits(year)
     measured, offsets, fitted_on = fits.combined(exclude=session_key)
+    is_race = str(row["session"]) == "R"
 
     out: dict = {
         "session_key": session_key,
         "circuit": name,
         "event_name": str(row["event_name"]),
         "year": year,
-        "is_race": str(row["session"]) == "R",
+        "is_race": is_race,
         "total_laps": total_laps,
         "pit_loss": loss,
         "safety_car": risk,
@@ -133,7 +134,20 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         "caveats": list(strategy_model.KNOWN_OMISSIONS),
     }
 
-    out["degradation_curve"] = _degradation_curve(con, session_key, measured, scale)
+    # Only a race says anything about tyre wear or strategy. A practice session
+    # mixes fuel runs, qualifying simulations and out-laps, and its "stints" are
+    # cars trundling through the pit lane — a field average of four stops, which
+    # is not a strategy. The modelled line below still holds, because it is
+    # fitted on races and belongs to the season rather than to this session; the
+    # observed side of it does not, and is withheld rather than drawn.
+    out["degradation_curve"] = _degradation_curve(con, session_key, measured, scale,
+                                                  observed=is_race)
+    out["stints"] = _observed_stints(con, session_key) if is_race else []
+    if not is_race:
+        out["observed_unavailable"] = (
+            "this is not a race: practice and qualifying laps mix fuel loads and "
+            "run plans, so what they show about tyre wear is not comparable"
+        )
 
     if measured and loss and total_laps:
         out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"])
@@ -144,14 +158,13 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         out["plans_with_risk"] = []
         out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
 
-    out["stints"] = _observed_stints(con, session_key)
     return out
 
 
 # ---------------------------------------------------------------- curves
 
 def _degradation_curve(con, session_key: str, measured: dict[str, float],
-                       scale: float) -> list[dict]:
+                       scale: float, observed: bool = True) -> list[dict]:
     """
     The model's straight line against what this race's tyres actually did.
 
@@ -173,8 +186,8 @@ def _degradation_curve(con, session_key: str, measured: dict[str, float],
     laps = con.sql(f"select * from laps where session_key = '{_safe(session_key)}'").df()
     if laps.empty:
         return []
-    clean = pace_model.clean_race_laps(laps)
-    observed: dict[tuple[str, int], list[float]] = {}
+    clean = pace_model.clean_race_laps(laps) if observed else laps.iloc[:0]
+    seen: dict[tuple[str, int], list[float]] = {}
 
     if not clean.empty:
         try:
@@ -189,16 +202,16 @@ def _degradation_curve(con, session_key: str, measured: dict[str, float],
                 young = group[group["tyre_life"] <= BASELINE_AGE]
                 base = float(young["partial_s"].median()) if len(young) >= 2 else 0.0
                 for _, lap in group.iterrows():
-                    observed.setdefault((str(compound), int(lap["tyre_life"])), []).append(
+                    seen.setdefault((str(compound), int(lap["tyre_life"])), []).append(
                         float(lap["partial_s"]) - base)
 
     out: list[dict] = []
     for compound, slope in sorted(measured.items()):
-        ages = sorted(age for c, age in observed if c == compound)
+        ages = sorted(age for c, age in seen if c == compound)
         max_age = max(ages) if ages else 30
         points = []
         for age in range(1, max_age + 1):
-            samples = observed.get((compound, age), [])
+            samples = seen.get((compound, age), [])
             points.append({
                 "age": age,
                 "model_s": round(slope * scale * age, 3),
