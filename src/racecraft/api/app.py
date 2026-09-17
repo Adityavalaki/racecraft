@@ -132,4 +132,9 @@ if WEB_DIST.is_dir():
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(WEB_DIST / "index.html")
+        # Never cached. Asset filenames carry a content hash, so a rebuild
+        # changes them and the browser fetches the new ones — but only if it
+        # re-reads this file, which names them. Cached, it keeps asking for the
+        # bundle it already has and a rebuild silently does nothing.
+        return FileResponse(WEB_DIST / "index.html",
+                            headers={"Cache-Control": "no-store, must-revalidate"})

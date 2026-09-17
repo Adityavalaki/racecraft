@@ -234,3 +234,23 @@ def test_frames_can_be_served_raw(client):
     # This fixture's timestamps are perfectly regular, so there is no jitter to
     # remove: smoothing should leave the car essentially where it was.
     assert np.allclose(smoothed["drivers"]["1"]["x"], raw["drivers"]["1"]["x"], atol=2.0)
+
+
+def test_the_page_is_never_cached_so_a_rebuild_is_not_invisible(client, tmp_path, monkeypatch):
+    """
+    Asset filenames carry a content hash, so a rebuild changes them — but the
+    browser only learns that by re-reading index.html, which names them. Cached,
+    it keeps requesting the bundle it already has and a rebuild silently does
+    nothing, which is exactly how a fix can look like it did not work.
+    """
+    from racecraft.api import app as app_module
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setattr(app_module, "WEB_DIST", dist)
+
+    response = client.get("/")
+    if response.status_code == 404:
+        pytest.skip("interface not built in this checkout; nothing is mounted to serve")
+    assert "no-store" in response.headers.get("cache-control", "")
