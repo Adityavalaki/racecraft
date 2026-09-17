@@ -27,6 +27,13 @@ const PADDING = { left: 30, right: 34, top: 12, bottom: 22 };
  *
  * What it gives up is distance: half a second and thirty seconds both show as
  * one place. The gap is still on the tower, where a number belongs.
+ *
+ * It draws only as far as the clock has reached, so the lines grow across the
+ * panel while the race runs and retreat when you scrub back. The axis stays
+ * fixed to the full distance rather than rescaling to what has been drawn:
+ * a chart whose axis moves under a line makes the line look like it is doing
+ * something it is not, and how much race is left is half of what a strategy
+ * call turns on.
  */
 export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap, onSelectLap }: Props) {
   const { ref: canvas, size } = useCanvasSize<HTMLCanvasElement>();
@@ -53,6 +60,9 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     const positions = series.flatMap((s) => s.position.filter((p): p is number => p !== null));
     if (positions.length === 0) return;
     const lastPlace = Math.max(...positions);
+    // Clamped to at least one lap: at a standing start there is nothing to draw
+    // yet, and an empty panel reads as broken rather than as "not started".
+    const shownLap = Math.min(maxLap, Math.max(1, currentLap));
     geometry.current = { left: PADDING.left, width: plotWidth, maxLap };
 
     const x = (lap: number) => PADDING.left + ((lap - 1) / Math.max(1, maxLap - 1)) * plotWidth;
@@ -63,8 +73,8 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     context.font = "10px 'JetBrains Mono', monospace";
     context.textBaseline = "middle";
 
-    // A line per place, labelled at both ends: the left is the grid, the right
-    // is where they finished, which is the comparison people actually make.
+    // A faint line per place. Every tenth of the panel's height is a position,
+    // so the levels themselves carry the scale and only a few need labelling.
     context.strokeStyle = "#1b222a";
     context.lineWidth = 1;
     for (let place = 1; place <= lastPlace; place += 1) {
@@ -85,7 +95,9 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
       // sloped line would draw an overtake that happened gradually.
       context.beginPath();
       let previous: number | null = null;
+      let head: { px: number; py: number } | null = null;
       item.laps.forEach((lap, index) => {
+        if (lap > shownLap) return;                 // not run yet at this point in the race
         const place = item.position[index];
         if (place === null || place === undefined) {
           previous = null;
@@ -100,6 +112,7 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
           context.lineTo(px, py);
         }
         previous = py;
+        head = { px, py };
       });
       context.strokeStyle = emphasised ? `#${item.team_color ?? "cccccc"}` : "#39434f";
       context.lineWidth = emphasised ? 2.25 : 1;
@@ -111,6 +124,7 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
         item.pit_in.forEach((pitted, index) => {
           const place = item.position[index];
           if (!pitted || place === null || place === undefined) return;
+          if (item.laps[index]! > shownLap) return;
           context.beginPath();
           context.arc(x(item.laps[index]!), y(place), 3, 0, Math.PI * 2);
           context.fillStyle = "#ff7a33";
@@ -118,34 +132,47 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
         });
       }
 
-      // The driver's code where their line ends, which is what turns a tangle
-      // of lines into a readable order.
-      const lastWithPlace = lastIndexWithPosition(item);
-      if (lastWithPlace !== -1) {
-        const place = item.position[lastWithPlace]!;
-        context.fillStyle = emphasised ? `#${item.team_color ?? "cccccc"}` : "#6b7887";
+      // The driver's code rides the head of their own line, so the order reads
+      // off the right-hand edge at whatever point the race has reached.
+      const tip = head as { px: number; py: number } | null;
+      if (tip) {
+        const colour = emphasised ? `#${item.team_color ?? "cccccc"}` : "#6b7887";
+        if (emphasised) {
+          context.beginPath();
+          context.arc(tip.px, tip.py, 2.5, 0, Math.PI * 2);
+          context.fillStyle = colour;
+          context.fill();
+        }
+        context.fillStyle = colour;
         context.textAlign = "left";
-        context.fillText(item.abbreviation ?? String(item.driver_number),
-                         x(item.laps[lastWithPlace]!) + 5, y(place));
+        context.fillText(item.abbreviation ?? String(item.driver_number), tip.px + 5, tip.py);
       }
     };
 
     series.filter((s) => !selected.includes(s.driver_number)).forEach((s) => drawSeries(s, false));
     series.filter((s) => selected.includes(s.driver_number)).forEach((s) => drawSeries(s, true));
 
-    const px = x(Math.max(1, currentLap));
+    // The leading edge: where the race has got to, and where the lines stop.
+    const px = x(shownLap);
     context.beginPath();
     context.moveTo(px, PADDING.top);
     context.lineTo(px, height - PADDING.bottom);
     context.strokeStyle = "#ff7a33";
+    context.globalAlpha = 0.5;
     context.lineWidth = 1;
     context.stroke();
+    context.globalAlpha = 1;
 
     context.fillStyle = "#6b7887";
     context.textAlign = "left";
     context.fillText("LAP 1", PADDING.left, height - 8);
+    context.fillStyle = "#ff7a33";
+    context.textAlign = "center";
+    context.fillText(`LAP ${shownLap}`, Math.min(width - PADDING.right - 24, Math.max(PADDING.left + 24, px)),
+                     height - 8);
+    context.fillStyle = "#6b7887";
     context.textAlign = "right";
-    context.fillText(`LAP ${maxLap}`, width - PADDING.right, height - 8);
+    context.fillText(`${maxLap}`, width - PADDING.right, height - 8);
   }, [canvas, series, selected, currentLap, size.width, size.height]);
 
   return (
@@ -161,11 +188,3 @@ export const RaceTrace = memo(function RaceTrace({ series, selected, currentLap,
     />
   );
 });
-
-/** Where a driver's line ends: their last lap with a known position. */
-function lastIndexWithPosition(item: LapSeries): number {
-  for (let index = item.position.length - 1; index >= 0; index -= 1) {
-    if (item.position[index] !== null && item.position[index] !== undefined) return index;
-  }
-  return -1;
-}
