@@ -165,10 +165,15 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
 }
-/* A heading sits over its own column, never spilling into the next one, and
-   ends where the figures under it end. */
+/*
+  Every cell is centred in its own column, heading and figure alike, so each
+  heading sits over the middle of what it names. The figures stay on tabular
+  numerals, so digits keep the same width and a column of sector times still
+  lines up character for character as the values change.
+*/
+.tower-head span,
+.tower-row > * { text-align: center; }
 .tower-head span { overflow: hidden; }
-.tower-head .h-right { text-align: right; }
 .tower-rows { overflow-y: auto; min-height: 0; }
 
 /* Sector times: colour is the only signal, so keep the type quiet. */
@@ -219,21 +224,20 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .tower-row.is-out { opacity: 0.45; }
 .tower-row:focus-visible { outline: 1px solid var(--signal); outline-offset: -1px; }
 
-.pos { font-weight: 600; color: var(--ink-mid); text-align: right; }
+.pos { font-weight: 600; color: var(--ink-mid); }
 .team-bar { height: 1.1rem; border-radius: 1px; }
 .code { font-weight: 700; letter-spacing: 0.04em; }
 .num {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
   font-size: 0.82rem;
-  text-align: right;
 }
 .gap { color: var(--ink); }
 .int { color: var(--ink-soft); }
 .last.is-session-best { color: var(--purple); }
 .last.is-personal-best { color: var(--green); }
 .stops { color: var(--ink-soft); }
-.tyre { display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; }
+.tyre { display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .tyre-chip {
   display: grid;
   place-items: center;

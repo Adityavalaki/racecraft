@@ -19,17 +19,17 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
   return (
     <div className="tower">
       <div className="tower-head">
-        <span className="h-right">POS</span>
+        <span>POS</span>
         <span />
         <span>DRIVER</span>
-        <span className="h-right">GAP</span>
-        <span className="h-right">INT</span>
-        <span className="h-right">LAST</span>
-        <span className="h-right">S1</span>
-        <span className="h-right">S2</span>
-        <span className="h-right">S3</span>
-        <span className="h-right">TYRE</span>
-        <span className="h-right">PIT</span>
+        <span>GAP</span>
+        <span>INT</span>
+        <span>LAST</span>
+        <span>S1</span>
+        <span>S2</span>
+        <span>S3</span>
+        <span>TYRE</span>
+        <span>PIT</span>
       </div>
       <div className="tower-rows">
         {drivers.map((driver) => {
