@@ -127,24 +127,31 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 .tower { display: flex; flex-direction: column; min-height: 0; }
 /*
-  Every column but the driver code is a fixed width, and the slack goes to the
-  code. Putting the flexible track on GAP instead — as this did — pushed the
-  gap far from the driver it belongs to and crushed the sector times together
-  at the right edge, so the eye had to re-find each column on every row.
+  Every column carries a floor and a share. The floor is what the widest value
+  in that column actually needs, so nothing is ever crushed; the share is how
+  spare width is divided, so the table fills its panel evenly at any size.
+
+  Both halves of that had to be got wrong once to see why. With the flexible
+  track on GAP, all the slack landed between the driver code and its own gap
+  figure while the sectors bunched at the right edge. Moving it to the driver
+  code merely moved the void — the code sat left, the numbers sat right, and
+  the middle was empty. Spread across every column, the row reads as one table.
 */
 .tower-head,
 .tower-row {
   display: grid;
   grid-template-columns:
-    1.7rem            /* position */
-    4px               /* team colour */
-    minmax(2.7rem, 1fr)  /* driver code, takes the slack */
-    3.8rem            /* gap */
-    3.8rem            /* interval */
-    4.6rem            /* last lap */
-    3.2rem 3.2rem 3.2rem  /* sectors */
-    3.3rem            /* tyre */
-    1.8rem;           /* stops */
+    minmax(1.7rem, 0.55fr)   /* position */
+    4px                      /* team colour */
+    minmax(2.7rem, 1fr)      /* driver code */
+    minmax(3.8rem, 1.1fr)    /* gap */
+    minmax(3.8rem, 1.1fr)    /* interval */
+    minmax(4.6rem, 1.25fr)   /* last lap */
+    minmax(3.2rem, 0.95fr)   /* sector 1 */
+    minmax(3.2rem, 0.95fr)   /* sector 2 */
+    minmax(3.2rem, 0.95fr)   /* sector 3 */
+    minmax(3.3rem, 0.95fr)   /* tyre */
+    minmax(1.8rem, 0.6fr);   /* stops */
   align-items: center;
   gap: 0.3rem;
   padding: 0 0.5rem;
