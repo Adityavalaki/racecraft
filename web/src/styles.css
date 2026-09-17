@@ -83,7 +83,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .grid {
   display: grid;
   grid-template-columns: minmax(470px, 1.2fr) minmax(0, 1.5fr);
-  grid-template-rows: 1.15fr 1fr;
+  /*
+    The map is a shape: it reads at any size, and once the circuit is
+    recognisable more height adds nothing. The panel beneath it carries the
+    race trace, the wear chart and the strategy board, all of which need room
+    before they say anything. So the space goes there.
+  */
+  grid-template-rows: minmax(0, 0.78fr) minmax(0, 1.22fr);
   gap: 6px;
   padding: 6px;
   min-height: 0;
@@ -120,22 +126,42 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* ---------- timing tower ---------- */
 
 .tower { display: flex; flex-direction: column; min-height: 0; }
+/*
+  Every column but the driver code is a fixed width, and the slack goes to the
+  code. Putting the flexible track on GAP instead — as this did — pushed the
+  gap far from the driver it belongs to and crushed the sector times together
+  at the right edge, so the eye had to re-find each column on every row.
+*/
 .tower-head,
 .tower-row {
   display: grid;
-  grid-template-columns: 1.7rem 4px 2.8rem minmax(3.6rem, 1fr) 3.9rem 4.6rem 3.2rem 3.2rem 3.2rem 3rem 1.6rem;
+  grid-template-columns:
+    1.7rem            /* position */
+    4px               /* team colour */
+    minmax(2.7rem, 1fr)  /* driver code, takes the slack */
+    3.8rem            /* gap */
+    3.8rem            /* interval */
+    4.6rem            /* last lap */
+    3.2rem 3.2rem 3.2rem  /* sectors */
+    3.3rem            /* tyre */
+    1.8rem;           /* stops */
   align-items: center;
-  gap: 0.35rem;
-  padding: 0 0.55rem;
+  gap: 0.3rem;
+  padding: 0 0.5rem;
 }
 .tower-head {
   font-family: "JetBrains Mono", monospace;
   font-size: 0.6rem;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: var(--ink-soft);
   padding-block: 0.35rem;
   border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
 }
+/* A heading sits over its own column, never spilling into the next one, and
+   ends where the figures under it end. */
+.tower-head span { overflow: hidden; }
+.tower-head .h-right { text-align: right; }
 .tower-rows { overflow-y: auto; min-height: 0; }
 
 /* Sector times: colour is the only signal, so keep the type quiet. */
@@ -200,7 +226,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .last.is-session-best { color: var(--purple); }
 .last.is-personal-best { color: var(--green); }
 .stops { color: var(--ink-soft); }
-.tyre { display: flex; align-items: center; gap: 0.35rem; }
+.tyre { display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; }
 .tyre-chip {
   display: grid;
   place-items: center;
@@ -484,7 +510,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding: 0 0.25rem;
   cursor: help;
 }
-.num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; }
+.strategy .num { font-variant-numeric: tabular-nums; text-align: right; }
 .plan-cost { color: var(--ink-mid); }
 .plan-row:first-of-type .plan-cost { color: var(--signal); }
 .plan-bar {
