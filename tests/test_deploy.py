@@ -262,3 +262,64 @@ def test_the_repo_is_taken_from_the_space_when_not_given(monkeypatch):
     monkeypatch.setattr(persist, "HF_SPACE", "")
     with pytest.raises(persist.NotConfigured):
         persist.target_repo()
+
+
+# ------------------------------------------------------------ the Space payload
+
+import deploy_space                                             # noqa: E402
+
+
+def test_the_space_readme_carries_the_front_matter_hugging_face_needs(tmp_path, monkeypatch):
+    """
+    The one that breaks a Space silently. Without `sdk: docker` and
+    `app_port: 7860`, Hugging Face does not know what it has been handed and
+    the Space never starts — with no error pointing at the cause.
+    """
+    monkeypatch.setattr(deploy_space, "SEND", [])
+    staged = deploy_space.stage(tmp_path / "space")
+    readme = (staged / "README.md").read_text(encoding="utf-8")
+
+    assert readme.startswith("---\n"), "front matter has to be the first thing in the file"
+    front = readme.split("---")[1]
+    assert "sdk: docker" in front
+    assert "app_port: 7860" in front
+    assert "title:" in front
+
+
+def test_the_payload_is_the_application_and_the_lake_and_nothing_else(tmp_path, monkeypatch):
+    """A Space repo is a git repository with the lake in it, so it stays small."""
+    root = tmp_path / "root"
+    for item in ("src/racecraft", "web/dist", "data/lake-slim/laps"):
+        (root / item).mkdir(parents=True)
+    (root / "src" / "racecraft" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "src" / "racecraft" / "cached.pyc").write_text("junk", encoding="utf-8")
+    (root / "web" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+    (root / "web" / "node_modules").mkdir()
+    (root / "data" / "lake-slim" / "laps" / "data.parquet").write_bytes(b"x")
+    (root / "data" / "lake" ).mkdir()
+    (root / "data" / "lake" / "huge.parquet").write_bytes(b"y" * 1000)
+    (root / "Dockerfile").write_text("FROM python:3.11-slim", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]", encoding="utf-8")
+    monkeypatch.setattr(deploy_space, "ROOT", root)
+
+    staged = deploy_space.stage(tmp_path / "space")
+
+    assert (staged / "Dockerfile").is_file()
+    assert (staged / "web" / "dist" / "index.html").is_file()
+    assert (staged / "data" / "lake-slim" / "laps" / "data.parquet").is_file()
+    # The full lake is 1.5 GB and must never be swept in by accident.
+    assert not (staged / "data" / "lake").exists()
+    assert not (staged / "web" / "node_modules").exists()
+    assert not (staged / "src" / "racecraft" / "cached.pyc").exists(), "no bytecode"
+
+
+def test_missing_prerequisites_are_named_rather_than_half_sent(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    (root / "src").mkdir(parents=True)
+    (root / "Dockerfile").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(deploy_space, "ROOT", root)
+
+    missing = deploy_space.check(deploy_space.SEND)
+    assert "web/dist" in missing
+    assert "data/lake-slim" in missing
+    assert "Dockerfile" not in missing

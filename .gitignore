@@ -11,3 +11,5 @@ legacy/**/__pycache__/
 
 # The deployable copy of the lake, built on demand by scripts/export_lake.py
 data/lake-slim/
+
+data/space-build/

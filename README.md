@@ -222,10 +222,25 @@ needs it is opened, so a replay never pays for a fit nobody looked at.
 ## Running it somewhere other than a laptop
 
 ```powershell
-python scripts/export_lake.py --out data/lake-slim --overwrite
-cd web; npm run build; cd ..
-docker build -t racecraft .
+# once: create the Space at huggingface.co/new-space, SDK "Docker", template "Blank"
+# then a write token at huggingface.co/settings/tokens
+
+python scripts/deploy_space.py --repo you/racecraft --dry-run   # see what would go
+python scripts/deploy_space.py --repo you/racecraft             # send it
 ```
+
+That builds the interface, exports the lake without telemetry, assembles exactly
+what the Space needs — **23.4 MB** — and uploads it. `--dry-run` assembles and
+reports without sending, so the payload can be looked at first.
+
+Afterwards, add `HF_TOKEN` as a **secret on the Space**, under Settings. Without
+it the app runs, but anything the Fetch new races button brings in is lost when
+the Space restarts, which is the failure that looks like success.
+
+The Space's `README.md` is rewritten with the YAML front matter Hugging Face
+needs. This is the one worth knowing about: without `sdk: docker` and
+`app_port: 7860` it does not know what it has been handed, and the Space never
+starts with nothing pointing at why.
 
 Telemetry is **98.5% of the lake** — position data 793 MB, car data 717 MB —
 against **23 MB** for laps, results, weather, race control and sessions across
