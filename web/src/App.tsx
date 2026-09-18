@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Insight, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
+import { LIVE_KEY, api, type Insight, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
@@ -12,6 +12,13 @@ import { TyreModel } from "./panels/TyreModel";
 
 /** How often the tower refreshes while playing. Positions animate separately and far more often. */
 const STATE_INTERVAL_MS = 400;
+
+/**
+ * How often a live session is re-read. The server re-parses its recording at
+ * the same cadence, and a lap takes over a minute, so this is far finer than
+ * the data changes and far coarser than re-parsing on every poll would be.
+ */
+const LIVE_INTERVAL_MS = 10_000;
 
 /** The lower-right panel shows one of these at a time. */
 const TABS = [
@@ -33,13 +40,23 @@ export default function App() {
   const [tab, setTab] = useState<TabId>("trace");
   const [insight, setInsight] = useState<Insight | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
+  // A live session grows while it is being watched. Following means the clock
+  // rides the newest lap; scrubbing back stops following, because someone
+  // looking at lap 12 does not want to be yanked to lap 40 a second later.
+  const [following, setFollowing] = useState(true);
+  const isLive = sessionKey === LIVE_KEY;
 
   useEffect(() => {
     api.sessions()
       .then((all) => {
         setSessions(all);
-        const firstRace = all.find((s) => s.session === "R") ?? all[0];
-        if (firstRace) setSessionKey(firstRace.session_key);
+        // Live first when there is one: a recording exists only because someone
+        // started it, which is as clear a statement of intent as the interface
+        // is going to get. Otherwise the newest race.
+        const opening = all.find((s) => s.session_key === LIVE_KEY)
+          ?? all.find((s) => s.session === "R")
+          ?? all[0];
+        if (opening) setSessionKey(opening.session_key);
       })
       .catch((e) => setError(String(e.message ?? e)));
   }, []);
@@ -55,6 +72,7 @@ export default function App() {
     setError(null);
     setInsight(null);
     setInsightError(null);
+    setFollowing(true);
     api.info(sessionKey, controller.signal).then(setInfo).catch(reportUnlessAborted(setError));
     api
       .laps(sessionKey, controller.signal)
@@ -78,6 +96,32 @@ export default function App() {
       .catch(reportUnlessAborted(setInsightError));
     return () => controller.abort();
   }, [sessionKey, wantsInsight, insight, insightError]);
+
+  // A historic session is fetched once. A live one has to be asked again: its
+  // end moves every lap, and the lap chart gains a row.
+  useEffect(() => {
+    if (!isLive || !sessionKey) return;
+    let active = true;
+    const pull = () => {
+      api.info(sessionKey).then((next) => active && setInfo(next)).catch(() => undefined);
+      api.laps(sessionKey)
+        .then((chart) => {
+          if (!active) return;
+          setLaps(chart.drivers);
+          setCrossings(chart.leader_crossings);
+        })
+        .catch(() => undefined);
+      // Dropping the models makes the open tab refetch them; a closed one pays
+      // nothing, which is why this clears rather than fetches.
+      setInsight(null);
+      setInsightError(null);
+    };
+    const timer = setInterval(pull, LIVE_INTERVAL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [isLive, sessionKey]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
@@ -113,6 +157,15 @@ export default function App() {
     };
   }, [sessionKey, info]);
 
+  // Ride the leading edge while following. Reading clock.t here would make this
+  // fire on every tick, so it watches only where the session now ends.
+  const seekRef = useRef(clock.seek);
+  seekRef.current = clock.seek;
+  const liveEdge = isLive ? info?.t_end : undefined;
+  useEffect(() => {
+    if (following && liveEdge !== undefined) seekRef.current(liveEdge);
+  }, [following, liveEdge]);
+
   const cars = positions.at(clock.t);
   const actualStops = useMemo(() => {
     const counts = laps.map((d) => d.pit_in.filter(Boolean).length);
@@ -133,9 +186,24 @@ export default function App() {
     );
   }, []);
 
+  // Any deliberate move of the clock stops following the live edge. Without
+  // this, scrubbing back on a live session would snap forward a second later
+  // and the scrubber would be unusable.
+  const stopFollowingAndSeek = useCallback(
+    (t: number) => {
+      setFollowing(false);
+      seekRef.current(t);
+    },
+    [],
+  );
+  const handClock = useMemo(
+    () => ({ ...clock, seek: stopFollowingAndSeek }),
+    [clock, stopFollowingAndSeek],
+  );
+
   // Jumping to a lap means the moment that lap began, which is the leader's
   // crossing of the lap before it.
-  const seek = clock.seek;
+  const seek = stopFollowingAndSeek;
   const seekToLap = useCallback(
     (lap: number) => {
       if (!crossings || !info) return;
@@ -160,6 +228,17 @@ export default function App() {
             </option>
           ))}
         </select>
+        {isLive && (
+          <div className="live-flag">
+            <span className={following ? "live-dot is-following" : "live-dot"} />
+            {following ? "LIVE" : "PAUSED"}
+            {!following && (
+              <button type="button" className="go-live" onClick={() => setFollowing(true)}>
+                Go live
+              </button>
+            )}
+          </div>
+        )}
         {info && (
           <div className="session-meta">
             {info.session.location} · {info.drivers.length} cars
@@ -239,7 +318,7 @@ export default function App() {
 
       {info && (
         <ClockBar
-          clock={clock}
+          clock={handClock}
           start={info.t_start}
           end={info.t_end}
           leaderLap={state?.leader_lap ?? 0}

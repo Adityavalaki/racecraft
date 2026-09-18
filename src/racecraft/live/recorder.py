@@ -112,15 +112,23 @@ def record(path: Path | None = None, timeout_s: int = SILENCE_TIMEOUT_S,
             return path
 
 
-def recordings() -> list[Path]:
-    """Every recording on disk, newest first."""
+def recordings(with_content: bool = False) -> list[Path]:
+    """
+    Every recording on disk, newest first.
+
+    `with_content` skips empty ones. A recorder started before a session begins
+    sits connected and writes nothing, which is correct behaviour and not a
+    session: offering it as one gives you something that errors when opened.
+    """
     if not LIVE_DIR.is_dir():
         return []
-    return sorted(LIVE_DIR.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    found = sorted(LIVE_DIR.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p for p in found if p.stat().st_size > 0] if with_content else found
 
 
-def latest_recording() -> Path | None:
-    found = recordings()
+def latest_recording(with_content: bool = True) -> Path | None:
+    """The newest recording worth reading. Empty ones are skipped by default."""
+    found = recordings(with_content=with_content)
     return found[0] if found else None
 
 

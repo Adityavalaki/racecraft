@@ -53,6 +53,48 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   letter-spacing: 0.22em;
   color: var(--signal);
 }
+/* ---------- live ---------- */
+
+.live-flag {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-soft);
+}
+.live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--rule-strong);
+  flex: none;
+}
+.live-dot.is-following {
+  background: var(--red);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot.is-following { animation: none; }
+}
+.go-live {
+  background: var(--panel-2);
+  border: 1px solid var(--signal);
+  color: var(--signal);
+  padding: 0.1rem 0.45rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.go-live:hover { background: var(--signal); color: var(--ground); }
+.go-live:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
 .session-select {
   background: var(--panel-2);
   color: var(--ink);

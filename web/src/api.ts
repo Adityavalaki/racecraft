@@ -194,6 +194,21 @@ export interface DriverStints {
   stints: StintRun[];
 }
 
+export interface LiveStatus {
+  attached: boolean;
+  recording: string | null;
+  bytes?: number;
+  laps?: number;
+  drivers?: number;
+  session?: { year: number; round: number; name: string };
+  built_ago_s?: number | null;
+  last_read_ago_s?: number | null;
+  error?: string | null;
+}
+
+/** The one session key that is not in the lake. */
+export const LIVE_KEY = "live";
+
 export interface Insight {
   session_key: string;
   circuit: string;
@@ -212,6 +227,8 @@ export interface Insight {
   fitted_on: string[];
   fitted_on_count: number;
   held_out: boolean;
+  /** True when the session is still happening, so nothing was held out of the fit. */
+  is_live?: boolean;
   caveats: string[];
   degradation_curve: DegradationCurve[];
   plans: Plan[];
@@ -220,6 +237,15 @@ export interface Insight {
   /** Set when the session is not a race, so nothing observed is comparable. */
   observed_unavailable?: string;
   stints: DriverStints[];
+}
+
+async function post<T>(path: string): Promise<T> {
+  const response = await fetch(path, { method: "POST" });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(detail.detail ?? `request failed: ${response.status}`);
+  }
+  return (await response.json()) as T;
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -243,6 +269,8 @@ export const api = {
   /** Slow the first time a season is asked for — the server fits it — then cached. */
   insight: (key: string, signal?: AbortSignal) =>
     get<Insight>(`/api/sessions/${key}/insight`, signal),
+  liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
+  liveAttach: () => post<LiveStatus>("/api/live/attach"),
 };
 
 /** 92.608 -> "1:32.608", the way lap times are always written. */

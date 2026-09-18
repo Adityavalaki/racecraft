@@ -272,7 +272,37 @@ value — a race is 1.4 million position samples against a few thousand lap rows
 The timing side is what the tower, the trace, the tyre model and the strategy
 board read.
 
-**Not yet proven:** the connection itself. Everything testable offline is tested
+### Watching it
+
+```powershell
+.venv\Scriptsacecraft-live record --name baku-2026    # one terminal
+.venv\Scriptsacecraft-serve                           # another
+```
+
+Open the interface and `LIVE` is at the top of the session dropdown, selected by
+default — a recording exists only because someone started it, which is as clear
+a statement of intent as an interface is going to get. An empty recording is not
+offered: a recorder started before a session sits connected and writes nothing,
+and listing that would hand back an error when clicked.
+
+Live is a session key, not a second set of endpoints. `/api/sessions/live/state`,
+`/laps` and `/insight` all work, so the timing tower, the race trace, the tyre
+model and the strategy board need no live code path at all. The only part of the
+server that knows live exists is `api/live_store.py`.
+
+The clock follows the newest lap. Scrubbing back stops it following — someone
+looking at lap 12 should not be yanked to lap 40 a second later — and **Go live**
+resumes. A session that is not ready answers 409 rather than 404, because the
+difference decides whether the interface should retry, and in the opening
+minutes of a session it always should.
+
+One asymmetry worth stating: a finished race is scored against a model that
+never saw it, and the strategy panel says `held out`. A race in progress is
+watched with a model fitted on every race that finished before it. Both are
+honest and they are not the same arrangement, so the response carries `is_live`
+and the panel says which it is.
+
+**Not yet proven:** the connection during a session. Everything testable offline is tested
 — the recording format round-trips through FastF1's own parser, a dropped feed
 appends rather than starting a second file, a half-written recording reads as
 "not ready" rather than crashing, and the reader caches instead of re-parsing on

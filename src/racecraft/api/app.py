@@ -11,6 +11,10 @@ Three shapes of request, matching how the panels actually consume data:
 * `/insight` is what the models make of the session: degradation, pit loss,
   neutralisation risk, ranked plans. Slow once per season, then cached.
 
+The session key `live` is served from a running recording instead of the lake,
+so every endpoint above works against a session in progress without knowing it
+is one. See `live_store`.
+
 Telemetry is thinned server-side. The browser never receives raw samples.
 """
 
@@ -25,6 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from racecraft.api import insight
+from racecraft.api import live_store
 from racecraft.api import session as session_store
 from racecraft.store.db import connect
 
@@ -57,7 +62,26 @@ def list_sessions(year: int | None = None, session: str | None = None, limit: in
         from sessions where {' and '.join(where)}
         order by year desc, round desc, session limit {int(limit)}""").df()
     rows["date_utc"] = rows["date_utc"].astype(str)
-    return rows.to_dict("records")
+    out = rows.to_dict("records")
+
+    # Live goes at the top when a recording exists, so the interface can offer
+    # it in the same list as everything else rather than as a separate mode.
+    status = live_store.store.status()
+    if status.get("recording"):
+        session = status.get("session") or {}
+        out.insert(0, {
+            "session_key": live_store.SESSION_KEY,
+            "year": session.get("year") or 0,
+            "round": session.get("round") or 0,
+            "session": "LIVE",
+            "event_name": "Live timing",
+            "location": "",
+            "country": "",
+            "session_name": session.get("name") or "Live",
+            "date_utc": "",
+            "total_laps": None,
+        })
+    return out
 
 
 @app.get("/api/sessions/{session_key}")
@@ -101,10 +125,50 @@ def session_insight(session_key: str,
     seconds; later calls are served from that fit. The race being viewed is
     held out of its own degradation figure.
     """
+    if session_key == live_store.SESSION_KEY:
+        try:
+            return insight.for_live(_load(session_key), scale=scale)
+        except live_store.NotLive as error:
+            raise HTTPException(status_code=409, detail=str(error)) from None
     try:
         return insight.for_session(session_key, scale=scale)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+
+
+@app.get("/api/live")
+def live_status() -> dict:
+    """Whether live is attached to a recording, and what it has read from it."""
+    return live_store.store.status()
+
+
+@app.post("/api/live/attach")
+def live_attach(recording: str | None = None, year: int | None = None,
+                round_number: int | None = None, session_name: str | None = None) -> dict:
+    """
+    Point live at a recording. Defaults to the newest one and the session now.
+
+    Year, round and session are only needed outside a race weekend, when the
+    schedule cannot say which session a recording belongs to.
+    """
+    from pathlib import Path
+
+    from racecraft.live import feed as feed_module
+
+    named = None
+    if year and round_number and session_name:
+        named = feed_module.LiveSession(year, round_number, session_name)
+    try:
+        live_store.store.attach(Path(recording) if recording else None, named)
+    except live_store.NotLive as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return live_store.store.status()
+
+
+@app.post("/api/live/detach")
+def live_detach() -> dict:
+    live_store.store.detach()
+    return live_store.store.status()
 
 
 @app.get("/api/circuits")
@@ -114,6 +178,19 @@ def list_circuits() -> list[dict]:
 
 
 def _load(session_key: str):
+    """
+    A session by key, from the lake or from the live recording.
+
+    Live is a key rather than a separate set of endpoints, which is what keeps
+    the interface from needing a second code path for it.
+    """
+    if session_key == live_store.SESSION_KEY:
+        try:
+            return live_store.store.session()
+        except live_store.NotLive as error:
+            # 409 rather than 404: the session is not missing, it is not ready,
+            # and the difference decides whether the interface should retry.
+            raise HTTPException(status_code=409, detail=str(error)) from None
     try:
         return session_store.load(session_key)
     except KeyError:

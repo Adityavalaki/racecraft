@@ -95,15 +95,64 @@ class SessionData:
 
         self.position = self._load_channels(con, "pos_data", ["x", "y"])
         self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs"])
-
-        self.t_start = float(np.nanmin([self.meta.get("start_t") or np.inf,
-                                        self.laps["lap_start_t"].min(skipna=True)]))
-        self.t_end = float(self.laps["lap_end_t"].max(skipna=True))
-        self.outline = self._build_outline()
-        self.bounds = self._bounds()
+        self._assemble()
         log.info("loaded %s: %d laps, %d drivers, %d position samples",
                  session_key, len(self.laps), len(self.drivers),
                  sum(len(c.t) for c in self.position.values()))
+
+    @classmethod
+    def from_tables(cls, tables: dict[str, pd.DataFrame], session_key: str = "live") -> "SessionData":
+        """
+        The same object, built from tables already in memory rather than the lake.
+
+        This is what live mode needs, and the reason it is cheap: a recording
+        parses into exactly the tables the lake stores, so once they are here
+        nothing downstream can tell a live session from a historic one.
+
+        Three things are thinner than the lake and have to be tolerated rather
+        than assumed away. A session in progress has no classification, so the
+        driver list is taken from the laps when `results` is missing. It has no
+        car telemetry or positions here by choice, so the track map is absent
+        rather than wrong. And in the opening minutes it has no completed laps
+        at all, which is a session that has not started, not a broken one.
+        """
+        self = cls.__new__(cls)
+        self.session_key = session_key
+
+        sessions = tables.get("sessions")
+        if sessions is None or sessions.empty:
+            raise KeyError(f"{session_key}: the recording carries no session yet")
+        self.meta = sessions.iloc[0].to_dict()
+        self.session_name = self.meta.get("session_name") or "Live"
+
+        self.laps = tables.get("laps", _empty(_LAP_COLUMNS)).copy()
+        self.drivers = _drivers_from(tables)
+        self.track_status = _ordered(tables.get("track_status"), ["t", "status", "message"])
+        self.race_control = _ordered(tables.get("race_control"),
+                                     ["t", "lap", "category", "flag", "scope", "message"])
+        self.weather = _ordered(tables.get("weather"),
+                                ["t", "air_temp", "track_temp", "rainfall", "wind_speed"])
+        self.position = {}
+        self.car = {}
+        self._assemble()
+        return self
+
+    def _assemble(self) -> None:
+        """Everything derived from the tables, however they arrived."""
+        starts = self.laps["lap_start_t"] if "lap_start_t" in self.laps else pd.Series(dtype=float)
+        ends = self.laps["lap_end_t"] if "lap_end_t" in self.laps else pd.Series(dtype=float)
+        first = starts.min(skipna=True) if len(starts) else np.nan
+        last = ends.max(skipna=True) if len(ends) else np.nan
+
+        declared = self.meta.get("start_t")
+        candidates = [v for v in (declared, first) if v is not None and np.isfinite(v)]
+        self.t_start = float(min(candidates)) if candidates else 0.0
+        # A session with no completed laps has no end yet. One second of range
+        # keeps the clock and every axis built on it from dividing by zero.
+        self.t_end = float(last) if np.isfinite(last) else self.t_start + 1.0
+
+        self.outline = self._build_outline()
+        self.bounds = self._bounds()
 
     # ------------------------------------------------------------- loading
 
@@ -319,6 +368,48 @@ class SessionData:
     def messages(self, until: float, limit: int = 30) -> list[dict]:
         past = self.race_control[self.race_control["t"] <= until].tail(limit)
         return _records(past)
+
+
+_LAP_COLUMNS = ["driver_number", "driver", "lap_number", "lap_start_t", "lap_end_t"]
+
+
+def _empty(columns: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({c: pd.Series(dtype="object") for c in columns})
+
+
+def _ordered(frame: pd.DataFrame | None, columns: list[str]) -> pd.DataFrame:
+    """The columns this class reads, in time order, whatever the source carried."""
+    if frame is None or frame.empty:
+        return _empty(columns)
+    present = [c for c in columns if c in frame.columns]
+    out = frame[present].copy()
+    for missing in (c for c in columns if c not in present):
+        out[missing] = None
+    return out.sort_values("t") if "t" in out else out
+
+
+def _drivers_from(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    The driver list, from the classification if there is one and the laps if not.
+
+    A session in progress has no result, so falling back to the laps is what
+    lets the tower fill in before anyone has finished anything.
+    """
+    columns = ["driver_number", "abbreviation", "full_name", "team_name", "team_color",
+               "grid_position", "position", "classified_position", "status"]
+    results = tables.get("results")
+    if results is not None and not results.empty:
+        return _ordered(results, columns).sort_values("driver_number")
+
+    laps = tables.get("laps")
+    if laps is None or laps.empty:
+        return _empty(columns)
+    seen = laps.groupby("driver_number").agg(
+        abbreviation=("driver", "last"), team_name=("team", "last")).reset_index()
+    seen["full_name"] = seen["abbreviation"]
+    for blank in ("team_color", "grid_position", "position", "classified_position", "status"):
+        seen[blank] = None
+    return seen[columns].sort_values("driver_number")
 
 
 # Keyed by lake as well as session: the same key names different data in a

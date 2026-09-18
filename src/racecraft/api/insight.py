@@ -140,9 +140,9 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     # is not a strategy. The modelled line below still holds, because it is
     # fitted on races and belongs to the season rather than to this session; the
     # observed side of it does not, and is withheld rather than drawn.
-    out["degradation_curve"] = _degradation_curve(con, session_key, measured, scale,
-                                                  observed=is_race)
-    out["stints"] = _observed_stints(con, session_key) if is_race else []
+    laps = con.sql(f"select * from laps where session_key = '{_safe(session_key)}'").df()
+    out["degradation_curve"] = _degradation_curve(laps, measured, scale, observed=is_race)
+    out["stints"] = _observed_stints(laps) if is_race else []
     if not is_race:
         out["observed_unavailable"] = (
             "this is not a race: practice and qualifying laps mix fuel loads and "
@@ -161,9 +161,90 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     return out
 
 
+def for_live(live, scale: float = DEFAULT_SCALE) -> dict:
+    """
+    The same answer for a session still happening.
+
+    A live session has no row in the lake, so the circuit, the distance and the
+    laps come from what has been recorded instead. Everything the models are
+    built on still comes from the lake, because it has to: degradation is fitted
+    on this season's completed races, pit loss and neutralisation risk on years
+    of them. Only the race being watched is live.
+
+    `held_out` is false here and says so. A finished race is scored against a
+    model that never saw it; a race in progress is watched with a model fitted
+    on every race that finished before it, which is the honest arrangement and a
+    different one.
+    """
+    name = str(circuit_model.canonical_circuit(str(live.meta.get("location") or "")))
+    constants = _circuit_constants()
+    loss = constants["pit_loss"].get(name)
+    risk = constants["safety_car"].get(name)
+    total_laps = _int_or_none(live.meta.get("total_laps")) or constants["laps"].get(name)
+
+    year = _year_of(live)
+    fits = _season_fits(year) if year else SeasonFits(0, {}, {}, 0.0)
+    measured, offsets, fitted_on = fits.combined()
+
+    is_race = str(live.meta.get("session_name", "")).lower().startswith("race")
+    laps = live.laps
+
+    out: dict = {
+        "session_key": live.session_key,
+        "circuit": name,
+        "event_name": str(live.meta.get("event_name") or "Live timing"),
+        "year": year or 0,
+        "is_race": is_race,
+        "is_live": True,
+        "total_laps": total_laps,
+        "pit_loss": loss,
+        "safety_car": risk,
+        "scale": scale,
+        "degradation_measured": {c: round(v, 4) for c, v in measured.items()},
+        "degradation_used": {c: round(v * scale, 4) for c, v in measured.items()},
+        "compound_offset_s": {c: round(v, 3) for c, v in offsets.items()},
+        "fuel_s_per_lap": round(fits.fuel_s_per_lap, 4),
+        "fitted_on": fitted_on,
+        "fitted_on_count": len(fitted_on),
+        "held_out": False,
+        "caveats": list(strategy_model.KNOWN_OMISSIONS),
+    }
+
+    out["degradation_curve"] = _degradation_curve(laps, measured, scale, observed=is_race)
+    out["stints"] = _observed_stints(laps) if is_race else []
+    if not is_race:
+        out["observed_unavailable"] = (
+            "this is not a race: practice and qualifying laps mix fuel loads and "
+            "run plans, so what they show about tyre wear is not comparable"
+        )
+
+    if measured and loss and total_laps:
+        out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"])
+        out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
+                                                  loss["seconds"], risk)
+    else:
+        out["plans"] = []
+        out["plans_with_risk"] = []
+        out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
+    return out
+
+
+def _year_of(live) -> int | None:
+    """The season a live session belongs to, from whatever date it carries."""
+    for field_name in ("date_utc", "t0_utc"):
+        value = live.meta.get(field_name)
+        if value is None:
+            continue
+        try:
+            return int(pd.Timestamp(value).year)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 # ---------------------------------------------------------------- curves
 
-def _degradation_curve(con, session_key: str, measured: dict[str, float],
+def _degradation_curve(laps: pd.DataFrame, measured: dict[str, float],
                        scale: float, observed: bool = True) -> list[dict]:
     """
     The model's straight line against what this race's tyres actually did.
@@ -183,7 +264,6 @@ def _degradation_curve(con, session_key: str, measured: dict[str, float],
     estimated jointly with the wear slope rather than subtracted first, so
     fuel and track evolution come out while degradation stays in.
     """
-    laps = con.sql(f"select * from laps where session_key = '{_safe(session_key)}'").df()
     if laps.empty:
         return []
     clean = pace_model.clean_race_laps(laps) if observed else laps.iloc[:0]
@@ -224,14 +304,17 @@ def _degradation_curve(con, session_key: str, measured: dict[str, float],
     return out
 
 
-def _observed_stints(con, session_key: str) -> list[dict]:
+def _observed_stints(laps: pd.DataFrame) -> list[dict]:
     """What each driver actually ran: compound, length, and when they stopped."""
-    rows = con.sql(f"""
-        select driver, driver_number, stint, compound,
-               min(lap_number) as first_lap, max(lap_number) as last_lap, count(*) as laps
-        from laps where session_key = '{_safe(session_key)}' and compound is not null
-        group by driver, driver_number, stint, compound
-        order by driver_number, stint""").df()
+    if laps.empty or "compound" not in laps:
+        return []
+    known = laps[laps["compound"].notna()]
+    if known.empty:
+        return []
+    rows = (known.groupby(["driver", "driver_number", "stint", "compound"], as_index=False)
+                 .agg(first_lap=("lap_number", "min"), last_lap=("lap_number", "max"),
+                      laps=("lap_number", "size"))
+                 .sort_values(["driver_number", "stint"]))
     if rows.empty:
         return []
     out = []
