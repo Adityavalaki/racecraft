@@ -278,26 +278,79 @@ def cmd_race(args) -> int:
           + (f"  (scaled x{args.scale})" if args.scale != 1.0 else ""))
     print()
 
-    field_plan = Plan((("MEDIUM", total // 2), ("SOFT", total - total // 2)))
-    options = {
-        "one stop, early": Plan((("MEDIUM", int(total * 0.4)), ("SOFT", total - int(total * 0.4)))),
-        "one stop, normal": field_plan,
-        "one stop, late": Plan((("MEDIUM", int(total * 0.66)), ("SOFT", total - int(total * 0.66)))),
-        "two stops": Plan((("SOFT", total // 3), ("MEDIUM", total // 3), ("SOFT", total - 2 * (total // 3)))),
-    }
-    print(f"  A car starting P{args.grid}; the rest of the field on a normal one-stop.")
-    print(f"  {'plan':<22} {'stints':<24} {'mean finish':>12} {'points':>8} {'best':>6} {'worst':>6}")
-    for label, plan in options.items():
-        cars = [race_model.Car(driver_number=i + 1, abbreviation=f"P{i+1}",
-                               pace_s=quickest + ladder[i], grid=i + 1,
-                               plan=plan if i + 1 == args.grid else field_plan)
-                for i in range(args.cars)]
-        result = race_model.simulate(cars, total, degradation, loss.seconds, neutralisation, passes,
-                                     compound_offset_s=offsets, runs=args.runs,
-                                     rng=np.random.default_rng(5))
-        finishes = result.positions[args.grid]
-        print(f"  {label:<22} {str(plan):<24} {finishes.mean():>12.2f} "
-              f"{(finishes <= 10).mean():>8.0%} {finishes.min():>6} {finishes.max():>6}")
+    # The plans worth simulating, from the seconds model, one per shape: a race
+    # is milliseconds but a sweep is thousands of plans, and the two models
+    # disagree about which of several close plans is best rather than about
+    # whether a plan losing half a minute is in contention.
+    from racecraft.model import places as places_model
+    from racecraft.model import strategy as strategy_model
+
+    swept = strategy_model.enumerate_plans(total, tuple(degradation), max_stops=2,
+                                           min_stint=10, step=3)
+    costed = sorted(swept, key=lambda p: strategy_model.cost(
+        p, degradation, loss.seconds, compound_offset_s=offsets).seconds_lost)
+    seen, candidates = set(), []
+    for plan in costed:
+        shape = tuple(sorted(plan.stints))
+        if shape in seen:
+            continue
+        seen.add(shape)
+        candidates.append(plan)
+        if len(candidates) == args.plans:
+            break
+
+    seconds = {str(p): strategy_model.cost(p, degradation, loss.seconds,
+                                           compound_offset_s=offsets).seconds_lost
+               for p in candidates}
+    cheapest = min(seconds, key=seconds.get)
+    field_plan = candidates[0]
+
+    ranked = places_model.rank_plans(
+        candidates, field_plan, grid=args.grid, ladder=ladder, quickest_lap_s=quickest,
+        total_laps=total, degradation=degradation, pit_loss_s=loss.seconds,
+        neutralisation=neutralisation, passes_per_lap=passes,
+        compound_offset_s=offsets, runs=args.runs, cars=args.cars)
+
+    low, high = places_model.field_stop_window(total, field_plan)
+    print(f"  A car starting P{args.grid}. The rest of the field stops between laps "
+          f"{low} and {high}, redrawn {places_model.DEFAULT_FIELD_DRAWS} times so that no one "
+          f"guess about them decides this.")
+    print()
+    print(f"  {'plan':<26} {'seconds':>8} {'finish':>8} {'±':>6} {'behind':>7} {'points':>8}")
+    for entry in ranked:
+        name = str(entry.plan)
+        tie = " tied" if entry.within_noise else ""
+        print(f"  {name:<26} {seconds[name]:>8.1f} {entry.mean_finish:>8.2f} "
+              f"{entry.std_error:>6.2f} {entry.behind_best:>7.2f} "
+              f"{entry.points_share:>7.0%}{tie}")
+
+    tied = [str(e.plan) for e in ranked if e.within_noise]
+    print()
+    print(f"  cheapest in seconds : {cheapest}  ({seconds[cheapest]:.1f}s)")
+    print(f"  best in places      : {str(ranked[0].plan)}  (P{ranked[0].mean_finish:.2f})")
+    if len(tied) > 1:
+        print(f"  cannot be separated : {', '.join(tied)}")
+    cheapest_entry = next(e for e in ranked if str(e.plan) == cheapest)
+    print()
+    if cheapest == str(ranked[0].plan):
+        print("  The two models agree on the best plan here.")
+    elif cheapest_entry.within_noise:
+        # The common case, and the one worth not overselling: a different plan
+        # tops the list, but not by enough to call it a different answer.
+        print(f"  A different plan tops the places ranking, but {cheapest} is inside")
+        print("  its error bar. On this evidence the two models agree.")
+    else:
+        gap = seconds[str(ranked[0].plan)] - seconds[cheapest]
+        print(f"  The places model gives up {gap:.1f}s of lap time for track position,")
+        print(f"  and puts {cheapest} {cheapest_entry.behind_best:.2f} places behind.")
+
+    worst = ranked[-1]
+    if not worst.within_noise:
+        cost = seconds[str(worst.plan)] - seconds[cheapest]
+        print()
+        print(f"  Where the two models really differ is how bad a bad plan is.")
+        print(f"  {str(worst.plan)} costs {cost:.1f}s more in seconds and "
+              f"{worst.behind_best:.2f} places more here.")
 
     print()
     print("  Comparing plans for one car is what this is for. It does not predict")
@@ -398,6 +451,8 @@ def main(argv: list[str] | None = None) -> int:
     race_parser.add_argument("--grid", type=int, default=8, help="grid slot of the car being advised")
     race_parser.add_argument("--cars", type=int, default=20)
     race_parser.add_argument("--runs", type=int, default=300, help="simulated races per plan")
+    race_parser.add_argument("--plans", type=int, default=10,
+                             help="how many of the cheapest plans to race, one per shape")
     race_parser.add_argument("--scale", type=float, default=1.5,
                              help="multiply measured degradation; 1.5 matches real stop counts")
     race_parser.set_defaults(handler=cmd_race)

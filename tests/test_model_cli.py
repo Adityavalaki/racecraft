@@ -96,13 +96,34 @@ def test_strategy_command_refuses_an_unknown_circuit(small_lake, capsys):
     assert "no pit loss known" in capsys.readouterr().out
 
 
-def test_race_command_compares_plans_for_one_car(small_lake, capsys):
+def test_race_command_sweeps_plans_and_ranks_them_in_places(small_lake, capsys):
+    """
+    It used to race four hand-written plans. It now takes the plans the seconds
+    model likes and ranks them by where they finish, which is the join those two
+    models existed either side of.
+    """
     assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30",
-                     "--grid", "3", "--cars", "6", "--runs", "20"]) == 0
+                     "--grid", "3", "--cars", "6", "--runs", "20", "--plans", "4"]) == 0
     out = capsys.readouterr().out
+
     assert "passes per race" in out
-    assert "mean finish" in out
+    assert "cheapest in seconds" in out
+    assert "best in places" in out
+    # The field is spread rather than stacked on one plan, and says so: a field
+    # all on one lap rewards copying it, which reads as a finding and is not.
+    assert "redrawn" in out
     assert "does not predict" in out      # the caveat travels with the numbers
+
+
+def test_the_race_command_does_not_split_plans_it_cannot_separate(small_lake, capsys):
+    """
+    Twenty runs over six cars cannot tell close plans apart, and the command has
+    to say so rather than print an order and let it read as a decision.
+    """
+    assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30",
+                     "--grid", "3", "--cars", "6", "--runs", "20", "--plans", "4"]) == 0
+    out = capsys.readouterr().out
+    assert "tied" in out or "inside" in out or "agree" in out
 
 
 def test_race_command_refuses_an_unknown_circuit(small_lake, capsys):

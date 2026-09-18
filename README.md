@@ -785,13 +785,28 @@ python scripts/mark_baku.py
 Then write down why the wrong ones were wrong *before* reading anyone else's
 account of the race.
 
-**3. Track position inside the strategy model.** The one remaining piece that
-could make it more accurate, and the only one left: three measured attempts at
-tuning it are recorded above, and all three failed in the same direction. The
-model under-stops because a stop buys track position rather than lap time, and a
-model counting seconds in a vacuum cannot see that. Scoring plans in places needs
-a field to rejoin into, which `model/race.py` has. It is a simulation problem,
-not a measurement one — which is what those three failures established.
+**3. Track position inside the strategy model — built.** `model/places.py` takes
+the plans the seconds model likes, races each one against a whole field, and
+ranks them by finishing position: `racecraft-analyse race Baku --grid 8`.
+
+What it found is not what was expected, and the first version of it was wrong.
+Running every rival on one identical plan produced a four-place cliff in favour
+of stopping on the lap they stopped — the simulation rewarding a car for copying
+a field that does not exist. Spreading the field's stop laps and redrawing them
+fifteen times per plan removes it, and the spread falls from 4.03 places to 1.78.
+
+With that fixed, at Baku from P8 the two models **agree at the top**: the places
+ranking prefers `hard 28 > medium 23` over the seconds-cheapest
+`medium 22 > hard 29`, but by 0.14 places against a standard error of 0.18, so
+they cannot be separated and the command says so instead of picking one.
+
+Where they differ is **how bad a bad plan is**. Stopping on lap 16 costs 2.0 s
+more in seconds and **2.46 places** more here. The value of modelling track
+position turns out to be less about choosing between good plans than about
+knowing the cost of a wrong one, which the seconds model understates badly.
+
+Untested against real races. It is a model of racing against a field, not
+against a strategist: rivals run a fixed plan and never cover a stop.
 
 **4. The write-up.** The material is unusually good and most of it is already
 written down here: two leakage bugs that scored beautifully and knew nothing,
