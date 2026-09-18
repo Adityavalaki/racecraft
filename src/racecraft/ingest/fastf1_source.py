@@ -71,7 +71,50 @@ def _frame(rows: dict[str, object], table: str) -> pd.DataFrame:
 
 # ---------------------------------------------------------------- tables
 
-def build_sessions(ses, key: str) -> pd.DataFrame:
+def session_t0(ses, fallback: pd.Timestamp | None = None) -> pd.Timestamp | None:
+    """
+    Wall-clock time of session time zero.
+
+    FastF1 derives `t0_date` from the telemetry stream, so a session loaded
+    without telemetry raises rather than returning it — which live mode does by
+    choice, and which would otherwise make a recording unparseable for want of
+    a number every lap already carries.
+
+    Every lap holds both its absolute start (`LapStartDate`) and its start in
+    session time (`LapStartTime`), and the difference between them is t0. The
+    median across laps is used rather than the first, because one lap with a
+    mistimed date should not move it.
+
+    In a live recording even that is unavailable: `LapStartDate` is filled from
+    telemetry too, and comes back entirely null. There the caller supplies a
+    `fallback` — for a recording, the timestamp of its first message, which is
+    the zero every session time in it was measured against.
+    """
+    try:
+        t0 = ses.t0_date
+        if t0 is not None and pd.notna(t0):
+            return t0
+    except Exception:
+        pass                    # not loaded; derive it from the laps instead
+
+    try:
+        laps = ses.laps
+    except Exception:
+        return fallback
+    if laps is None or laps.empty:
+        return fallback
+    if "LapStartDate" not in laps or "LapStartTime" not in laps:
+        return fallback
+
+    offsets = (laps["LapStartDate"] - laps["LapStartTime"]).dropna()
+    if offsets.empty:
+        return fallback
+    derived = pd.Timestamp(offsets.median())
+    log.info("%s: t0 derived from laps (%s), telemetry not loaded", ses.name, derived)
+    return derived
+
+
+def build_sessions(ses, key: str, t0: pd.Timestamp | None = None) -> pd.DataFrame:
     ci_rotation = None
     try:
         ci_rotation = float(ses.get_circuit_info().rotation)
@@ -81,6 +124,11 @@ def build_sessions(ses, key: str) -> pd.DataFrame:
         total_laps = ses.total_laps
     except Exception:  # practice and qualifying have no scheduled distance; FastF1 raises
         total_laps = None
+    try:
+        start_t = ses.session_start_time
+        start_t = start_t.total_seconds() if pd.notna(start_t) else None
+    except Exception:  # same reason: not every session carries one
+        start_t = None
     return _frame({
         "session_key": [key],
         "event_name": [ses.event["EventName"]],
@@ -88,8 +136,8 @@ def build_sessions(ses, key: str) -> pd.DataFrame:
         "location": [ses.event["Location"]],
         "session_name": [ses.name],
         "date_utc": [_as_utc(ses.date)],
-        "t0_utc": [_as_utc(ses.t0_date)],
-        "start_t": [ses.session_start_time.total_seconds() if pd.notna(ses.session_start_time) else None],
+        "t0_utc": [_as_utc(t0 if t0 is not None else session_t0(ses))],
+        "start_t": [start_t],
         "total_laps": [int(total_laps) if total_laps is not None and pd.notna(total_laps) else None],
         "circuit_rotation_deg": [ci_rotation],
         "fastf1_version": [fastf1.__version__],
@@ -238,10 +286,17 @@ def build_weather(w: pd.DataFrame, key: str) -> pd.DataFrame:
     }, "weather")
 
 
-def build_race_control(rc: pd.DataFrame, t0: pd.Timestamp, key: str) -> pd.DataFrame:
+def build_race_control(rc: pd.DataFrame, t0: pd.Timestamp | None, key: str) -> pd.DataFrame:
     # Absolute datetimes, unlike every other FastF1 table. Also only
     # second-resolution, so ordering against 4 Hz telemetry is approximate.
-    t = seconds_since(rc["Time"], t0) if pd.api.types.is_datetime64_any_dtype(rc["Time"]) else seconds(rc["Time"])
+    absolute = pd.api.types.is_datetime64_any_dtype(rc["Time"])
+    if absolute and t0 is None:
+        # Without a zero these cannot be placed on the clock. Better to carry
+        # the messages with no time than to fail the whole session for them.
+        log.warning("%s: race control messages have no session t0; times left empty", key)
+        t = pd.Series([float("nan")] * len(rc), index=rc.index)
+    else:
+        t = seconds_since(rc["Time"], t0) if absolute else seconds(rc["Time"])
     return _frame({
         "session_key": key,
         "t": t,
@@ -302,14 +357,22 @@ def _concat(frames: list[pd.DataFrame], table: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)[TABLES[table].names]
 
 
-def extract(ses, key: str, telemetry: bool = True) -> dict[str, pd.DataFrame]:
-    """All lake tables for one loaded session."""
+def extract(ses, key: str, telemetry: bool = True,
+            t0: pd.Timestamp | None = None) -> dict[str, pd.DataFrame]:
+    """
+    All lake tables for one loaded session.
+
+    `t0` is only needed when the session was loaded without telemetry, because
+    FastF1 derives session time zero from the telemetry stream. Live recordings
+    supply their first message's timestamp, which is the same instant.
+    """
+    t0 = session_t0(ses, fallback=t0)
     tables = {
-        "sessions": build_sessions(ses, key),
+        "sessions": build_sessions(ses, key, t0),
         "results": build_results(ses.results, key),
         "laps": build_laps(ses.laps, key),
         "weather": build_weather(ses.weather_data, key),
-        "race_control": build_race_control(ses.race_control_messages, ses.t0_date, key),
+        "race_control": build_race_control(ses.race_control_messages, t0, key),
         "track_status": build_track_status(ses.track_status, key),
         "session_status": build_session_status(ses.session_status, key),
         "circuit_markers": build_circuit_markers(ses, key),

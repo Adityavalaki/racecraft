@@ -24,6 +24,7 @@ stays historic-only until this is proven on a real weekend.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -107,6 +108,40 @@ def current_session(now: datetime | None = None, within: timedelta = timedelta(h
     return best[1] if best else None
 
 
+def recording_t0(path: Path) -> pd.Timestamp | None:
+    """
+    The timestamp of a recording's first message.
+
+    Every session time in a recording is measured from here — FastF1's parser
+    takes the first message it reads as zero — so this is session t0. It has to
+    be read off the file because the usual source is the telemetry stream, which
+    live mode does not carry: `LapStartDate` comes back entirely null, so t0
+    cannot be recovered from the laps either.
+    """
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line.startswith("["):
+                    continue
+                try:
+                    _category, _message, stamp = json.loads(_as_json(line))
+                except (ValueError, TypeError):
+                    continue
+                if not stamp:
+                    continue
+                moment = pd.Timestamp(stamp)
+                return moment.tz_localize(None) if moment.tzinfo else moment
+    except OSError:
+        return None
+    return None
+
+
+def _as_json(line: str) -> str:
+    """The recording is Python reprs; FastF1 fixes them the same way."""
+    return line.replace("'", '"').replace("True", "true").replace("False", "false")
+
+
 def tables_from_recording(path: Path, session: LiveSession,
                           telemetry: bool = False) -> dict[str, pd.DataFrame]:
     """Parse a recording into the lake's table shapes."""
@@ -123,7 +158,8 @@ def tables_from_recording(path: Path, session: LiveSession,
 
     ses = fastf1.get_session(session.year, session.round_number, session.session_name)
     ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
-    return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry)
+    return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
+                                 t0=recording_t0(path))
 
 
 @dataclass

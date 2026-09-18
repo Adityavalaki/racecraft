@@ -292,3 +292,38 @@ def test_recording_asks_for_no_subscription_by_default(live_dir, monkeypatch):
     monkeypatch.setattr(signalr, "get_auth_token", original)
     recorder.record(live_dir / "b.txt", reconnect=False, subscription=True)
     assert signalr.get_auth_token is original, "asking for a subscription must use FastF1's own login"
+
+
+def test_session_zero_is_read_from_the_recording(live_dir):
+    """
+    FastF1 derives session time zero from the telemetry stream, and live mode
+    does not carry telemetry. Nor can it be recovered from the laps: a live
+    recording's LapStartDate comes back entirely null, for the same reason.
+
+    So it is read off the recording, whose first message is the zero every
+    session time in it was measured against. Without this, parsing a real
+    recording fails outright on the race control messages, which are the one
+    table FastF1 stores as absolute datetimes.
+    """
+    live_dir.mkdir(parents=True)
+    path = live_dir / "baku.txt"
+    path.write_text(RECORDING, encoding="utf-8")
+
+    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:00:00.000")
+
+
+def test_a_recording_that_starts_with_rubbish_still_finds_its_zero(live_dir):
+    """A reconnection can leave a half-written line at the seam."""
+    live_dir.mkdir(parents=True)
+    path = live_dir / "baku.txt"
+    path.write_text("not a message at all\n" + "['Junk'\n" + RECORDING, encoding="utf-8")
+
+    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:00:00.000")
+
+
+def test_no_zero_is_returned_rather_than_guessed(live_dir):
+    live_dir.mkdir(parents=True)
+    empty = live_dir / "empty.txt"
+    empty.write_text("", encoding="utf-8")
+    assert feed_module.recording_t0(empty) is None
+    assert feed_module.recording_t0(live_dir / "missing.txt") is None

@@ -68,14 +68,14 @@ def cmd_read(args) -> int:
         print("No recording to read. Start one with: racecraft-live record")
         return 1
 
-    session = feed_module.current_session()
-    if session is None:
-        print("Cannot tell which session this recording belongs to; the schedule has")
-        print("nothing within four hours of now. Pass --year, --round and --session.")
-        if not (args.year and args.round and args.session):
-            return 1
     if args.year and args.round and args.session:
         session = feed_module.LiveSession(args.year, args.round, args.session)
+    else:
+        session = feed_module.current_session()
+        if session is None:
+            print("Cannot tell which session this recording belongs to; the schedule has")
+            print("nothing within four hours of now. Pass --year, --round and --session.")
+            return 1
 
     live = feed_module.Feed(path=path, session=session, telemetry=args.telemetry)
     try:
