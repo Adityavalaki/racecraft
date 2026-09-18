@@ -8,3 +8,6 @@ web/dist/
 # The legacy engine regenerates its own data with run_pipeline.py
 legacy/**/data/
 legacy/**/__pycache__/
+
+# The deployable copy of the lake, built on demand by scripts/export_lake.py
+data/lake-slim/

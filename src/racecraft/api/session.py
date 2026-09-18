@@ -81,17 +81,28 @@ class SessionData:
         self.session_name = self.meta["session_name"]
 
         self.laps = con.sql(f"select * from laps where session_key = '{session_key}'").df()
-        self.drivers = con.sql(f"""
+        # Everything below is optional. A lake need not carry every table — a
+        # deployed one leaves out telemetry, and an ingest interrupted partway
+        # can leave a session without its results — and a lake with no rows for
+        # a table has no view for it at all, which DuckDB reports as a missing
+        # table. A session missing its classification is still a session.
+        self.drivers = _optional(con, f"""
             select driver_number, abbreviation, full_name, team_name, team_color,
                    grid_position, position, classified_position, status
-            from results where session_key = '{session_key}' order by driver_number""").df()
-        self.track_status = con.sql(
-            f"select t, status, message from track_status where session_key = '{session_key}' order by t").df()
-        self.race_control = con.sql(f"""
+            from results where session_key = '{session_key}' order by driver_number""",
+            ["driver_number", "abbreviation", "full_name", "team_name", "team_color",
+             "grid_position", "position", "classified_position", "status"])
+        self.track_status = _optional(con,
+            f"select t, status, message from track_status where session_key = '{session_key}' order by t",
+            ["t", "status", "message"])
+        self.race_control = _optional(con, f"""
             select t, lap, category, flag, scope, message from race_control
-            where session_key = '{session_key}' order by t""").df()
-        self.weather = con.sql(
-            f"select t, air_temp, track_temp, rainfall, wind_speed from weather where session_key = '{session_key}' order by t").df()
+            where session_key = '{session_key}' order by t""",
+            ["t", "lap", "category", "flag", "scope", "message"])
+        self.weather = _optional(con, f"""
+            select t, air_temp, track_temp, rainfall, wind_speed from weather
+            where session_key = '{session_key}' order by t""",
+            ["t", "air_temp", "track_temp", "rainfall", "wind_speed"])
 
         self.position = self._load_channels(con, "pos_data", ["x", "y"])
         self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs"])
@@ -157,8 +168,22 @@ class SessionData:
     # ------------------------------------------------------------- loading
 
     def _load_channels(self, con, table: str, columns: list[str]) -> dict[int, Channel]:
-        df = con.sql(f"""select driver_number, t, {', '.join(columns)}
-                         from {table} where session_key = '{self.session_key}' order by driver_number, t""").df()
+        """
+        One telemetry table as per-driver arrays, or nothing if it is absent.
+
+        A lake need not carry telemetry. It is 98.5% of the bytes and feeds only
+        the track map, so a deployed copy leaves it out — and a lake without it
+        has no view for it at all, which DuckDB reports as a missing table
+        rather than an empty one. That is a lake without a track map, not a
+        broken lake, so it reads as no channels.
+        """
+        try:
+            df = con.sql(f"""select driver_number, t, {', '.join(columns)}
+                             from {table} where session_key = '{self.session_key}'
+                             order by driver_number, t""").df()
+        except duckdb.CatalogException:
+            log.info("%s: no %s in this lake; no track map", self.session_key, table)
+            return {}
         out: dict[int, Channel] = {}
         if df.empty:
             return out
@@ -371,6 +396,14 @@ class SessionData:
 
 
 _LAP_COLUMNS = ["driver_number", "driver", "lap_number", "lap_start_t", "lap_end_t"]
+
+
+def _optional(con, sql: str, columns: list[str]) -> pd.DataFrame:
+    """A query whose table may not exist in this lake, as an empty frame if not."""
+    try:
+        return con.sql(sql).df()
+    except duckdb.CatalogException:
+        return _empty(columns)
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:

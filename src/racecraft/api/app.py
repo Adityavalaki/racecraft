@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from racecraft.api import ingest_job
 from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import session as session_store
@@ -169,6 +170,43 @@ def live_attach(recording: str | None = None, year: int | None = None,
 def live_detach() -> dict:
     live_store.store.detach()
     return live_store.store.status()
+
+
+@app.get("/api/ingest")
+def ingest_status() -> dict:
+    """What the fetch is doing, or what the last one did."""
+    return ingest_job.job.status()
+
+
+@app.post("/api/ingest")
+def ingest_start(season: int | None = None) -> dict:
+    """
+    Fetch any sessions of a season that are not in the lake yet.
+
+    Returns as soon as it has started. Ingesting a weekend takes minutes,
+    because FastF1 allows 500 requests an hour and ingest waits rather than
+    tripping the limit, so progress is polled from `GET /api/ingest` instead of
+    held open on this connection.
+    """
+    try:
+        return ingest_job.job.start(season, on_finish=_persist_lake)
+    except ingest_job.Busy as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+def _persist_lake(written: int) -> None:
+    """
+    Keep what was just ingested.
+
+    On a host with a disk of its own this is unnecessary and does nothing. On
+    one where the filesystem is rebuilt on every restart — which is most free
+    hosting, Hugging Face Spaces included — an ingest that is not pushed
+    somewhere is lost the next time the process restarts, which is the sort of
+    thing that looks like it worked for an hour.
+    """
+    from racecraft.deploy import persist
+
+    persist.save_lake(f"ingest: {written} new session{'s' if written != 1 else ''}")
 
 
 @app.get("/api/circuits")

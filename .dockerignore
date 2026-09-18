@@ -1,0 +1,10 @@
+.venv/
+data/lake/
+data/fastf1_cache/
+data/live/
+web/node_modules/
+web/dist/
+legacy/
+.git/
+__pycache__/
+*.pyc

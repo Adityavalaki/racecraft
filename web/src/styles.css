@@ -53,6 +53,95 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   letter-spacing: 0.22em;
   color: var(--signal);
 }
+/* ---------- fetch new races ---------- */
+
+.fetch { position: relative; margin-left: auto; }
+.fetch-button {
+  background: var(--panel-2);
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-mid);
+  padding: 0.3rem 0.7rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.fetch-button:hover { color: var(--ink); border-color: var(--signal); }
+.fetch-button[aria-busy="true"] { color: var(--signal); border-color: var(--signal); }
+.fetch-button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.fetch-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: min(23rem, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  box-shadow: 0 8px 28px -12px rgba(0, 0, 0, 0.8);
+  padding: 0.6rem 0.7rem;
+}
+.fetch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-mid);
+  margin-bottom: 0.45rem;
+}
+.fetch-close {
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  padding: 0;
+}
+.fetch-close:hover { color: var(--signal); }
+.fetch-error { margin: 0 0 0.45rem; color: var(--red); font-size: 0.76rem; }
+.fetch-bar {
+  height: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--rule);
+  margin-bottom: 0.45rem;
+}
+.fetch-bar i { display: block; height: 100%; background: var(--signal); transition: width 0.3s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .fetch-bar i { transition: none; }
+}
+.fetch-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.fetch-counts b {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 500;
+}
+.fetch-counts .is-bad b { color: var(--red); }
+.fetch-size { margin-left: auto; }
+.fetch-log {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0 0;
+  border-top: 1px solid var(--rule);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
 /* ---------- live ---------- */
 
 .live-flag {

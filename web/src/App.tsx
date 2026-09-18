@@ -4,6 +4,7 @@ import { useClock } from "./clock";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
+import { FetchRaces } from "./panels/FetchRaces";
 import { RaceTrace } from "./panels/RaceTrace";
 import { StrategyBoard } from "./panels/StrategyBoard";
 import { TimingTower } from "./panels/TimingTower";
@@ -46,8 +47,8 @@ export default function App() {
   const [following, setFollowing] = useState(true);
   const isLive = sessionKey === LIVE_KEY;
 
-  useEffect(() => {
-    api.sessions()
+  const loadSessions = useCallback(() => {
+    return api.sessions()
       .then((all) => {
         setSessions(all);
         // Live first when there is one: a recording exists only because someone
@@ -56,10 +57,14 @@ export default function App() {
         const opening = all.find((s) => s.session_key === LIVE_KEY)
           ?? all.find((s) => s.session === "R")
           ?? all[0];
-        if (opening) setSessionKey(opening.session_key);
+        setSessionKey((current) => current ?? opening?.session_key ?? null);
       })
       .catch((e) => setError(String(e.message ?? e)));
   }, []);
+
+  useEffect(() => {
+    void loadSessions();
+  }, [loadSessions]);
 
   useEffect(() => {
     if (!sessionKey) return;
@@ -246,6 +251,7 @@ export default function App() {
           </div>
         )}
         {error && <div className="error">{error}</div>}
+        <FetchRaces onFinished={loadSessions} />
       </header>
 
       {info ? (

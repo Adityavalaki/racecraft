@@ -219,6 +219,63 @@ Each race is fitted separately rather than the season as a whole, which is what
 makes holding one out free. The interface does not ask for it until a tab that
 needs it is opened, so a replay never pays for a fit nobody looked at.
 
+## Running it somewhere other than a laptop
+
+```powershell
+python scripts/export_lake.py --out data/lake-slim --overwrite
+cd web; npm run build; cd ..
+docker build -t racecraft .
+```
+
+Telemetry is **98.5% of the lake** — position data 793 MB, car data 717 MB —
+against **23 MB** for laps, results, weather, race control and sessions across
+all 420 sessions. It feeds exactly one panel, the track map, and nothing else
+reads it: not the timing tower, the race trace, the tyre model, the strategy
+board, or any model. So a deployment drops it and everything but the track map
+works untouched, on a lake small enough to live in a git repository.
+
+That is not a guess. Live mode already runs this way — a live recording carries
+no telemetry either — and `tests/test_deploy.py` builds a lake without it and
+checks the session still serves.
+
+### Fetching new races without a terminal
+
+There is a **Fetch new races** button in the interface. It runs ingest in the
+background and polls, because a weekend takes minutes — FastF1 allows 500
+requests an hour and ingest waits rather than tripping the limit — and a
+connection held open that long is lost to the first proxy in the way. Progress,
+counts and the log appear as it goes: after two minutes of silence the only
+honest reading is that something has broken.
+
+One ingest at a time. Two would race for the same rate-limit budget and write
+the same partitions, so a second start is refused with a 409.
+
+### Keeping what it fetches
+
+Most free hosting rebuilds the container on restart, Hugging Face Spaces
+included. A lake written there is real until the process restarts and then is
+not — which is worse than not ingesting at all, because it looks like it worked
+and fails hours later for no visible reason.
+
+So `deploy/persist.py` pushes the lake back to the repository the Space is built
+from, which is durable and versioned. It is off unless configured, because a
+laptop or a VPS has a disk of its own and needs none of it:
+
+| Variable | Meaning |
+|---|---|
+| `RACECRAFT_PERSIST=hf` | push after an ingest; anything else means "there is a disk" |
+| `HF_TOKEN` | a write token, set as a Space secret |
+| `RACECRAFT_HF_REPO` | which repo, if not the Space's own |
+
+With `RACECRAFT_PERSIST=hf` and no `HF_TOKEN` it logs an error rather than
+failing quietly, because that combination is the one that looks fine and loses
+data.
+
+**Not verified:** the Docker build itself, for want of Docker on the machine it
+was written on. What is verified is everything inside it — the app serving on
+port 7860 from `data/lake-slim` with the Space's environment, 420 sessions from
+23 MB.
+
 ## Live timing
 
 ```powershell
