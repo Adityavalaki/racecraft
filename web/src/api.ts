@@ -206,22 +206,6 @@ export interface LiveStatus {
   error?: string | null;
 }
 
-export interface IngestStatus {
-  running: boolean;
-  started_at: string | null;
-  finished_at: string | null;
-  season: number | null;
-  total: number;
-  done: number;
-  written: number;
-  skipped: number;
-  failed: number;
-  current: string | null;
-  error: string | null;
-  log: string[];
-  lake_bytes: number;
-}
-
 /** The one session key that is not in the lake. */
 export const LIVE_KEY = "live";
 
@@ -286,8 +270,6 @@ export const api = {
   insight: (key: string, signal?: AbortSignal) =>
     get<Insight>(`/api/sessions/${key}/insight`, signal),
   liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
-  ingestStatus: (signal?: AbortSignal) => get<IngestStatus>("/api/ingest", signal),
-  ingestStart: () => post<IngestStatus>("/api/ingest"),
   liveAttach: () => post<LiveStatus>("/api/live/attach"),
 };
 
