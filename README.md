@@ -219,6 +219,43 @@ Each race is fitted separately rather than the season as a whole, which is what
 makes holding one out free. The interface does not ask for it until a tab that
 needs it is opened, so a replay never pays for a fit nobody looked at.
 
+## Live timing
+
+```powershell
+.venv\Scriptsacecraft-live record --name baku-2026     # leave running from FP1
+.venv\Scriptsacecraft-live status                      # what has been recorded
+.venv\Scriptsacecraft-live read                        # parse it and report
+```
+
+F1's own timing feed is a SignalR stream at `livetiming.formula1.com` — the same
+one MultiViewer reads, free and unauthenticated. FastF1 ships a client that
+writes it to a file, which sounds like a limitation and is closer to a feature:
+the recording is the source of truth, it survives a crash of whatever is reading
+it, and it replays afterwards exactly as it arrived.
+
+So live mode is a recorder and a reader rather than a streaming pipeline. A
+recording parses into the same FastF1 session object a historic session does, so
+it goes through the same `ingest.fastf1_source.extract` and comes out as the same
+tables. That is what makes live a data-source swap rather than a second
+application, and it is the reason the session clock was built the way it was.
+
+Start recording before the session you care about. The feed carries no history,
+so whatever happened before the recorder started is gone; the recording appends
+across reconnections, and the connection drops after about two hours, which is
+handled rather than treated as the end.
+
+**Not yet carried live:** car telemetry and positions, so no track map. They are
+the overwhelming majority of the feed's volume and the least of its strategy
+value — a race is 1.4 million position samples against a few thousand lap rows.
+The timing side is what the tower, the trace, the tyre model and the strategy
+board read.
+
+**Not yet proven:** the connection itself. Everything testable offline is tested
+— the recording format round-trips through FastF1's own parser, a dropped feed
+appends rather than starting a second file, a half-written recording reads as
+"not ready" rather than crashing, and the reader caches instead of re-parsing on
+every request. The connection waits for a real session.
+
 ## Analysis commands
 
 ```sh
