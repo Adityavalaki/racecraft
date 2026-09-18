@@ -222,16 +222,38 @@ needs it is opened, so a replay never pays for a fit nobody looked at.
 ## Live timing
 
 ```powershell
-.venv\Scriptsacecraft-live record --name baku-2026     # leave running from FP1
-.venv\Scriptsacecraft-live status                      # what has been recorded
-.venv\Scriptsacecraft-live read                        # parse it and report
+.venv\Scripts
+acecraft-live record --name baku-2026     # leave running from FP1
+.venv\Scripts
+acecraft-live status                      # what has been recorded
+.venv\Scripts
+acecraft-live read                        # parse it and report
 ```
 
 F1's own timing feed is a SignalR stream at `livetiming.formula1.com` — the same
-one MultiViewer reads, free and unauthenticated. FastF1 ships a client that
-writes it to a file, which sounds like a limitation and is closer to a feature:
-the recording is the source of truth, it survives a crash of whatever is reading
-it, and it replays afterwards exactly as it arrived.
+one MultiViewer reads for timing. FastF1 ships a client that writes it to a file,
+which sounds like a limitation and is closer to a feature: the recording is the
+source of truth, it survives a crash of whatever is reading it, and it replays
+afterwards exactly as it arrived.
+
+### No F1 TV subscription is needed
+
+FastF1's client says otherwise. It attaches an F1 TV token by default and prints
+*"this feature requires an active F1TV Access/Pro/Premium subscription"* if it
+cannot find one. The timing stream does not check: connecting with an empty token
+returns the driver list, lap count, race control messages and the rest. Verified
+against the live server from an account-less machine — 17 messages and 106 KB in
+40 seconds, outside a session.
+
+FastF1 has a `no_auth=True` flag meant to say exactly this, and it is broken in
+3.8.3: it sets the token factory to `None`, and the SignalR library underneath
+rejects that with `access_token_factory is not function`. So `recorder.py`
+substitutes a factory returning an empty string rather than passing the flag,
+which is why it reaches into the library. `--subscription` uses FastF1's own
+login for anyone who has an account and would rather.
+
+A subscription buys *video*, which this project does not use and should not
+rebuild — that is MultiViewer's job. Run Racecraft beside it.
 
 So live mode is a recorder and a reader rather than a streaming pipeline. A
 recording parses into the same FastF1 session object a historic session does, so

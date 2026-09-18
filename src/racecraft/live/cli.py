@@ -37,8 +37,10 @@ def cmd_record(args) -> int:
 
     path = recorder.recording_path(args.name)
     print(f"Recording to {path}")
+    if args.subscription:
+        print("Using an F1 TV login. The timing stream does not need one.")
     print("Ctrl+C to stop. The recording appends, so stopping and starting again is safe.\n")
-    recorder.record(path, reconnect=not args.no_reconnect)
+    recorder.record(path, reconnect=not args.no_reconnect, subscription=args.subscription)
     return 0
 
 
@@ -98,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("--name", help="name the recording; defaults to the date and time")
     record.add_argument("--no-reconnect", action="store_true",
                         help="stop when the feed drops instead of reconnecting")
+    record.add_argument("--subscription", action="store_true",
+                        help="log in to F1 TV. Not needed: the timing stream does not check")
     record.set_defaults(handler=cmd_record)
 
     status = commands.add_parser("status", help="what has been recorded")

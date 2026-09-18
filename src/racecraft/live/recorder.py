@@ -2,11 +2,24 @@
 Recording Formula 1's own timing feed.
 
 The feed is a SignalR stream at `livetiming.formula1.com`, the same one
-MultiViewer reads. It is free and unauthenticated, and FastF1 ships a client
-for it. That client writes to a file rather than handing messages to the
-process, which sounds like a limitation and is closer to a feature: the
-recording is the source of truth, it survives a crash of whatever is reading
-it, and it replays afterwards exactly as it arrived.
+MultiViewer reads for timing. FastF1 ships a client for it, which writes to a
+file rather than handing messages to the process — that sounds like a
+limitation and is closer to a feature: the recording is the source of truth, it
+survives a crash of whatever is reading it, and it replays afterwards exactly
+as it arrived.
+
+**No F1 TV subscription is needed**, despite what FastF1's client says when it
+asks for one. It attaches an F1 TV token by default and prints "this feature
+requires an active F1TV Access/Pro/Premium subscription" if it cannot find one.
+The timing stream itself does not check: connecting with an empty token returns
+the driver list, the heartbeat and everything else, which is what `_no_auth`
+below relies on and what the test alongside it records.
+
+FastF1 has a `no_auth=True` flag for this and it does not work in 3.8.3 — it
+sets the token factory to `None`, and the SignalR library underneath rejects
+that with "access_token_factory is not function". The fix is a factory that
+returns an empty string instead of no factory at all, which is why this module
+reaches into the library rather than passing the flag.
 
 So live mode here is a recorder and a reader, not a streaming pipeline. The
 recorder is this module. The reader is `feed.py`, and it builds the same tables
@@ -47,17 +60,36 @@ def recording_path(name: str | None = None, when: datetime | None = None) -> Pat
     return LIVE_DIR / f"{stem}.txt"
 
 
+def _empty_token() -> str:
+    """
+    A token factory that hands over nothing.
+
+    The timing stream does not check it. FastF1's own `no_auth=True` would be
+    the right way to say this and is broken in 3.8.3, because it passes `None`
+    where the SignalR library requires something callable.
+    """
+    return ""
+
+
 def record(path: Path | None = None, timeout_s: int = SILENCE_TIMEOUT_S,
-           reconnect: bool = True) -> Path:
+           reconnect: bool = True, subscription: bool = False) -> Path:
     """
     Record the live feed until interrupted. Blocks.
 
     Appends rather than truncating, so reconnecting after a dropped connection
     continues the same recording instead of starting a second one that would
     have to be stitched back together later.
-    """
-    from fastf1.livetiming.client import SignalRClient
 
+    `subscription` uses FastF1's F1 TV login instead of an empty token. It is
+    off by default because the timing stream does not need it, and turning it on
+    means an account and a browser round-trip for data that arrives without one.
+    """
+    import fastf1.livetiming.client as signalr
+
+    if not subscription:
+        signalr.get_auth_token = _empty_token
+
+    SignalRClient = signalr.SignalRClient
     path = path or recording_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     log.info("recording the live feed to %s", path)

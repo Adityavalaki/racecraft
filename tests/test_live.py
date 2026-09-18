@@ -258,3 +258,37 @@ def test_a_session_further_away_than_the_window_is_ignored(monkeypatch):
     just_outside = feed_module.current_session(
         datetime(2026, 9, 26, 16, 30, tzinfo=timezone.utc), within=timedelta(hours=4))
     assert just_outside is None
+
+
+def test_recording_asks_for_no_subscription_by_default(live_dir, monkeypatch):
+    """
+    FastF1 attaches an F1 TV token and tells you a subscription is required. The
+    timing stream does not check it — connecting with an empty token returns the
+    driver list and everything else. FastF1's own `no_auth=True` would say this
+    properly and is broken in 3.8.3: it sets the factory to None, and signalrcore
+    rejects that with "access_token_factory is not function".
+
+    So the default must replace the factory rather than remove it, and must not
+    do so when someone has a subscription and asks to use it.
+    """
+    import fastf1.livetiming.client as signalr
+
+    original = signalr.get_auth_token
+    monkeypatch.setattr(signalr, "get_auth_token", original)
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def start(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(signalr, "SignalRClient", FakeClient)
+
+    recorder.record(live_dir / "a.txt", reconnect=False)
+    assert signalr.get_auth_token is recorder._empty_token
+    assert signalr.get_auth_token() == "", "the factory must be callable and yield a token"
+
+    monkeypatch.setattr(signalr, "get_auth_token", original)
+    recorder.record(live_dir / "b.txt", reconnect=False, subscription=True)
+    assert signalr.get_auth_token is original, "asking for a subscription must use FastF1's own login"
