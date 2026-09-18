@@ -5,9 +5,10 @@ timing data, models the car state the public feed doesn't expose (tyre wear,
 fuel load), and simulates races to find strategy windows.
 
 The build plan lives at the published *Racecraft Build Plan* artifact. Phases
-0–4 are built and the models now reach the interface: the replay panels answer
-*what happened*, and two further panels answer *what the models make of it*.
-Phase 5 (live timing) is next.
+0–5 are built: the replay panels answer *what happened*, two further panels
+answer *what the models make of it*, and live timing reads F1's own feed into
+the same session clock. What is left is a race weekend to prove live against, the
+write-up, and one piece of modelling — see **What is left** at the end.
 
 ## Setup
 
@@ -762,6 +763,45 @@ more correct.
 model. Knowing where a plan rejoins requires a field to rejoin *into*, which the
 seconds-based model does not have and `model/race.py` does. Joining them is the
 remaining work, and it is a simulation problem rather than a measurement one.
+
+## What is left
+
+Four things, in the order they are worth doing.
+
+**1. Run live through Friday practice at Baku, 25 September.** Everything about
+live mode works against a recording — the format, a dropped feed, a half-written
+file, the full parse of a real 1,106-lap recording served to every panel. What
+has never happened is a recording *growing under the reader* while a session
+runs. Practice is the rehearsal, and it happens once.
+
+**2. Mark the Baku call, 26 September.** Five predictions were published ten days
+early with their marking rules frozen:
+
+```powershell
+racecraft-ingest --season 2026
+python scripts/mark_baku.py
+```
+
+Then write down why the wrong ones were wrong *before* reading anyone else's
+account of the race.
+
+**3. Track position inside the strategy model.** The one remaining piece that
+could make it more accurate, and the only one left: three measured attempts at
+tuning it are recorded above, and all three failed in the same direction. The
+model under-stops because a stop buys track position rather than lap time, and a
+model counting seconds in a vacuum cannot see that. Scoring plans in places needs
+a field to rejoin into, which `model/race.py` has. It is a simulation problem,
+not a measurement one — which is what those three failures established.
+
+**4. The write-up.** The material is unusually good and most of it is already
+written down here: two leakage bugs that scored beautifully and knew nothing,
+three measured dead ends, a simulator level with grid order, a season of tyres
+that wear backwards, and three interface bugs found by opening the page rather
+than by any test.
+
+Deliberately not on this list: predicting finishing order. Car pace dominates it,
+forecasting car pace is a different problem, and the backtest says plainly that
+this tool does not solve it.
 
 ## Known data gaps
 
