@@ -222,3 +222,30 @@ def _neutralised_spans(status: pd.DataFrame) -> list[tuple[float, float]]:
     if start is not None:
         spans.append((start, float(status["t"].iloc[-1])))
     return spans
+
+
+def passes_per_race(circuit_laps: pd.DataFrame) -> float:
+    """
+    On-track passes per race: pairs of cars that swapped places between laps
+    while neither was in the pit lane and the race was green. Counting raw
+    position changes instead would count everyone gaining a place when someone
+    ahead pits, which is not overtaking.
+    """
+    counts = []
+    for _, race_laps in circuit_laps.groupby("session_key"):
+        per_lap = {n: g.set_index("driver_number") for n, g in race_laps.groupby("lap_number")}
+        passes = 0
+        for lap in sorted(per_lap):
+            before, after = per_lap.get(lap - 1), per_lap.get(lap)
+            if before is None or after is None or str(after.track_status.iloc[0]) != "1":
+                continue
+            running = [d for d in after.index if d in before.index
+                       and not bool(before.loc[d, "is_pit_in_lap"]) and not bool(after.loc[d, "is_pit_in_lap"])
+                       and not bool(after.loc[d, "is_pit_out_lap"]) and not bool(before.loc[d, "is_pit_out_lap"])
+                       and pd.notna(before.loc[d, "position"]) and pd.notna(after.loc[d, "position"])]
+            for i, a in enumerate(running):
+                for b in running[i + 1:]:
+                    passes += ((before.loc[a, "position"] < before.loc[b, "position"])
+                               != (after.loc[a, "position"] < after.loc[b, "position"]))
+        counts.append(passes)
+    return float(np.mean(counts)) if counts else 30.0

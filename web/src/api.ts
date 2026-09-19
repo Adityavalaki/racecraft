@@ -180,6 +180,73 @@ export interface RiskyPlan {
   behind_best_s: number;
 }
 
+/** One plan, raced against the whole field many times over. */
+export interface PlaceRow {
+  plan: string;
+  stops: number;
+  stop_laps: number[];
+  mean_finish: number;
+  /** Standard error of the mean finish: most plans sit inside each other's. */
+  std_error: number;
+  median_finish: number;
+  best: number;
+  worst: number;
+  podium_share: number;
+  points_share: number;
+  gained: number;
+  behind_best: number;
+  /** Indistinguishable from the best plan at these run counts. */
+  within_noise: boolean;
+  expected_s?: number;
+  green_s?: number;
+}
+
+export interface PlacesAnswer {
+  session_key: string;
+  grid: number;
+  runs: number;
+  inputs: {
+    circuit: string;
+    season: number;
+    event_name: string;
+    total_laps: number;
+    /** Fitted only on races that started before this one. */
+    held_out: boolean;
+    target_session: string | null;
+    cutoff: string | null;
+    fitted_on_count: number;
+    pit_loss_s: number;
+    pit_stops: number;
+    periods_per_race: number;
+    passes_per_race: number;
+    following: {
+      measured: boolean;
+      penalties: { under_s: number; seconds: number }[];
+      races: number;
+      detail: string;
+    };
+    notes: string[];
+  };
+  study: {
+    grid: number;
+    plans: PlaceRow[];
+    cheapest_in_seconds: string | null;
+    best_in_places: string | null;
+    field_plan: string;
+    field_stop_window: [number, number];
+    field_draws: number;
+  };
+  verdict: {
+    cheapest_in_seconds: string;
+    best_in_places: string;
+    agree: boolean;
+    tied: string[];
+    price: { plan: string; instead_of: string; extra_seconds: number; places_gained: number } | null;
+    bad_plan: { plan: string; extra_seconds: number; places_lost: number } | null;
+  };
+  omissions: string[];
+}
+
 export interface StintRun {
   compound: string;
   laps: number;
@@ -270,6 +337,9 @@ export const api = {
   insight: (key: string, signal?: AbortSignal) =>
     get<Insight>(`/api/sessions/${key}/insight`, signal),
   liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
+  /** Slow the first time for a race and grid slot — a few thousand races — then cached. */
+  places: (key: string, grid: number, signal?: AbortSignal) =>
+    get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}`, signal),
   liveAttach: () => post<LiveStatus>("/api/live/attach"),
 };
 

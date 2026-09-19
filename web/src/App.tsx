@@ -307,6 +307,7 @@ export default function App() {
                   loading={!insight && !insightError}
                   error={insightError}
                   actualStops={actualStops}
+                  sessionKey={sessionKey}
                 />
               )}
             </div>

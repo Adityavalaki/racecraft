@@ -449,6 +449,10 @@ def partial_residuals(laps: pd.DataFrame, curved: bool = False) -> pd.DataFrame:
         "compound": df["compound"].to_numpy(),
         "tyre_life": age,
         "partial_s": partial,
+        # What is left once driver, lap, compound and wear are all taken out:
+        # anything that happens to one car on one lap and to no one else, such
+        # as running in another car's wake.
+        "residual_s": residuals,
     })
 
 

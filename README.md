@@ -93,10 +93,10 @@ trace, and the two that show the models rather than the feed.
 - **Tyre model** — modelled wear per compound against what this race's tyres
   actually did. See below: the line is a prediction, not a description.
 - **Strategy** — measured pit loss and neutralisation risk for the circuit, the
-  cheapest plans ranked two ways, and the list of what the model cannot see,
+  cheapest plans ranked three ways, and the list of what the model cannot see,
   shown beside the ranking rather than hidden behind it.
 
-  The two rankings answer different questions. *If green* is arithmetic: tyres
+  The first two rankings count seconds. *If green* is arithmetic: tyres
   plus pit lane, no luck. *Expected* simulates races that can be neutralised,
   where a stop costs 61% of a green one — which usually rewards a longer first
   stint, because more laps remain in which a cheap stop can arrive.
@@ -113,6 +113,15 @@ trace, and the two that show the models rather than the feed.
   Neither is good. Both are worse at Monaco (4.24 stops actually run) and at
   Barcelona (2.41 against a modelled 1), which is what a model with no traffic
   and no track position should be expected to get wrong.
+
+  *In places* is the third, and it has both. It races each shortlisted plan
+  against the whole field from a chosen grid slot and ranks by finishing
+  position — the race simulator below, on inputs taken only from races that
+  started before this one. Plans whose finishes cannot be told apart are marked
+  tied rather than ranked, and the headline is not a winner but the **price of
+  track position**: what the cheapest plan that is as good as the best costs in
+  seconds, against the cheapest plan outright. It takes about half a minute the
+  first time for a race and a grid slot, so it is only run when opened.
 
 ### The tyre model panel is a prediction, not a fit
 
@@ -337,6 +346,7 @@ racecraft-analyse circuits             # pit loss and neutralisation risk
 racecraft-analyse circuit Baku         # everything known about one circuit
 racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
 racecraft-analyse race Baku            # simulate the field, answer in places
+racecraft-analyse following            # time lost in the wake of the car ahead
 ```
 
 Every model number quoted below comes from these, so they can be reproduced
@@ -511,37 +521,76 @@ own pace, tyres that wear, and plans; a car that catches another loses time in
 its wake and only gets past when the circuit allows; safety cars bunch the
 field and hand a cheap stop to whoever still owes one.
 
-Every input is measured from the lake:
+Every input is measured from the lake, and for a race that has happened, only
+from races that started before it (`model/race_inputs.py`). Tyre wear, the pace
+ladder, pit loss, safety-car risk, overtaking and the wake penalty all stop at
+the same date. It used to be otherwise: analysing Baku 2025 fitted tyres on
+Baku 2025, took the pace ladder from races after it, and measured pit loss from
+its own stops. `--include-race` still does that, for comparison, and says so.
+The price is that the first race at a new circuit cannot be simulated, because
+there is no earlier pit lane to measure; it refuses rather than borrowing its
+own.
+
 
 | Input | Measured | Example |
 |---|---|---|
 | Overtaking | pairwise on-track passes per race | Monaco 5.8, Baku 27.0, Las Vegas 48.3 |
-| Following | lap time lost by gap to the car ahead | 2026: +0.55 s under 0.5 s, gone by 2.5 s |
+| Following | lap time lost in the wake of the car ahead, per season | 2026: +0.28 s under 0.5 s, gone by 2.5 s |
 | Pit loss | in and out lap against pace either side | Spa 18.0 s, Baku 21.0 s, Imola 27.8 s |
 | Safety cars | rate, duration and the discount on a stop | 1.27 per race, 61% of a green stop |
 | Pace, wear | the pace model's driver and compound terms | see above |
 
-Following in 2026 costs less than in 2025 and fades faster with distance
-(+0.06 s at 1.5-2.5 s behind, against +0.23 s in 2025), which is what the
-regulations were meant to achieve.
+The following penalty used to be a constant, +0.55 s inside half a second,
+which nothing in the repository reproduced. Measuring it properly
+(`racecraft-analyse following`) found it was about double the real figure,
+for a reason worth keeping. A car close behind another is slow for two
+reasons: dirty air, and being held up by a slower car it cannot pass. The
+simulator already models the second — a car cannot go through the one ahead
+until the circuit allows — so a penalty that includes it counts the same lost
+time twice. The measurement therefore uses only laps where the follower's own
+pace was *slower* than the car ahead, so it cannot have been held up:
+
+| Gap | 2024 | 2025 | 2026 | 2026, all laps |
+|---|---|---|---|---|
+| under 0.5 s | +0.294 | +0.315 | **+0.283** ± 0.053 | +0.386 |
+| 0.5–1.0 s | +0.082 | +0.115 | +0.072 | +0.171 |
+| 1.0–1.5 s | +0.082 | +0.087 | +0.034 | +0.073 |
+| 1.5–2.5 s | +0.067 | +0.049 | +0.002 | +0.023 |
+| 2.5–4.0 s | +0.024 | +0.016 | +0.000 | −0.018 |
+
+Seconds per lap against the same driver in clear air, after tyres, fuel and
+track evolution. The wake right behind a car barely changed between seasons;
+what changed in 2026 is how quickly it fades — gone by 1.5 s, where in 2024 it
+was still there at 2.5 s. The simulator uses the season's own table, fitted
+only on races before the one being simulated.
 
 ### What it is for, and what it is not for
 
-**It does not predict finishing order.** Validated over 30 races with pace
-taken only from earlier races, it is level with predicting the starting grid:
+**It does not predict finishing order.** Validated over 30 races with every
+input — driver pace, tyre wear, pit loss, safety cars, overtaking, the wake —
+taken only from races that started before the one simulated, it is barely
+better than predicting the starting grid:
 
 | | Simulator | Grid order |
 |---|---|---|
-| Mean position error | 3.24 | 3.31 |
-| Podium places hit (of 3) | 2.03 | 2.03 |
-| Races won against the baseline | 15 of 30 | — |
+| Mean position error | 3.24 | 3.39 |
+| Podium places hit (of 3) | 1.93 | 2.00 |
+| Races won against the baseline | 17 of 30 | — |
 
-Given each race's *own* pace instead, it looks far better — 2.54 against 3.04,
-winning 31 of 36 — and that gap is the measure of how much hindsight was
+The first version of this backtest took driver pace from earlier races but
+everything else from the race itself, and scored 3.24 against 3.31. Holding the
+rest out as well left the simulator's error where it was; the grid baseline
+moved because a different 30 races now qualify — eight are skipped, four for
+too few earlier races for driver pace, three for coming too early in a season
+to fit tyre wear on, and one, Madrid, for having no earlier
+pit lane to measure.
+
+Given each race's *own* pace instead, it looks far better — 2.46 against 3.04,
+winning 33 of 36 — and that gap is the measure of how much hindsight was
 doing. Finishing order is dominated by how quick each car is on the day, and
 forecasting that is a different problem from strategy.
 
-`python scripts/validate_race.py prior` reproduces both numbers.
+`python scripts/validate_race.py prior` and `... hindsight` reproduce both.
 
 **What it is for is comparing plans for one car**, where pace errors largely
 cancel because every plan runs against the same field:
@@ -550,18 +599,24 @@ cancel because every plan runs against the same field:
 racecraft-analyse race Baku --laps 51 --grid 8
 ```
 
-A midfield car starting P8 at Baku:
+A midfield car starting P8 at Baku 2025, held out — fitted on the fourteen
+races before it, none of Baku and nothing after:
 
-| Plan | Mean finish | In the points | Best case |
-|---|---|---|---|
-| one stop, lap 26 | **8.01** | 100% | 7 |
-| one stop, lap 34 | 8.40 | 94% | **4** |
-| one stop, lap 20 | 8.49 | 90% | 6 |
-| two stops | 9.74 | 68% | 7 |
+| Plan | Expected loss | Mean finish | ± | In the points |
+|---|---|---|---|---|
+| hard 31 > medium 20 | 63.1 s | **8.41** | 0.16 | 85% — tied |
+| medium 22 > hard 29 | 60.0 s | 8.44 | 0.16 | 86% — tied |
+| medium 28 > hard 23 | 60.2 s | 8.56 | 0.17 | 81% — tied |
+| medium 31 > hard 20 | 60.9 s | 8.61 | 0.17 | 83% — tied |
+| medium 25 > hard 26 | **59.9 s** | 8.84 | 0.17 | 78% |
+| medium 16 > hard 35 | 62.6 s | 10.33 | 0.21 | 62% |
 
-The late stop is the gamble: worse on average, better if the race falls your
-way. That is a strategy question, and it is the shape of answer the simulator
-can honestly give.
+Four plans cannot be separated, and the simulator says so rather than picking
+one. The useful answer is the **price of track position**: `medium 22 > hard 29`
+is as good as the best and costs 0.1 s more than the seconds-cheapest plan, for
+0.40 places. The plans are shortlisted by the safety-car ranking, not by
+green-flag seconds, so a long first stint that only pays off when a safety car
+arrives gets raced at all.
 
 ## Query
 
@@ -616,12 +671,16 @@ src/racecraft/
   store/db.py              DuckDB views over the lake
   api/timing.py            running order and gaps at any instant
   api/session.py           one session held in memory, ready to replay
+  api/places_view.py       the places ranking for one session, cached
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation
   model/circuit.py         pit loss, safety car risk
   model/strategy.py        costing and ranking race plans
   model/simulate.py        plans under safety car uncertainty
   model/race.py            the whole field, scored in places
+  model/traffic.py         time lost in the wake of the car ahead
+  model/race_inputs.py     simulator inputs from earlier races only
+  model/places.py          plans raced against the field, and the verdict
   model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
@@ -750,7 +809,7 @@ driver fixed effects — the least you must do when quick cars rejoin in clear a
 Every estimate is inside its own error bar, and the sign is not even stable.
 
 This is not evidence that traffic is free. The project measures a following
-penalty of +0.55 s/lap inside 0.5 s elsewhere, over whole races. It is evidence
+penalty of +0.28 s/lap inside 0.5 s in 2026, over whole races. It is evidence
 that *this* design cannot see it, and the reasons are identifiable: three laps
 is a short window, the car ahead may itself pit on the next lap, and a fresh
 tyre is worth about 0.6 s/lap, which swamps what is being looked for.
@@ -787,7 +846,8 @@ account of the race.
 
 **3. Track position inside the strategy model — built.** `model/places.py` takes
 the plans the seconds model likes, races each one against a whole field, and
-ranks them by finishing position: `racecraft-analyse race Baku --grid 8`.
+ranks them by finishing position: `racecraft-analyse race Baku --grid 8`, or
+**In places** on the interface's strategy board.
 
 What it found is not what was expected, and the first version of it was wrong.
 Running every rival on one identical plan produced a four-place cliff in favour
@@ -795,13 +855,16 @@ of stopping on the lap they stopped — the simulation rewarding a car for copyi
 a field that does not exist. Spreading the field's stop laps and redrawing them
 fifteen times per plan removes it, and the spread falls from 4.03 places to 1.78.
 
-With that fixed, at Baku from P8 the two models **agree at the top**: the places
-ranking prefers `hard 28 > medium 23` over the seconds-cheapest
-`medium 22 > hard 29`, but by 0.14 places against a standard error of 0.18, so
-they cannot be separated and the command says so instead of picking one.
+It has since been corrected three more ways: inputs held out to races before
+the one simulated, the wake penalty measured rather than assumed, and the
+shortlist drawn from the safety-car ranking. At Baku 2025 from P8, four plans
+tie at the top; the cheapest of them costs 0.1 s more than the seconds-cheapest
+plan and is worth 0.40 places.
 
-Where they differ is **how bad a bad plan is**. Stopping on lap 16 costs 2.0 s
-more in seconds and **2.46 places** more here. The value of modelling track
+Where the models differ most is **how bad a bad plan is**. Stopping on lap 16
+costs 2.7 s more in seconds and **1.91 places** more here — less than the 2.46
+the double-counted wake penalty claimed, and still far more than 2.7 s
+suggests. The value of modelling track
 position turns out to be less about choosing between good plans than about
 knowing the cost of a wrong one, which the seconds model understates badly.
 

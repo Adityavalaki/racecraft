@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from racecraft.api import insight
 from racecraft.api import live_store
+from racecraft.api import places_view
 from racecraft.api import session as session_store
 from racecraft.store.db import connect
 
@@ -134,6 +135,30 @@ def session_insight(session_key: str,
         return insight.for_session(session_key, scale=scale)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+
+
+@app.get("/api/sessions/{session_key}/places")
+def session_places(session_key: str,
+                   grid: int = Query(8, ge=1, le=22, description="grid slot of the car being advised"),
+                   runs: int = Query(300, ge=40, le=1000, description="simulated races per plan")) -> dict:
+    """
+    Plans for one car, ranked by where they finish against the whole field.
+
+    Held out: for a race that has happened, everything is fitted on races that
+    started before it. Takes about half a minute the first time for a race and a
+    grid slot, then is served from memory.
+    """
+    live = None
+    if session_key == live_store.SESSION_KEY:
+        live = _load(session_key)
+    try:
+        return places_view.for_session(session_key, grid, runs, live=live)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+    except places_view.NotSimulable as error:
+        # 422 rather than 404 or 409: the session exists and is ready, but the
+        # races before it cannot support a simulation, and retrying will not help.
+        raise HTTPException(status_code=422, detail=str(error)) from None
 
 
 @app.get("/api/live")

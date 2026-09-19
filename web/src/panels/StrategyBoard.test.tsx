@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { StrategyBoard } from "./StrategyBoard";
 import type { Insight, Plan, RiskyPlan } from "../api";
 
@@ -70,7 +70,7 @@ function insight(overrides: Partial<Insight> = {}): Insight {
 
 describe("StrategyBoard", () => {
   it("shows the measured circuit constants rather than round numbers", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     expect(screen.getByText("21.0s")).toBeDefined();
     expect(screen.getByText("±1.0 · 42 stops")).toBeDefined();
     expect(screen.getByText("0.83")).toBeDefined();
@@ -78,20 +78,20 @@ describe("StrategyBoard", () => {
   });
 
   it("ranks plans with the best marked and the rest measured against it", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     expect(screen.getByText("best")).toBeDefined();
     expect(screen.getByText("+0.5s")).toBeDefined();
   });
 
   it("says when a row stands for both running orders, because the model cannot tell them apart", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     const badges = screen.getAllByText("either order");
     expect(badges).toHaveLength(1);                       // only the plan with two orders
     expect(badges[0]?.getAttribute("title")).toContain("medium 26 > soft 25");
   });
 
   it("always shows what the model leaves out", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     const omissions = screen.getByRole("list");
     expect(within(omissions).getByText("traffic")).toBeDefined();
     expect(within(omissions).getByText("track position")).toBeDefined();
@@ -99,7 +99,7 @@ describe("StrategyBoard", () => {
   });
 
   it("puts the model's stop count beside what the race actually ran", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={1.1} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={1.1} sessionKey={null} />);
     expect(screen.getByText("1 stop")).toBeDefined();
     expect(screen.getByText("race ran 1.10 avg")).toBeDefined();
   });
@@ -110,7 +110,7 @@ describe("StrategyBoard", () => {
         insight={insight({ plans: [], plans_unavailable: "not enough green-flag stops at this circuit" })}
         loading={false}
         error={null}
-        actualStops={null}
+        actualStops={null} sessionKey={null}
       />,
     );
     expect(screen.getByText("not enough green-flag stops at this circuit")).toBeDefined();
@@ -119,20 +119,20 @@ describe("StrategyBoard", () => {
 
   it("says a circuit with one season has no safety car figure, rather than showing zero", () => {
     render(
-      <StrategyBoard insight={insight({ safety_car: null })} loading={false} error={null} actualStops={null} />,
+      <StrategyBoard insight={insight({ safety_car: null })} loading={false} error={null} actualStops={null} sessionKey={null} />,
     );
     expect(screen.getByText("one season only")).toBeDefined();
   });
 
 
   it("opens on the green ranking, because that one is arithmetic rather than simulation", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     expect(screen.getByRole("radio", { name: "If green" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByText("where it goes")).toBeDefined();
   });
 
   it("switches to the safety-car ranking, which answers a different question", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null} sessionKey={null} />);
     fireEvent.click(screen.getByRole("radio", { name: /safety cars/i }));
 
     expect(screen.getByText("cheap stop")).toBeDefined();
@@ -152,7 +152,7 @@ describe("StrategyBoard", () => {
         "traffic: a car released into a queue loses time this does not count",
       ],
     });
-    render(<StrategyBoard insight={withSafetyCarCaveat} loading={false} error={null} actualStops={null} />);
+    render(<StrategyBoard insight={withSafetyCarCaveat} loading={false} error={null} actualStops={null} sessionKey={null} />);
     expect(within(screen.getByRole("list")).getByText("safety cars")).toBeDefined();
 
     fireEvent.click(screen.getByRole("radio", { name: /safety cars/i }));
@@ -166,7 +166,7 @@ describe("StrategyBoard", () => {
         insight={insight({ plans_with_risk: [] })}
         loading={false}
         error={null}
-        actualStops={null}
+        actualStops={null} sessionKey={null}
       />,
     );
     expect(screen.getByRole("radio", { name: /safety cars/i }).hasAttribute("disabled")).toBe(true);
@@ -182,7 +182,7 @@ describe("StrategyBoard", () => {
         insight={insight({ is_race: false, stints: [] })}
         loading={false}
         error={null}
-        actualStops={4.18}
+        actualStops={4.18} sessionKey={null}
       />,
     );
     expect(screen.queryByText(/race ran/i)).toBeNull();
@@ -195,20 +195,40 @@ describe("StrategyBoard", () => {
         insight={insight({ is_race: false, stints: [] })}
         loading={false}
         error={null}
-        actualStops={null}
+        actualStops={null} sessionKey={null}
       />,
     );
     expect(screen.getByText(/nothing here is measured from this session/i)).toBeDefined();
   });
 
   it("keeps the race comparison when it is a race", () => {
-    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={1.1} />);
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={1.1} sessionKey={null} />);
     expect(screen.getByText("race ran 1.10 avg")).toBeDefined();
     expect(screen.queryByText(/nothing here is measured/i)).toBeNull();
   });
 
+
+  it("offers a third view that ranks plans by where they finish", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null}
+                          sessionKey="2025_17_R" />);
+    fireEvent.click(screen.getByRole("radio", { name: "In places" }));
+    expect(screen.getByRole("radio", { name: "In places" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText(/starting from/i)).toBeDefined();
+    // The seconds views' caveats name traffic and track position as missing,
+    // which this view models, so they are not shown here.
+    expect(screen.queryByText("This counts seconds, not places. It leaves out:")).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("cannot open the places view without a session to ask about", () => {
+    render(<StrategyBoard insight={insight()} loading={false} error={null} actualStops={null}
+                          sessionKey={null} />);
+    expect(screen.getByRole("radio", { name: "In places" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("reports an error instead of pretending it has a model", () => {
-    render(<StrategyBoard insight={null} loading={false} error="lake unreachable" actualStops={null} />);
+    render(<StrategyBoard insight={null} loading={false} error="lake unreachable" actualStops={null} sessionKey={null} />);
     expect(screen.getByText("lake unreachable")).toBeDefined();
   });
 });

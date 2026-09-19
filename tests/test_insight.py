@@ -290,7 +290,7 @@ def test_pruning_never_drops_the_plan_that_would_have_won(lake_dir):
     neutralisation = simulate_model.Neutralisation.for_circuit(periods, TOTAL_LAPS)
 
     plans = strategy_model.enumerate_plans(TOTAL_LAPS, tuple(degradation), max_stops=2,
-                                           min_stint=insight.MIN_STINT_LAPS, step=insight.RISK_STEP)
+                                           min_stint=insight.MIN_STINT_LAPS, step=simulate_model.RISK_STEP)
     saving = (1 - neutralisation.stop_discount) * pit_loss
     green = {p: strategy_model.cost(p, degradation, pit_loss, compound_offset_s=offsets) for p in plans}
     best_green = min(c.seconds_lost for c in green.values())

@@ -28,10 +28,17 @@ import numpy as np
 from racecraft.model.simulate import Neutralisation
 from racecraft.model.strategy import Plan
 
-# Time lost per lap when running in another car's wake, by gap in seconds.
-# Measured across the lake: at under half a second a 2026 car loses about
-# half a second a lap, and the effect is gone by roughly three seconds.
-FOLLOWING_PENALTY_S = ((0.5, 0.55), (1.0, 0.35), (1.5, 0.17), (2.5, 0.06), (4.0, 0.0))
+# Time lost per lap in another car's wake, by gap in seconds: the 2026 figure,
+# measured by `racecraft-analyse following --season 2026` on laps where the
+# follower was slower than the car ahead and so could not be being held up.
+# Being held up is modelled separately, by blocking, so it must not be in here.
+#
+# This is a fallback. The simulator is normally handed the table measured for
+# the season it is running, and uses this only when a season has too few laps
+# close behind another car to measure one. It used to read 0.55 s inside half a
+# second, with a comment claiming a measurement nothing in the repository made;
+# that was the wake and the holding-up together, and counted the second twice.
+FOLLOWING_PENALTY_S = ((0.5, 0.283), (1.0, 0.072), (1.5, 0.034), (2.5, 0.002), (4.0, 0.0))
 
 # How close a car sits behind one it cannot pass.
 MIN_FOLLOWING_GAP_S = 0.4
@@ -79,9 +86,9 @@ class RaceResult:
         return out
 
 
-def following_penalty(gap_s: float) -> float:
+def following_penalty(gap_s: float, table=None) -> float:
     """Time lost this lap to the wake of the car ahead."""
-    for limit, penalty in FOLLOWING_PENALTY_S:
+    for limit, penalty in (table or FOLLOWING_PENALTY_S):
         if gap_s < limit:
             return penalty
     return 0.0
@@ -91,15 +98,21 @@ def simulate(cars: list[Car], total_laps: int, degradation: dict[str, float], pi
              neutralisation: Neutralisation, passes_per_lap: float,
              compound_offset_s: dict[str, float] | None = None,
              curvature: dict[str, float] | None = None,
-             runs: int = 200, rng: np.random.Generator | None = None) -> RaceResult:
-    """Run the race `runs` times and collect where everyone finished."""
+             runs: int = 200, rng: np.random.Generator | None = None,
+             following=None) -> RaceResult:
+    """
+    Run the race `runs` times and collect where everyone finished.
+
+    `following` is the wake penalty by gap, as measured for the season being
+    run; see `traffic.measure`. It falls back to the 2026 figure.
+    """
     rng = rng or np.random.default_rng(0)
     by_number = {car.driver_number: car for car in cars}
     finishes: dict[int, list[int]] = {car.driver_number: [] for car in cars}
 
     for _ in range(runs):
         order = _one_race(cars, total_laps, degradation, pit_loss_s, neutralisation,
-                          passes_per_lap, compound_offset_s or {}, curvature, rng)
+                          passes_per_lap, compound_offset_s or {}, curvature, rng, following)
         for position, driver in enumerate(order, start=1):
             finishes[driver].append(position)
 
@@ -113,7 +126,7 @@ def simulate(cars: list[Car], total_laps: int, degradation: dict[str, float], pi
 def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], pit_loss_s: float,
               neutralisation: Neutralisation, passes_per_lap: float,
               compound_offset_s: dict[str, float], curvature: dict[str, float] | None,
-              rng: np.random.Generator) -> list[int]:
+              rng: np.random.Generator, following=None) -> list[int]:
     n = len(cars)
     numbers = [car.driver_number for car in cars]
     elapsed = np.array([0.6 * (car.grid - 1) for car in cars], dtype=float)   # the grid is staggered
@@ -140,7 +153,8 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
             if neutral:
                 lap_times[index] = safety_car_lap
             else:
-                lap_times[index] = base + following_penalty(gaps[index]) + rng.normal(0, LAP_NOISE_S)
+                lap_times[index] = (base + following_penalty(gaps[index], following)
+                                    + rng.normal(0, LAP_NOISE_S))
 
         elapsed = elapsed + lap_times
         tyre_age += 1

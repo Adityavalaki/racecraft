@@ -5,6 +5,8 @@ Run the models over the lake: `racecraft-analyse`.
     racecraft-analyse pace --season 2026   # one season, with each race listed
     racecraft-analyse circuits             # pit loss and neutralisation risk
     racecraft-analyse circuit Baku         # everything known about one circuit
+    racecraft-analyse following            # time lost in another car's wake, per season
+    racecraft-analyse race Baku --grid 8   # plans for one car, ranked in places
 
 Every number the README quotes comes from these commands, so anyone can
 reproduce them rather than taking them on trust.
@@ -20,6 +22,7 @@ import pandas as pd
 
 from racecraft import config
 from racecraft.model import circuit as circuit_model
+from racecraft.model.circuit import passes_per_race
 from racecraft.model import pace as pace_model
 from racecraft.store.db import connect
 
@@ -190,172 +193,127 @@ def cmd_strategy(args) -> int:
     return 0
 
 
-def passes_per_race(circuit_laps: pd.DataFrame) -> float:
-    """
-    On-track passes per race: pairs of cars that swapped places between laps
-    while neither was in the pit lane and the race was green. Counting raw
-    position changes instead would count everyone gaining a place when someone
-    ahead pits, which is not overtaking.
-    """
-    counts = []
-    for _, race_laps in circuit_laps.groupby("session_key"):
-        per_lap = {n: g.set_index("driver_number") for n, g in race_laps.groupby("lap_number")}
-        passes = 0
-        for lap in sorted(per_lap):
-            before, after = per_lap.get(lap - 1), per_lap.get(lap)
-            if before is None or after is None or str(after.track_status.iloc[0]) != "1":
-                continue
-            running = [d for d in after.index if d in before.index
-                       and not bool(before.loc[d, "is_pit_in_lap"]) and not bool(after.loc[d, "is_pit_in_lap"])
-                       and not bool(after.loc[d, "is_pit_out_lap"]) and not bool(before.loc[d, "is_pit_out_lap"])
-                       and pd.notna(before.loc[d, "position"]) and pd.notna(after.loc[d, "position"])]
-            for i, a in enumerate(running):
-                for b in running[i + 1:]:
-                    passes += ((before.loc[a, "position"] < before.loc[b, "position"])
-                               != (after.loc[a, "position"] < after.loc[b, "position"]))
-        counts.append(passes)
-    return float(np.mean(counts)) if counts else 30.0
-
-
 def cmd_race(args) -> int:
-    """Compare plans for one car by simulating the whole field around it."""
-    from racecraft.model import race as race_model
-    from racecraft.model.simulate import Neutralisation
-    from racecraft.model.strategy import Plan
+    """
+    Rank plans for one car by where they finish, racing the whole field.
+
+    Every input comes from `race_inputs`, which uses only races that finished
+    before the one being studied: a race that has happened is never fitted on
+    itself or on anything after it. See that module for why.
+    """
+    from racecraft.model import places as places_model
+    from racecraft.model import race_inputs
 
     con = connect()
-    name = circuit_model.canonical_circuit(args.circuit)
-    laps_all = _race_laps(con)
-    here = laps_all[circuit_model.canonical_circuit(laps_all["location"]) == name]
-    if here.empty:
-        print(f"no races at '{args.circuit}' in the lake at {config.LAKE_DIR}")
-        return 1
-    loss = next((p for p in circuit_model.pit_loss(laps_all) if p.circuit == name), None)
-    if loss is None:
-        print(f"not enough green-flag stops at '{args.circuit}' to measure pit loss")
+    try:
+        inputs = race_inputs.build(con, args.circuit, args.season, scale=args.scale,
+                                   cars=args.cars, include_race=args.include_race,
+                                   total_laps=args.laps)
+    except race_inputs.NotEnoughData as error:
+        print(f"cannot simulate: {error}")
         return 1
 
-    (clean, _), _ = _clean_by_session(con, args.season)
-    models = []
-    for laps in clean.values():
-        if len(laps) < 200:
-            continue
-        try:
-            models.append(pace_model.fit_lap_effects(laps))
-        except (pace_model.Confounded, ValueError):
-            continue
-    if not models:
-        print(f"no fittable races in {args.season}")
-        return 1
-
-    degradation = {c: v[0] * args.scale for c, v in pace_model.combine(models).items()}
-    offsets = {c: float(np.median([m.compound_offset_s[c] for m in models if c in m.compound_offset_s]))
-               for c in pace_model.DRY_COMPOUNDS if any(c in m.compound_offset_s for m in models)}
-    # The pace ladder from the most recent races: how far apart the cars are,
-    # quickest first. Races differ in how many cars they classify, so each one
-    # is cut to the same length before averaging.
-    ladders = [sorted(m.driver_baseline_s.values())[:args.cars] for m in models[-5:]
-               if len(m.driver_baseline_s) >= args.cars]
-    if not ladders:
-        print(f"fewer than {args.cars} cars with a fitted pace in {args.season}")
-        return 1
-    ladder = list(np.mean(np.array(ladders), axis=0))
-    quickest = float(here["lap_time_s"].min())
-
-    total = args.laps or int(here.groupby("session_key")["lap_number"].max().median())
-    sessions = con.sql("select session_key, location from sessions where session='R'").df()
-    track_status = con.sql("select session_key, t, status from track_status").df()
-    risk = next((r for r in circuit_model.safety_car_risk(track_status, sessions, laps_all)
-                 if r.circuit == name), None)
-    neutralisation = Neutralisation.for_circuit(risk.periods_per_race if risk else 1.27, total)
-    overtaking = passes_per_race(here)
-    passes = race_model.pass_probability(overtaking, total, args.cars)
-
-    print(f"{name}, {total} laps — {args.season} field, {args.cars} cars")
-    print(f"  pit loss {loss.seconds:.1f}s | {overtaking:.0f} passes per race here "
-          f"({passes:.3f} per lap in a fight) | safety car {neutralisation.per_lap:.3f} per lap")
-    print(f"  degradation s/lap: " + ", ".join(f"{c.lower()} {v:.4f}" for c, v in degradation.items())
-          + (f"  (scaled x{args.scale})" if args.scale != 1.0 else ""))
+    if inputs.held_out:
+        print(f"{inputs.event_name} {inputs.season} — held out: fitted only on races before "
+              f"{inputs.cutoff:%d %b %Y}, none of it on this race or any after it")
+    else:
+        print(f"{inputs.circuit} — not run yet in {inputs.season}, so every finished race is used")
+    print(f"  {inputs.total_laps} laps | pit lane {inputs.pit_loss_s:.1f}s ({inputs.pit_stops} stops) | "
+          f"{inputs.passes_per_race:.0f} passes per race | "
+          f"{inputs.periods_per_race:.2f} safety cars per race")
+    print(f"  tyres from {len(inputs.fitted_on)} {inputs.season} races, "
+          + ", ".join(f"{c.lower()} {v:.4f}" for c, v in inputs.degradation.items())
+          + f" s/lap (x{inputs.scale})")
+    wake = inputs.following
+    if wake.measured:
+        print(f"  wake measured from {wake.races} races: "
+              + ", ".join(f"<{edge}s {value:+.2f}" for edge, value in wake.penalties[:3]) + " s/lap")
+    for note in inputs.notes:
+        print(f"  note: {note}")
     print()
 
-    # The plans worth simulating, from the seconds model, one per shape: a race
-    # is milliseconds but a sweep is thousands of plans, and the two models
-    # disagree about which of several close plans is best rather than about
-    # whether a plan losing half a minute is in contention.
-    from racecraft.model import places as places_model
-    from racecraft.model import strategy as strategy_model
+    result = places_model.study(inputs, args.grid, plans=args.plans, runs=args.runs)
+    if not result.ranking:
+        print("no plans to race")
+        return 1
 
-    swept = strategy_model.enumerate_plans(total, tuple(degradation), max_stops=2,
-                                           min_stint=10, step=3)
-    costed = sorted(swept, key=lambda p: strategy_model.cost(
-        p, degradation, loss.seconds, compound_offset_s=offsets).seconds_lost)
-    seen, candidates = set(), []
-    for plan in costed:
-        shape = tuple(sorted(plan.stints))
-        if shape in seen:
-            continue
-        seen.add(shape)
-        candidates.append(plan)
-        if len(candidates) == args.plans:
-            break
-
-    seconds = {str(p): strategy_model.cost(p, degradation, loss.seconds,
-                                           compound_offset_s=offsets).seconds_lost
-               for p in candidates}
-    cheapest = min(seconds, key=seconds.get)
-    field_plan = candidates[0]
-
-    ranked = places_model.rank_plans(
-        candidates, field_plan, grid=args.grid, ladder=ladder, quickest_lap_s=quickest,
-        total_laps=total, degradation=degradation, pit_loss_s=loss.seconds,
-        neutralisation=neutralisation, passes_per_lap=passes,
-        compound_offset_s=offsets, runs=args.runs, cars=args.cars)
-
-    low, high = places_model.field_stop_window(total, field_plan)
-    print(f"  A car starting P{args.grid}. The rest of the field stops between laps "
-          f"{low} and {high}, redrawn {places_model.DEFAULT_FIELD_DRAWS} times so that no one "
-          f"guess about them decides this.")
+    low, high = places_model.field_stop_window(inputs.total_laps, result.field_plan)
+    print(f"  A car starting P{args.grid}. The rest of the field stops between laps {low} and "
+          f"{high}, redrawn {places_model.DEFAULT_FIELD_DRAWS} times so that no one guess about")
+    print("  them decides this. Plans are shortlisted allowing for safety cars.")
     print()
-    print(f"  {'plan':<26} {'seconds':>8} {'finish':>8} {'±':>6} {'behind':>7} {'points':>8}")
-    for entry in ranked:
+
+    expected = {str(c.plan): c.expected_s for c in result.shortlist}
+    print(f"  {'plan':<30} {'expected':>9} {'finish':>8} {'±':>6} {'behind':>7} {'points':>8}")
+    for entry in result.ranking:
         name = str(entry.plan)
         tie = " tied" if entry.within_noise else ""
-        print(f"  {name:<26} {seconds[name]:>8.1f} {entry.mean_finish:>8.2f} "
-              f"{entry.std_error:>6.2f} {entry.behind_best:>7.2f} "
-              f"{entry.points_share:>7.0%}{tie}")
+        print(f"  {name:<30} {expected[name]:>8.1f}s {entry.mean_finish:>8.2f} "
+              f"{entry.std_error:>6.2f} {entry.behind_best:>7.2f} {entry.points_share:>7.0%}{tie}")
 
-    tied = [str(e.plan) for e in ranked if e.within_noise]
+    said = places_model.verdict(result)
     print()
-    print(f"  cheapest in seconds : {cheapest}  ({seconds[cheapest]:.1f}s)")
-    print(f"  best in places      : {str(ranked[0].plan)}  (P{ranked[0].mean_finish:.2f})")
-    if len(tied) > 1:
-        print(f"  cannot be separated : {', '.join(tied)}")
-    cheapest_entry = next(e for e in ranked if str(e.plan) == cheapest)
+    print(f"  cheapest in seconds : {said['cheapest_in_seconds']}  "
+          f"({expected[said['cheapest_in_seconds']]:.1f}s expected)")
+    print(f"  best in places      : {said['best_in_places']}  (P{result.ranking[0].mean_finish:.2f})")
+    if len(said["tied"]) > 1:
+        print(f"  cannot be separated : {', '.join(said['tied'])}")
     print()
-    if cheapest == str(ranked[0].plan):
-        print("  The two models agree on the best plan here.")
-    elif cheapest_entry.within_noise:
-        # The common case, and the one worth not overselling: a different plan
-        # tops the list, but not by enough to call it a different answer.
-        print(f"  A different plan tops the places ranking, but {cheapest} is inside")
-        print("  its error bar. On this evidence the two models agree.")
+    if said["price"] is None:
+        if said["cheapest_in_seconds"] == said["best_in_places"]:
+            print("  The two models agree on the best plan here.")
+        else:
+            print(f"  A different plan tops the places ranking, but {said['cheapest_in_seconds']} is")
+            print("  inside its error bar. On this evidence the two models agree.")
     else:
-        gap = seconds[str(ranked[0].plan)] - seconds[cheapest]
-        print(f"  The places model gives up {gap:.1f}s of lap time for track position,")
-        print(f"  and puts {cheapest} {cheapest_entry.behind_best:.2f} places behind.")
-
-    worst = ranked[-1]
-    if not worst.within_noise:
-        cost = seconds[str(worst.plan)] - seconds[cheapest]
+        price = said["price"]
+        print(f"  {price['plan']} is as good as the best in places and costs {price['extra_seconds']:.1f}s")
+        print(f"  more than {price['instead_of']}, for {price['places_gained']:.2f} places. "
+              "That is the price of track position here.")
+    if said["bad_plan"]:
+        bad = said["bad_plan"]
         print()
-        print(f"  Where the two models really differ is how bad a bad plan is.")
-        print(f"  {str(worst.plan)} costs {cost:.1f}s more in seconds and "
-              f"{worst.behind_best:.2f} places more here.")
+        print("  Where the two models really differ is how bad a bad plan is:")
+        print(f"  {bad['plan']} costs {bad['extra_seconds']:.1f}s more in seconds and "
+              f"{bad['places_lost']:.2f} places more here.")
 
     print()
     print("  Comparing plans for one car is what this is for. It does not predict")
     print("  finishing order: with pace from earlier races only it is level with")
     print("  guessing the grid (see scripts/validate_race.py).")
+    return 0
+
+
+def cmd_following(args) -> int:
+    """The time lost in another car's wake, by gap, per season. See model/traffic.py."""
+    from racecraft.model import traffic
+
+    con = connect()
+    seasons = [args.season] if args.season else sorted(
+        r[0] for r in con.sql("select distinct year from sessions where session='R'").fetchall())
+    labels = [f"<{edge}s" for edge in traffic.EDGES]
+
+    for year in seasons:
+        keys = [r[0] for r in con.sql(
+            f"select session_key from sessions where year = {year} and session = 'R' order by round"
+        ).fetchall()]
+        races = [con.sql(f"select * from laps where session_key = '{k}'").df() for k in keys]
+        table = traffic.measure([r for r in races if not r.empty])
+        print()
+        print(f"{year}   {table.detail}")
+        if not table.measured:
+            print("  not measurable")
+            continue
+        print(f"  {'gap':>7} {'wake':>14} {'laps':>7} {'all laps':>10}")
+        for label, (_, value), error, n, raw in zip(labels, table.penalties, table.errors,
+                                                   table.laps, table.all_laps):
+            print(f"  {label:>7} {value:>+7.3f} ± {error:.3f} {n:>7} {raw:>+10.3f}")
+
+    print()
+    print("  wake: laps where the follower was slower than the car ahead, so it cannot")
+    print("  have been held up. That is what the race simulator uses, because it models")
+    print("  being held up separately. 'all laps' includes the holding-up, and is the")
+    print("  larger figure a following penalty would be if measured naively.")
     return 0
 
 
@@ -428,6 +386,10 @@ def main(argv: list[str] | None = None) -> int:
                              help="let degradation bend rather than run straight (lap-effects only)")
     pace_parser.set_defaults(handler=cmd_pace)
 
+    following_parser = commands.add_parser("following", help="time lost in another car's wake, per season")
+    following_parser.add_argument("--season", type=int)
+    following_parser.set_defaults(handler=cmd_following)
+
     circuits_parser = commands.add_parser("circuits", help="pit loss and neutralisation risk, every circuit")
     circuits_parser.set_defaults(handler=cmd_circuits)
 
@@ -453,6 +415,9 @@ def main(argv: list[str] | None = None) -> int:
     race_parser.add_argument("--runs", type=int, default=300, help="simulated races per plan")
     race_parser.add_argument("--plans", type=int, default=10,
                              help="how many of the cheapest plans to race, one per shape")
+    race_parser.add_argument("--include-race", action="store_true",
+                             help="fit on the race itself and races after it too: in-sample, "
+                                  "for comparison only")
     race_parser.add_argument("--scale", type=float, default=1.5,
                              help="multiply measured degradation; 1.5 matches real stop counts")
     race_parser.set_defaults(handler=cmd_race)

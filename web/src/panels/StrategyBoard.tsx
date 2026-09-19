@@ -1,5 +1,7 @@
 import { memo, useState } from "react";
-import { COMPOUND_COLORS, type Insight, type Plan, type RiskyPlan, type StintRun } from "../api";
+import { type Insight, type Plan, type RiskyPlan, type StintRun } from "../api";
+import { PlacesBoard } from "./PlacesBoard";
+import { Omissions, PlanName } from "./planParts";
 import { StintChart } from "./StintChart";
 
 interface Props {
@@ -8,9 +10,11 @@ interface Props {
   error: string | null;
   /** What each car actually did, so the model can be read against the race. */
   actualStops: number | null;
+  /** The session, for the places view, which fetches its own answer. */
+  sessionKey: string | null;
 }
 
-type Mode = "green" | "risk";
+type Mode = "green" | "risk" | "places";
 
 /**
  * What the strategy model makes of this circuit, and what it cannot see.
@@ -21,12 +25,19 @@ type Mode = "green" | "risk";
  * 61% of a green one — which usually rewards a longer first stint, since more
  * laps remain in which a cheap stop can arrive.
  *
+ * A third view, *in places*, races each plan against the whole field and ranks
+ * by finishing position. It is slower — half a minute the first time — so it is
+ * only asked for when opened, and it says what track position costs rather than
+ * naming a winner.
+ *
  * The caveats sit beside the ranking rather than behind a link. A plan quoted
  * to a tenth while ignoring traffic and track position invites exactly the
  * confidence it has not earned: the model counts seconds, races are scored in
  * places.
  */
-export const StrategyBoard = memo(function StrategyBoard({ insight, loading, error, actualStops }: Props) {
+export const StrategyBoard = memo(function StrategyBoard({
+  insight, loading, error, actualStops, sessionKey,
+}: Props) {
   const [mode, setMode] = useState<Mode>("green");
 
   if (loading) return <div className="panel-note">Fitting the season… this takes a few seconds the first time.</div>;
@@ -36,6 +47,7 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
   const { pit_loss: pitLoss, safety_car: risk } = insight;
   const riskAvailable = insight.plans_with_risk.length > 0;
   const showRisk = mode === "risk" && riskAvailable;
+  const showPlaces = mode === "places" && sessionKey !== null;
   const best = showRisk ? insight.plans_with_risk[0] : insight.plans[0];
   // Stop counts off a practice session are cars trundling through the pit lane,
   // not a strategy, so the comparison is only offered for a race.
@@ -79,8 +91,8 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
             <button
               type="button"
               role="radio"
-              aria-checked={!showRisk}
-              className={!showRisk ? "mode is-active" : "mode"}
+              aria-checked={!showRisk && !showPlaces}
+              className={!showRisk && !showPlaces ? "mode is-active" : "mode"}
               onClick={() => setMode("green")}
             >
               If green
@@ -95,9 +107,21 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
             >
               Expected, with safety cars
             </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={showPlaces}
+              className={showPlaces ? "mode is-active" : "mode"}
+              onClick={() => setMode("places")}
+              disabled={sessionKey === null}
+            >
+              In places
+            </button>
           </div>
 
-          {showRisk ? (
+          {showPlaces && sessionKey !== null ? (
+            <PlacesBoard sessionKey={sessionKey} />
+          ) : showRisk ? (
             <div className="plan-table" role="table" aria-label="Plans costed with safety cars">
               <div className="plan-head plan-head-risk" role="row">
                 <span role="columnheader">plan</span>
@@ -135,26 +159,16 @@ export const StrategyBoard = memo(function StrategyBoard({ insight, loading, err
         modelLabel={best ? best.plan : ""}
       />
 
-      <div className="omissions">
-        <h3>
-          {showRisk
+      {/* The places view carries its own list: it models traffic and track
+          position, so the seconds views' caveats would name gaps it has closed. */}
+      {!showPlaces && (
+        <Omissions
+          heading={showRisk
             ? "Safety cars are modelled. Still missing:"
             : "This counts seconds, not places. It leaves out:"}
-        </h3>
-        <ul>
-          {insight.caveats
-            .filter((caveat) => !(showRisk && caveat.startsWith("safety cars")))
-            .map((caveat) => {
-              const [term, rest] = splitCaveat(caveat);
-              return (
-                <li key={caveat}>
-                  <b>{term}</b>
-                  {rest}
-                </li>
-              );
-            })}
-        </ul>
-      </div>
+          items={insight.caveats.filter((caveat) => !(showRisk && caveat.startsWith("safety cars")))}
+        />
+      )}
     </div>
   );
 });
@@ -204,22 +218,6 @@ function RiskRow({ plan }: { plan: RiskyPlan }) {
   );
 }
 
-function PlanName({ plan, orders }: { plan: string; orders: string[] }) {
-  return (
-    <span className="plan-name" role="cell">
-      {plan.split(" > ").map((stint, index) => {
-        const compound = (stint.split(" ")[0] ?? "").toUpperCase();
-        return (
-          <span key={index} className="plan-stint">
-            <i className="swatch" style={{ background: COMPOUND_COLORS[compound] ?? "#a8b4c1" }} />
-            {stint}
-          </span>
-        );
-      })}
-      {orders.length > 1 && <em title={orders.join("  ·  ")}>either order</em>}
-    </span>
-  );
-}
 
 function Constant({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
@@ -246,8 +244,3 @@ function planToStints(plan: string): StintRun[] {
   });
 }
 
-/** "traffic: a car released into a queue…" -> bold term, plain rest. */
-function splitCaveat(caveat: string): [string, string] {
-  const at = caveat.indexOf(":");
-  return at === -1 ? [caveat, ""] : [caveat.slice(0, at), caveat.slice(at)];
-}

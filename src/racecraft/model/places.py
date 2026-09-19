@@ -141,10 +141,15 @@ def _draw_field(reference: Plan, cars: int, total_laps: int,
     """One plausible field: the reference plan, with stop laps spread around it."""
     low, high = field_stop_window(total_laps, reference)
     compounds = [compound for compound, _ in reference.stints]
+    opening = compounds[0]
+    # The first compound that is not the opening one: a two-stop reference such
+    # as soft > medium > soft would otherwise hand rivals soft > soft, which the
+    # rules do not allow in a dry race.
+    closing = next((c for c in compounds[1:] if c != opening), compounds[-1])
     out = []
     for _ in range(cars):
         stop = int(rng.integers(low, high + 1))
-        out.append(Plan(stints=((compounds[0], stop), (compounds[-1], total_laps - stop))))
+        out.append(Plan(stints=((opening, stop), (closing, total_laps - stop))))
     return out
 
 
@@ -153,7 +158,8 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
                pit_loss_s: float, neutralisation: Neutralisation, passes_per_lap: float,
                compound_offset_s: dict[str, float] | None = None,
                runs: int = DEFAULT_RUNS, cars: int = DEFAULT_CARS,
-               field_draws: int = DEFAULT_FIELD_DRAWS, seed: int = 11) -> list[PlaceRanking]:
+               field_draws: int = DEFAULT_FIELD_DRAWS, seed: int = 11,
+               following=None) -> list[PlaceRanking]:
     """
     Every candidate plan, run as a whole race, ranked by where it finishes.
 
@@ -190,7 +196,7 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
             result = race_model.simulate(
                 field, total_laps, degradation, pit_loss_s, neutralisation, passes_per_lap,
                 compound_offset_s=compound_offset_s or {}, runs=per_draw,
-                rng=np.random.default_rng(seed * 1000 + draw))
+                rng=np.random.default_rng(seed * 1000 + draw), following=following)
             collected.append(result.positions[grid])
         finishes = np.concatenate(collected)
         ranked.append(PlaceRanking(
@@ -224,3 +230,135 @@ def _stop_laps(plan: Plan) -> list[int]:
         running += length
         laps.append(running)
     return laps
+
+
+@dataclass
+class RaceStudy:
+    """A shortlist of plans and how each one finishes, for one car on one grid slot."""
+    grid: int
+    shortlist: list            # simulate.RiskyCost, best expected seconds first
+    ranking: list[PlaceRanking]
+    field_plan: Plan
+
+    def as_dict(self) -> dict:
+        seconds = {str(c.plan): c for c in self.shortlist}
+        rows = []
+        for entry in self.ranking:
+            record = entry.as_dict()
+            costed = seconds.get(str(entry.plan))
+            if costed is not None:
+                record["expected_s"] = round(costed.expected_s, 1)
+                record["green_s"] = round(costed.green_s, 1)
+            rows.append(record)
+        cheapest = str(self.shortlist[0].plan) if self.shortlist else None
+        low, high = field_stop_window(self.field_plan.laps, self.field_plan)
+        return {
+            "grid": self.grid,
+            "plans": rows,
+            "cheapest_in_seconds": cheapest,
+            "best_in_places": str(self.ranking[0].plan) if self.ranking else None,
+            "field_plan": str(self.field_plan),
+            "field_stop_window": [low, high],
+            "field_draws": DEFAULT_FIELD_DRAWS,
+        }
+
+
+def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
+          field_draws: int = DEFAULT_FIELD_DRAWS) -> RaceStudy:
+    """
+    Shortlist plans for one car, then race each against the field.
+
+    The shortlist comes from the ranking that allows for safety cars rather than
+    the green-flag one, because it is the better description of what teams do —
+    0.43 stops off the field's median across the 2026 races, against 0.57 — and
+    the shortlist decides which plans ever get raced. The field, on average,
+    runs the best of them.
+
+    `inputs` is a `race_inputs.RaceInputs`, so everything here was measured only
+    from races that had finished before the one being studied.
+    """
+    from racecraft.model import simulate as simulate_model
+
+    shortlist = simulate_model.rank_with_risk(
+        inputs.total_laps, inputs.degradation, inputs.pit_loss_s, inputs.neutralisation,
+        inputs.compound_offset_s, keep=plans)
+    if not shortlist:
+        return RaceStudy(grid=grid, shortlist=[], ranking=[], field_plan=Plan(()))
+
+    field_plan = shortlist[0].plan
+    ranking = rank_plans(
+        [c.plan for c in shortlist], field_plan, grid=grid, ladder=inputs.ladder,
+        quickest_lap_s=inputs.quickest_lap_s, total_laps=inputs.total_laps,
+        degradation=inputs.degradation, pit_loss_s=inputs.pit_loss_s,
+        neutralisation=inputs.neutralisation, passes_per_lap=inputs.passes_per_lap,
+        compound_offset_s=inputs.compound_offset_s, runs=runs, cars=inputs.cars,
+        field_draws=field_draws, following=inputs.following_table)
+    return RaceStudy(grid=grid, shortlist=shortlist, ranking=ranking, field_plan=field_plan)
+
+
+# What the places model cannot see, shown beside its ranking. Traffic and track
+# position are the two the seconds model leaves out and this one models; what is
+# left, and the new limit this one brings, belong here instead.
+OMISSIONS = (
+    "rivals: the rest of the field runs a fixed plan and never covers a stop",
+    "the cliff: degradation past the point teams actually pit is unmeasured",
+    "warm-up: an out-lap on cold tyres is slower than the model's fresh pace",
+    "allocation: only so many sets of each compound exist for a race weekend",
+    "car pace on the day: the field's order comes from earlier races, and that is "
+    "most of what decides where anyone finishes",
+)
+
+
+def verdict(result: RaceStudy) -> dict:
+    """
+    What the ranking says, in the terms a decision needs.
+
+    Kept here rather than in the terminal command or the interface, so the two
+    cannot end up saying different things about the same numbers.
+
+    The honest price of track position is the cheapest plan that is as good as
+    the best in places, not the best itself: when several tie for the lead, the
+    best by a hair can cost seconds that a tied plan does not. Measuring against
+    the best alone once reported 3.3 s where the real price was 0.1 s.
+    """
+    if not result.ranking or not result.shortlist:
+        return {"agree": None, "tied": [], "price": None, "bad_plan": None}
+
+    expected = {str(c.plan): c.expected_s for c in result.shortlist}
+    cheapest = str(result.shortlist[0].plan)
+    best = str(result.ranking[0].plan)
+    by_name = {str(e.plan): e for e in result.ranking}
+    cheapest_entry = by_name[cheapest]
+    tied = [str(e.plan) for e in result.ranking if e.within_noise]
+
+    price = None
+    if cheapest != best and not cheapest_entry.within_noise:
+        contenders = [e for e in result.ranking if e.within_noise]
+        buy = min(contenders, key=lambda e: expected[str(e.plan)])
+        price = {
+            "plan": str(buy.plan),
+            "instead_of": cheapest,
+            "extra_seconds": round(expected[str(buy.plan)] - expected[cheapest], 1),
+            "places_gained": round(cheapest_entry.mean_finish - buy.mean_finish, 2),
+        }
+
+    worst = result.ranking[-1]
+    bad_plan = None
+    if not worst.within_noise:
+        bad_plan = {
+            "plan": str(worst.plan),
+            "extra_seconds": round(expected[str(worst.plan)] - expected[cheapest], 1),
+            "places_lost": round(worst.behind_best, 2),
+        }
+
+    return {
+        "cheapest_in_seconds": cheapest,
+        "best_in_places": best,
+        # "agree" is true when the two pick the same plan or the seconds pick is
+        # inside the places pick's error bar: a different top line within noise
+        # is the same answer, and saying otherwise would be selling a decision.
+        "agree": cheapest == best or cheapest_entry.within_noise,
+        "tied": tied,
+        "price": price,
+        "bad_plan": bad_plan,
+    }

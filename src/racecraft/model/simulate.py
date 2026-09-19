@@ -152,3 +152,72 @@ def best_plans_with_risk(plans: list[Plan], degradation: dict[str, float], pit_l
     costs = [simulate_plan(plan, degradation, pit_loss_s, neutralisation, curvature,
                            compound_offset_s, runs=runs, rng=rng) for plan in plans]
     return sorted(costs, key=lambda c: c.expected_s)[:top]
+
+
+# How the plan space is swept when safety cars are simulated: in threes rather
+# than ones, because the cost curve is a shallow bowl and neighbouring stop laps
+# differ by a tenth. Then two passes: a cheap screen over everything that survives
+# the bound below, and an accurate run over the leaders.
+RISK_STEP = 3
+SCREEN_RUNS = 120
+SCREEN_KEEP = 24
+RISK_RUNS = 1500
+
+
+def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: float,
+                   neutralisation: Neutralisation, compound_offset_s: dict[str, float] | None = None,
+                   *, keep: int = 8, min_stint: int = 10, max_stops: int = 2) -> list[RiskyCost]:
+    """
+    The best plans over races that can be neutralised, one per shape.
+
+    This is a different question from the green-flag ranking, not a refinement
+    of it. A stop under a safety car costs about 61% of a green one, so the best
+    plan on a circuit that neutralises often is usually a *later* first stop — a
+    longer first stint leaves more laps in which a cheap stop can arrive. It is
+    also the better description of what teams actually do: across the fourteen
+    2026 races it is 0.43 stops off the field's median, against 0.57 for the
+    green ranking.
+
+    Simulating every plan took 12 seconds for an answer settled by a handful of
+    them, so the hopeless ones are dropped first, by a bound rather than a guess.
+    A neutralisation can only ever save the discount on a stop, so no plan costs
+    less than `green - stops x (1 - discount) x pit loss`; if even that floor is
+    above the best plan's green cost, the plan cannot win. The bound is exact but
+    loose for two-stop plans — at Zandvoort 3054 survived it — so the survivors
+    are screened on few runs and only the leaders re-run properly.
+
+    Mirror images — soft then medium against medium then soft — cost the same
+    here, so the ranking keeps one of each and the caller is not handed the same
+    answer twice.
+    """
+    from racecraft.model import strategy as strategy_model
+
+    offsets = compound_offset_s or {}
+    plans = strategy_model.enumerate_plans(total_laps, tuple(degradation), max_stops=max_stops,
+                                           min_stint=min_stint, step=RISK_STEP)
+    if not plans:
+        return []
+
+    saving_per_stop = (1 - neutralisation.stop_discount) * pit_loss_s
+    green = {plan: strategy_model.cost(plan, degradation, pit_loss_s, compound_offset_s=offsets)
+             for plan in plans}
+    best_green = min(c.seconds_lost for c in green.values())
+    contenders = [plan for plan in plans
+                  if green[plan].seconds_lost - plan.stops * saving_per_stop < best_green]
+
+    screened = best_plans_with_risk(contenders, degradation, pit_loss_s, neutralisation,
+                                    compound_offset_s=offsets, runs=SCREEN_RUNS, top=SCREEN_KEEP)
+    ranked = best_plans_with_risk([c.plan for c in screened], degradation, pit_loss_s,
+                                  neutralisation, compound_offset_s=offsets,
+                                  runs=RISK_RUNS, top=SCREEN_KEEP)
+
+    out, seen = [], set()
+    for costed in ranked:
+        shape = tuple(sorted(costed.plan.stints))
+        if shape in seen:
+            continue
+        seen.add(shape)
+        out.append(costed)
+        if len(out) == keep:
+            break
+    return out

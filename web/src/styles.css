@@ -544,6 +544,67 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .plan-row-risk {
   grid-template-columns: minmax(140px, 1.5fr) 56px 56px 62px minmax(70px, 1fr);
 }
+.plan-head-places,
+.plan-row-places {
+  grid-template-columns: minmax(140px, 1.4fr) 44px 58px 86px 64px 48px;
+}
+.plan-row-places.is-tied { background: rgba(255, 122, 51, 0.05); }
+.plan-finish { color: var(--ink); }
+.plan-finish em {
+  font-style: normal;
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  margin-left: 0.25rem;
+}
+.plan-cost .tied {
+  font-style: normal;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--signal);
+  border: 1px solid var(--signal);
+  padding: 0 0.2rem;
+  margin-left: 0.3rem;
+}
+
+.places { display: flex; flex-direction: column; }
+.places-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.places-controls select {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.3rem;
+}
+.places-controls select:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.places-scope {
+  margin: 0.45rem 0.7rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.places-verdict {
+  padding: 0.6rem 0.7rem 0.2rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ink-mid);
+  border-top: 1px solid var(--rule);
+}
+.places-verdict p { margin: 0 0 0.45rem; }
+.places-verdict b { color: var(--ink); font-weight: 600; }
+.places-note { color: var(--ink-soft); font-size: 0.72rem; }
+
 .plan-row { border-bottom: 1px solid var(--rule); }
 .plan-green { color: var(--ink-soft); font-size: 0.76rem; }
 .plan-green em {
