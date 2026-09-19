@@ -350,6 +350,6 @@ function Focus({
 function usedSummary(check: { stints: { compound: string; set_laps: number }[] }): string {
   return check.stints
     .filter((s) => s.set_laps > 0)
-    .map((s) => `${s.compound.toLowerCase()} with ${s.set_laps} laps`)
+    .map((s) => `${s.compound.toLowerCase()} with ${s.set_laps} lap${s.set_laps === 1 ? "" : "s"}`)
     .join(", ");
 }

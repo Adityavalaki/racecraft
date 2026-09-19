@@ -123,6 +123,11 @@ trace, and the two that show the models rather than the feed.
   seconds, against the cheapest plan outright. It takes about half a minute the
   first time for a race and a grid slot, so it is only run when opened.
 
+- **Tyre sets** — every car's dry sets, following the replay clock: new sets
+  filled, used ones ringed with the laps on them, the set on the car
+  highlighted. Selecting a car ranks the strategy model's plans on the tyres it
+  actually had, and says which it could not run. See *Tyre sets* below.
+
 ### The tyre model panel is a prediction, not a fit
 
 Degradation drawn over a race is combined from the season's **other** races.
@@ -205,7 +210,9 @@ crossed the line*; comparing current lap counts would label the whole field
 | `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry |
 | `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
 | `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
-| `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans |
+| `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
+| `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
+| `GET /api/sessions/{key}/places?grid=` | plans raced against the field, ranked in places |
 | `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
 A session is read into memory once (about 1.6 s), after which a state costs
@@ -522,7 +529,9 @@ its wake and only gets past when the circuit allows; safety cars bunch the
 field and hand a cheap stop to whoever still owes one.
 
 Every input is measured from the lake, and for a race that has happened, only
-from races that started before it (`model/race_inputs.py`). Tyre wear, the pace
+from races that started before it (`model/race_inputs.py`). The strategy tab's
+seconds and safety-car rankings use the same cutoff: they used to take a race's
+pit loss and safety cars from every race at the circuit, itself included. Tyre wear, the pace
 ladder, pit loss, safety-car risk, overtaking and the wake penalty all stop at
 the same date. It used to be otherwise: analysing Baku 2025 fitted tyres on
 Baku 2025, took the pace ladder from races after it, and measured pit loss from
@@ -618,6 +627,68 @@ is as good as the best and costs 0.1 s more than the seconds-cheapest plan, for
 green-flag seconds, so a long first stint that only pays off when a safety car
 arrives gets raced at all.
 
+## Tyre sets
+
+Nothing in the feed numbers a set of tyres. Every lap does carry its compound,
+whether the set was new when fitted, and how many laps the set has done —
+counted across sessions, so a medium run for four laps in qualifying starts the
+race at age five. `model/tyre_sets.py` follows each physical set through a
+weekend from that, and so can say before a race what every car still has.
+
+**Joining stints to sets.** A stint on a used set is joined to the earlier set
+of the same compound whose lap count it continues. Across all 84 weekends, 97%
+continue a set exactly. The rest are handled by name rather than dropped: a
+counter that stalled for an out-lap, one that slipped back a lap or two, a set
+whose earlier laps were never timed. When two sets fit equally — a six-lap soft
+from practice and another from qualifying — the more recently used one wins,
+because a car races the sets it kept. Choosing the older one sent to the race
+sets that had gone back to Pirelli days earlier, and fixing it took the tracker
+from 93.3% to 96.7%.
+
+**The rules are Article 30**, as data (`RULES`): 13 dry sets on a normal weekend
+(8 soft, 3 medium, 2 hard) with two handed back after each practice session;
+12 on a sprint weekend (6, 4, 2) with one back after practice, the sprint's
+most-used set after the sprint and three after qualifying; one soft fewer when
+Pirelli's test tyres run; 11 at the two 2023 trials of the Alternative Tyre
+Allocation. A Q3 driver hands one more soft back after qualifying, and one hard
+and one medium can never go back before the race. The data found every one of
+these without being told — the counts cluster exactly on the allocations, the
+2023 trials stand out as four softs short — and found one the rulebook does not
+state: at Qatar 2025, the weekend stints were capped at 25 laps, half the field
+ran a third hard.
+
+The rules say how many sets go back, not which. A set run again later plainly
+was not one; otherwise the most worn go back. Where a car has no used set left
+to give, a new one goes and its compound is a guess, named as one.
+
+Rookies in first practice drive a race driver's car under their own number;
+their laps go on the car of the same team whose regular driver sat that session
+out. At Barcelona 2026 the feed has no team for anyone in FP1, so a rookie's
+team is taken from the rest of their season, and where they drove for two teams
+the one with a car free wins.
+
+**How often it is right** (`python scripts/validate_tyre_sets.py`): for every car
+in every race, what the tracker says it held at the start — from the sessions
+before only — against every set it then ran:
+
+| | |
+|---|---|
+| Sets raced | 4,185 |
+| Right about | **96.7%** |
+| Cars holding exactly what the rules leave | 95% |
+
+The misses are sets the tracker thought went back but were raced (45) and new
+sets opened beyond the count it had left (94). The panel draws the first kind
+dashed when it happens.
+
+**What it is for.** The strategy model's plans assume new tyres. With the sets
+known, each car's plans are re-ranked on what it has: a used set costs the wear
+line carried on from its age, a plan needing two new hards is out for a car that
+ran one in practice. At Baku 2025 the model's cheapest plan on new tyres is 0.4 s
+behind for Russell, whose mediums had all run in qualifying. The used-set cost
+is an upper bound: the feed counts out-laps and cool-down laps, so a set from
+qualifying is fresher than its count.
+
 ## Query
 
 ```python
@@ -672,6 +743,7 @@ src/racecraft/
   api/timing.py            running order and gaps at any instant
   api/session.py           one session held in memory, ready to replay
   api/places_view.py       the places ranking for one session, cached
+  api/tyre_sets_view.py    tyre sets for one session, and plans per car
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation
   model/circuit.py         pit loss, safety car risk
@@ -681,6 +753,8 @@ src/racecraft/
   model/traffic.py         time lost in the wake of the car ahead
   model/race_inputs.py     simulator inputs from earlier races only
   model/places.py          plans raced against the field, and the verdict
+  model/tyre_sets.py       every set through a weekend, Article 30 as data
+  model/compounds.py       Pirelli's nominations, from pirelli_compounds.csv
   model/cli.py             racecraft-analyse
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
@@ -745,6 +819,36 @@ the seasons other than the one being scored, to the 2026 stop-count prediction:
 Identical. It fixes Austria and Hungary and breaks Canada and Zandvoort. The
 giveaway is Melbourne's multiplier of 0.07, which would mean a circuit that
 barely wears tyres at all.
+
+### The real compound does not predict wear better than its label
+
+The feed says soft, medium and hard. Pirelli brings three of six compounds to
+each race, so a medium is a C2 at Silverstone and a C5 at Baku, and a model that
+learns one wear rate per label mixes different rubber. The obvious fix is to
+learn it per compound. `model/pirelli_compounds.csv` has every race in the lake,
+each row with the Pirelli release it was read from, and
+`python scripts/compare_compounds.py` tests the fix before trusting it: each
+race's wear per label, predicted from its own season's earlier races only.
+
+| Predicting a label's wear from | Mean error, s/lap per lap of age |
+|---|---|
+| **the same label** (the model) | **0.0344** |
+| the same C-number | 0.0373 |
+| the label, adjusted for how soft this compound is | 0.0372 |
+| the label, pulled toward last season's visit | 0.0402 |
+| the label, adjusted for track temperature | 0.0384 |
+| *the race's own measurement noise* | *0.0080* |
+
+The label wins in every season. Pirelli chooses each weekend's compounds so that
+hard, medium and soft behave alike wherever they run, and they do — within a
+label a softer compound wears *less*, because it is brought to gentler tracks.
+Track temperature has the expected sign, about +0.009 s/lap per 10 °C hotter,
+but too weakly to help out of sample. And last season's visit makes it worse,
+which is the previous finding again from another side.
+
+So the table is shown — the tyre model and the sets tab say which compound each
+label was — and not fitted on. What the 4× gap between the error and the noise
+*is*, none of these explain.
 
 ### The 1.5 degradation scale was already right
 
@@ -825,7 +929,7 @@ remaining work, and it is a simulation problem rather than a measurement one.
 
 ## What is left
 
-Four things, in the order they are worth doing.
+In the order they are worth doing.
 
 **1. Run live through Friday practice at Baku, 25 September.** Everything about
 live mode works against a recording — the format, a dropped feed, a half-written
@@ -871,9 +975,18 @@ knowing the cost of a wrong one, which the seconds model understates badly.
 Untested against real races. It is a model of racing against a field, not
 against a strategist: rivals run a fixed plan and never cover a stop.
 
-**4. The write-up.** The material is unusually good and most of it is already
+**4. Tyre sets — built.** Every car's sets through a weekend, right about 96.7%
+of the sets raced, and each car's plans ranked on the tyres it had. Live, it
+needs the weekend's earlier sessions in the lake, so ingest each one after it
+ends — timing only is enough, and quick:
+
+```powershell
+racecraft-ingest --season 2026 --rounds <round> --sessions FP1 --no-telemetry
+```
+
+**5. The write-up.** The material is unusually good and most of it is already
 written down here: two leakage bugs that scored beautifully and knew nothing,
-three measured dead ends, a simulator level with grid order, a season of tyres
+four measured dead ends, a simulator level with grid order, a season of tyres
 that wear backwards, and three interface bugs found by opening the page rather
 than by any test.
 
