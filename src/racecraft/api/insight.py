@@ -53,6 +53,8 @@ MIN_LAPS_TO_FIT_RACE = 200
 MIN_STINT_LAPS = 10
 TOP_PLANS = 8
 MAX_CACHED_SEASONS = 3
+# Circuit constants are cut off at each session's start; one set per session viewed.
+MAX_CACHED_CUTOFFS = 32
 # Tyre ages counted as "new" when rebasing the observed curve to zero, so it
 # starts where the model's line starts.
 BASELINE_AGE = 3
@@ -88,7 +90,7 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     """Everything the models can say about the circuit and tyres of one session."""
     con = connect()
     meta = con.sql(
-        "select session_key, year, round, session, event_name, location, total_laps "
+        "select session_key, year, round, session, event_name, location, total_laps, date_utc "
         f"from sessions where session_key = '{_safe(session_key)}'"
     ).df()
     if meta.empty:
@@ -97,10 +99,15 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     year = int(row["year"])
     name = str(circuit_model.canonical_circuit(str(row["location"])))
 
-    constants = _circuit_constants()
+    # Only races that started before this session: a race's own stops and
+    # safety cars are not evidence about it. For a practice session that leaves
+    # out the weekend's race too, which had not happened.
+    started = pd.Timestamp(row["date_utc"]) if pd.notna(row["date_utc"]) else None
+    constants = _circuit_constants(before=started, year=year, round_number=int(row["round"]))
     loss = constants["pit_loss"].get(name)
     risk = constants["safety_car"].get(name)
-    total_laps = constants["laps"].get(name) or _int_or_none(row["total_laps"])
+    # The scheduled distance was known in advance; the median of past races is a fallback.
+    total_laps = _int_or_none(row["total_laps"]) or constants["laps"].get(name)
 
     fits = _season_fits(year)
     measured, offsets, fitted_on = fits.combined(exclude=session_key)
@@ -123,6 +130,7 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         "fitted_on": fitted_on,
         "fitted_on_count": len(fitted_on),
         "held_out": session_key in fits.by_session,
+        "constants_before": None if started is None else started.isoformat(),
         "caveats": list(strategy_model.KNOWN_OMISSIONS),
     }
 
@@ -148,7 +156,7 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     else:
         out["plans"] = []
         out["plans_with_risk"] = []
-        out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
+        out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps, name, held_out=True)
 
     out["tyre_sets"] = _tyre_sets(session_key, out)
     return out
@@ -424,17 +432,21 @@ def _stop_laps(plan: strategy_model.Plan) -> list[int]:
     return laps
 
 
-def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None) -> str:
+def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
+                  circuit: str = "this circuit", held_out: bool = False) -> str:
     if not measured:
         return "no fittable races in this season to measure degradation from"
     if loss is None:
+        if held_out:
+            return f"no earlier race at {circuit} to measure its pit lane from"
         return "not enough green-flag stops at this circuit to measure pit loss"
     return "race distance for this circuit is not known"
 
 
 # ---------------------------------------------------------------- caches
 
-_circuit_cache: dict[str, dict] = {}
+_tables_cache: dict[str, dict] = {}
+_circuit_cache: OrderedDict[tuple, dict] = OrderedDict()
 _season_cache: OrderedDict[tuple[str, int], SeasonFits] = OrderedDict()
 _lock = threading.Lock()
 
@@ -443,24 +455,59 @@ def _lake() -> str:
     return str(config.LAKE_DIR.resolve())
 
 
-def _circuit_constants() -> dict:
-    """Pit loss and neutralisation risk for every circuit. Computed once."""
+def _race_tables() -> dict:
+    """Every race's laps, sessions and track status, read once per lake."""
     key = _lake()
     with _lock:
+        if key in _tables_cache:
+            return _tables_cache[key]
+    con = connect()
+    value = {
+        "laps": con.sql("""select l.*, s.location, s.year from laps l join sessions s using (session_key)
+                           where s.session = 'R'""").df(),
+        "sessions": con.sql("""select session_key, location, year, round, date_utc
+                               from sessions where session = 'R'""").df(),
+        "status": con.sql("select session_key, t, status from track_status").df(),
+    }
+    with _lock:
+        _tables_cache[key] = value
+    return value
+
+
+def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = None,
+                       round_number: int | None = None) -> dict:
+    """
+    Pit loss, neutralisation risk and usual distance for every circuit.
+
+    With `before`, only from races that started before it — the same cutoff the
+    simulator's inputs use, tie broken by round for a same-day start. Without,
+    from every race, which is right for a session still in progress and for
+    the circuits table.
+    """
+    key = (_lake(), None if before is None else before.isoformat(), year, round_number)
+    with _lock:
         if key in _circuit_cache:
+            _circuit_cache.move_to_end(key)
             return _circuit_cache[key]
 
-    con = connect()
-    laps = con.sql("""select l.*, s.location, s.year from laps l join sessions s using (session_key)
-                      where s.session = 'R'""").df()
-    sessions = con.sql("select session_key, location from sessions where session='R'").df()
-    status = con.sql("select session_key, t, status from track_status").df()
+    tables = _race_tables()
+    sessions = tables["sessions"]
+    if before is not None:
+        dates = pd.to_datetime(sessions["date_utc"], utc=True)
+        cutoff = before if before.tzinfo else before.tz_localize("UTC")
+        earlier = dates < cutoff
+        same_day = (dates == cutoff) & (sessions["year"] == year) & (sessions["round"] < (round_number or 0))
+        sessions = sessions[earlier | same_day]
+    keys = set(sessions["session_key"])
+    laps = tables["laps"][tables["laps"]["session_key"].isin(keys)]
+    status = tables["status"][tables["status"]["session_key"].isin(keys)]
 
-    by_circuit = circuit_model.canonical_circuit(laps["location"])
+    by_circuit = circuit_model.canonical_circuit(laps["location"]) if not laps.empty else laps["location"]
     value = {
-        "pit_loss": {p.circuit: p.as_dict() for p in circuit_model.pit_loss(laps)},
-        "safety_car": {r.circuit: r.as_dict()
-                       for r in circuit_model.safety_car_risk(status, sessions, laps)},
+        "pit_loss": {p.circuit: p.as_dict() for p in circuit_model.pit_loss(laps)} if not laps.empty else {},
+        "safety_car": ({r.circuit: r.as_dict()
+                        for r in circuit_model.safety_car_risk(status, sessions[["session_key", "location"]], laps)}
+                       if not laps.empty else {}),
         "laps": {
             str(name): int(group.groupby("session_key")["lap_number"].max().median())
             for name, group in laps.assign(circuit=by_circuit).groupby("circuit")
@@ -468,6 +515,8 @@ def _circuit_constants() -> dict:
     }
     with _lock:
         _circuit_cache[key] = value
+        while len(_circuit_cache) > MAX_CACHED_CUTOFFS:
+            _circuit_cache.popitem(last=False)
     return value
 
 

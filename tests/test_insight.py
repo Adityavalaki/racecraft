@@ -88,15 +88,15 @@ def _race(session_key: str, seed: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _write(tmp_path, session_key: str, round_number: int, location: str) -> None:
-    laps = _race(session_key, seed=round_number)
+def _write(tmp_path, session_key: str, round_number: int, location: str, year: int = YEAR) -> None:
+    laps = _race(session_key, seed=round_number + 100 * (YEAR - year))
     drivers = sorted(laps["driver_number"].unique())
     tables = {
         "sessions": pd.DataFrame({
             "session_key": [session_key], "event_name": [f"{location} Grand Prix"],
             "country": [location], "location": [location], "session_name": ["Race"],
-            "date_utc": [pd.Timestamp(f"{YEAR}-03-0{round_number} 15:00", tz="UTC")],
-            "t0_utc": [pd.Timestamp(f"{YEAR}-03-0{round_number} 14:00", tz="UTC")],
+            "date_utc": [pd.Timestamp(f"{year}-03-0{round_number} 15:00", tz="UTC")],
+            "t0_utc": [pd.Timestamp(f"{year}-03-0{round_number} 14:00", tz="UTC")],
             "start_t": [0.0], "total_laps": [TOTAL_LAPS], "circuit_rotation_deg": [0.0],
             "fastf1_version": ["test"], "ingested_at": [pd.Timestamp.now(tz="UTC")]}),
         "results": pd.DataFrame({
@@ -111,19 +111,41 @@ def _write(tmp_path, session_key: str, round_number: int, location: str) -> None
         "track_status": pd.DataFrame({"session_key": [session_key], "t": [0.0],
                                       "status": ["1"], "message": ["AllClear"]}),
     }
-    lake.write_session(tables, YEAR, round_number, "R", lake=tmp_path)
+    lake.write_session(tables, year, round_number, "R", lake=tmp_path)
 
 
 @pytest.fixture
 def lake_dir(tmp_path, monkeypatch):
+    # Each circuit once the season before as well: a race's pit lane and safety
+    # cars are measured only from earlier races there, never from itself.
     for round_number, location in ((1, "Sakhir"), (2, "Jeddah"), (3, "Melbourne")):
+        _write(tmp_path, f"{YEAR - 1}_0{round_number}_R", round_number, location, year=YEAR - 1)
         _write(tmp_path, f"{YEAR}_0{round_number}_R", round_number, location)
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
     insight._circuit_cache.clear()
+    insight._tables_cache.clear()
     insight._season_cache.clear()
     yield tmp_path
     insight._circuit_cache.clear()
+    insight._tables_cache.clear()
     insight._season_cache.clear()
+
+
+def test_a_races_own_stops_are_not_evidence_about_it(lake_dir):
+    """Ten stops a visit: the 2024 race sees only the ten from 2023."""
+    out = insight.for_session(f"{YEAR}_01_R")
+    assert out["pit_loss"]["stops"] == 10
+    # Safety-car risk needs two earlier races at a circuit; one is not a rate.
+    # Counting the race itself used to make it two.
+    assert out["safety_car"] is None
+    assert out["constants_before"].startswith(f"{YEAR}-03-01")
+
+
+def test_a_first_visit_has_no_pit_lane_to_measure(lake_dir):
+    out = insight.for_session(f"{YEAR - 1}_01_R")
+    assert out["pit_loss"] is None
+    assert out["plans"] == []
+    assert out["plans_unavailable"] == "no earlier race at Sakhir to measure its pit lane from"
 
 
 def test_degradation_put_in_comes_back_out(lake_dir):
