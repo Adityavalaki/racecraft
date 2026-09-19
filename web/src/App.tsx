@@ -9,6 +9,7 @@ import { StrategyBoard } from "./panels/StrategyBoard";
 import { TimingTower } from "./panels/TimingTower";
 import { TrackMap } from "./panels/TrackMap";
 import { TyreModel } from "./panels/TyreModel";
+import { TyreSets } from "./panels/TyreSets";
 
 /** How often the tower refreshes while playing. Positions animate separately and far more often. */
 const STATE_INTERVAL_MS = 400;
@@ -25,6 +26,7 @@ const TABS = [
   { id: "trace", label: "Race trace", hint: "gap to the lap leader · click to jump" },
   { id: "tyres", label: "Tyre model", hint: "modelled wear against what this race did" },
   { id: "strategy", label: "Strategy", hint: "cheapest plans, and what they ignore" },
+  { id: "sets", label: "Tyre sets", hint: "every car's sets · follows the clock · click a car" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -86,7 +88,9 @@ export default function App() {
 
   // Fitting a season costs seconds, so it is asked for only once a tab that
   // needs it is opened, and then kept for as long as the session is loaded.
-  const wantsInsight = tab === "tyres" || tab === "strategy";
+  // The sets tab uses it only to check plans against a car's tyres, and shows
+  // the sets themselves without waiting for it.
+  const wantsInsight = tab === "tyres" || tab === "strategy" || tab === "sets";
   useEffect(() => {
     if (!sessionKey || !wantsInsight || insight || insightError) return;
     const controller = new AbortController();
@@ -308,6 +312,16 @@ export default function App() {
                   error={insightError}
                   actualStops={actualStops}
                   sessionKey={sessionKey}
+                />
+              )}
+              {tab === "sets" && sessionKey && (
+                <TyreSets
+                  sessionKey={sessionKey}
+                  t={state?.t ?? info.t_start}
+                  drivers={state?.drivers ?? []}
+                  selected={selected}
+                  onSelect={toggleDriver}
+                  insight={insight}
                 />
               )}
             </div>

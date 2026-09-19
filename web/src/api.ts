@@ -247,6 +247,70 @@ export interface PlacesAnswer {
   omissions: string[];
 }
 
+/** A set a car held at the start of a session, and the laps on it. */
+export interface HeldSet {
+  set: number;
+  laps: number;
+}
+
+/** A set fitted during the session, with when each of its laps ended. */
+export interface SessionSet {
+  set: number;
+  compound: string;
+  new_at_start: boolean;
+  laps_at_start: number;
+  /** Run here although the tracker had it handed back: its guess was wrong. */
+  thought_returned: boolean;
+  runs: { start_t: number | null; lap_end_t: number[] }[];
+}
+
+export interface CarSets {
+  driver_number: number;
+  driver: string;
+  team: string;
+  stand_ins: string[];
+  at_start: Record<string, { new: number; used: HeldSet[] }>;
+  returned: { set: number; compound: string; after: string; laps: number }[];
+  /** New sets handed back where no used one was left: the compound is a guess. */
+  new_returned: Record<string, number>;
+  this_session: SessionSet[];
+  notes: string[];
+}
+
+export interface TyreSets {
+  session_key: string;
+  session: string;
+  event_name: string;
+  year: number;
+  sessions: string[];
+  rules: {
+    name: string;
+    allocation: Record<string, number>;
+    returns: { after: string; sets: number }[];
+    q3_returns_soft: boolean;
+    extra: Record<string, number>;
+    hand_backs_known: boolean;
+  };
+  returns_so_far: { after: string; sets: number }[];
+  cars: CarSets[];
+  notes: string[];
+}
+
+/** Whether one car can run one of the model's plans on the sets it had. */
+export interface PlanCheck {
+  plan: string;
+  feasible: boolean;
+  reason: string | null;
+  stints: { compound: string; laps: number; set_laps: number }[];
+  extra_s: number;
+}
+
+export interface CarPlanChecks {
+  driver: string;
+  left: Record<string, { new: number; used: number[] }>;
+  plans: PlanCheck[];
+}
+
 export interface StintRun {
   compound: string;
   laps: number;
@@ -304,6 +368,8 @@ export interface Insight {
   /** Set when the session is not a race, so nothing observed is comparable. */
   observed_unavailable?: string;
   stints: DriverStints[];
+  /** For a race: each car's plans checked against the tyres it had. */
+  tyre_sets?: { unavailable: string | null; cars: Record<string, CarPlanChecks> } | null;
 }
 
 async function post<T>(path: string): Promise<T> {
@@ -340,6 +406,8 @@ export const api = {
   /** Slow the first time for a race and grid slot — a few thousand races — then cached. */
   places: (key: string, grid: number, signal?: AbortSignal) =>
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}`, signal),
+  tyreSets: (key: string, signal?: AbortSignal) =>
+    get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
   liveAttach: () => post<LiveStatus>("/api/live/attach"),
 };
 
