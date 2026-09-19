@@ -40,6 +40,7 @@ function answer(cars: CarSets[], session = "R"): TyreSetsAnswer {
       q3_returns_soft: true, extra: {}, hand_backs_known: true,
     },
     returns_so_far: [], cars, notes: [],
+    compounds: { HARD: "C4", MEDIUM: "C5", SOFT: "C6", source: "https://press.pirelli.com/x" },
   };
 }
 
@@ -103,6 +104,9 @@ describe("TyreSets", () => {
     const names = [...container.querySelectorAll(".sets-driver")].map((n) => n.textContent);
     expect(names).toEqual(["NOR", "VER"]);
     expect(screen.getByText(/13 dry sets each/)).toBeDefined();
+    // Which compounds the labels were, linked to Pirelli's announcement.
+    const link = screen.getByText("hard C4, medium C5, soft C6").closest("a")!;
+    expect(link.getAttribute("href")).toBe("https://press.pirelli.com/x");
   });
 
   it("selects a car when its row is clicked", async () => {

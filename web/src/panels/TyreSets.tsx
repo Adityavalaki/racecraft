@@ -204,6 +204,15 @@ function Rules({ answer }: { answer: TyreSetsAnswer }) {
   return (
     <p className="sets-rules">
       <b>{rules.name}</b>: {total} dry sets each ({parts}).{" "}
+      {answer.compounds && (
+        <>
+          Pirelli brought{" "}
+          <a href={answer.compounds.source} target="_blank" rel="noreferrer">
+            hard {answer.compounds.HARD}, medium {answer.compounds.MEDIUM}, soft {answer.compounds.SOFT}
+          </a>
+          .{" "}
+        </>
+      )}
       {rules.hand_backs_known
         ? <>Handed back: {back}{rules.q3_returns_soft ? ", and a soft after qualifying for Q3 cars" : ""}.</>
         : "Hand-backs at this format are not modelled."}{" "}

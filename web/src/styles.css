@@ -847,3 +847,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 @media (max-width: 640px) {
   .sets-head, .sets-row { grid-template-columns: 52px 1.8fr 1fr 0.8fr 28px; gap: 0.3rem; padding-inline: 0.4rem; }
 }
+
+.compound-code {
+  font-style: normal;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+  margin-left: 0.3rem;
+}
+.sets-rules a { color: var(--ink-mid); text-decoration-color: var(--rule-strong); }
+.sets-rules a:hover { color: var(--signal); }

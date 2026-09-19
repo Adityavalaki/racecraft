@@ -247,6 +247,14 @@ export interface PlacesAnswer {
   omissions: string[];
 }
 
+/** {"HARD": "C3", "MEDIUM": "C4", "SOFT": "C5", source}: Pirelli's nomination for a race. */
+export interface Compounds {
+  HARD: string;
+  MEDIUM: string;
+  SOFT: string;
+  source: string;
+}
+
 /** A set a car held at the start of a session, and the laps on it. */
 export interface HeldSet {
   set: number;
@@ -292,6 +300,8 @@ export interface TyreSets {
     hand_backs_known: boolean;
   };
   returns_so_far: { after: string; sets: number }[];
+  /** Which Pirelli compound each label is this weekend, and where that was read. */
+  compounds: Compounds | null;
   cars: CarSets[];
   notes: string[];
 }
@@ -364,6 +374,8 @@ export interface Insight {
   fitted_on: string[];
   fitted_on_count: number;
   held_out: boolean;
+  /** Pirelli's nomination for this race, when known. */
+  compounds?: Compounds | null;
   /** True when the session is still happening, so nothing was held out of the fit. */
   is_live?: boolean;
   caveats: string[];

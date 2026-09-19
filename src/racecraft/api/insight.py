@@ -37,6 +37,7 @@ import pandas as pd
 
 from racecraft import config
 from racecraft.model import circuit as circuit_model
+from racecraft.model import compounds as compounds_model
 from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
 from racecraft.api import tyre_sets_view
@@ -131,6 +132,7 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         "fitted_on_count": len(fitted_on),
         "held_out": session_key in fits.by_session,
         "constants_before": None if started is None else started.isoformat(),
+        "compounds": compounds_model.for_race(year, int(row["round"])),
         "caveats": list(strategy_model.KNOWN_OMISSIONS),
     }
 
@@ -235,6 +237,7 @@ def for_live(live, scale: float = DEFAULT_SCALE, live_status: dict | None = None
         "fitted_on": fitted_on,
         "fitted_on_count": len(fitted_on),
         "held_out": False,
+        "compounds": _live_compounds(year, live_status),
         "caveats": list(strategy_model.KNOWN_OMISSIONS),
     }
 
@@ -256,6 +259,13 @@ def for_live(live, scale: float = DEFAULT_SCALE, live_status: dict | None = None
         out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
     out["tyre_sets"] = _tyre_sets(live.session_key, out, live=live, live_status=live_status)
     return out
+
+
+def _live_compounds(year: int | None, live_status: dict | None) -> dict | None:
+    session = (live_status or {}).get("session") or {}
+    if not year or not session.get("round"):
+        return None
+    return compounds_model.for_race(year, int(session["round"]))
 
 
 def _year_of(live) -> int | None:

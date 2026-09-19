@@ -156,6 +156,9 @@ export const TyreModel = memo(function TyreModel({ insight, loading, error }: Pr
           >
             <i className="swatch" style={{ background: COMPOUND_COLORS[curve.compound] ?? "#a8b4c1" }} />
             {curve.compound.toLowerCase()}
+            {insight.compounds && (
+              <em className="compound-code">{insight.compounds[curve.compound as "HARD" | "MEDIUM" | "SOFT"]}</em>
+            )}
             <b>{(insight.degradation_used[curve.compound] ?? 0).toFixed(3)}</b>
             <small>s/lap</small>
           </button>

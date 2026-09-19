@@ -17,7 +17,7 @@ import logging
 import threading
 from collections import OrderedDict
 
-from racecraft.model import tyre_sets
+from racecraft.model import compounds, tyre_sets
 from racecraft.store.db import connect
 
 log = logging.getLogger(__name__)
@@ -144,6 +144,8 @@ def describe(weekend: tyre_sets.Weekend, code: str, session_key: str) -> dict:
             "hand_backs_known": rules.hand_backs_known,
         },
         "returns_so_far": returns,
+        # Which of Pirelli's compounds each label is this weekend, with its source.
+        "compounds": compounds.for_race(weekend.year, weekend.round),
         "cars": cars,
         "notes": weekend.notes,
     }
