@@ -128,12 +128,16 @@ class TyreSet:
         """
         rank = order.index(session)
         earlier = [run for run in self.runs if order.index(run.session) < rank]
+        here = [run for run in self.runs if run.session == session]
+        # The feed's count when the set is first fitted here beats what we saw
+        # of it: laps it ran that were never timed are still on it.
+        counted = here[0].age_at_start - 1 if here else None
         if earlier:
             last = earlier[-1]
-            return last.age_at_start - 1 + last.laps
-        first = self.runs[0]
-        if not self.seen_new and first.session == session:
-            return first.age_at_start - 1
+            seen = last.age_at_start - 1 + last.laps
+            return max(seen, counted) if counted is not None else seen
+        if not self.seen_new and counted is not None:
+            return counted
         return None
 
     def first_session(self) -> str:

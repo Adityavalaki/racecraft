@@ -128,15 +128,48 @@ def test_the_strategy_board_checks_its_plans_against_each_cars_tyres(client):
                                {"plan": "medium 20 > medium 15 > medium 15"}]}
     checks = insight._tyre_sets(f"{YEAR}_{ROUND:02d}_R", out)["cars"]
 
-    one = checks["1"]["plans"]
-    assert [p["plan"] for p in one] == ["medium 20 > hard 30", "hard 25 > hard 25",
-                                        "medium 20 > medium 15 > medium 15"]
+    one = {p["plan"]: p for p in checks["1"]["plans"]}
     # Two new mediums left: a single medium stint runs on one of them, at no cost.
-    assert one[0]["feasible"] and one[0]["extra_s"] == 0.0
+    assert one["medium 20 > hard 30"]["feasible"] and one["medium 20 > hard 30"]["extra_s"] == 0.0
     # Car 1 ran a hard in FP1 that went back: one hard left, so two hard stints cannot happen.
-    assert not one[1]["feasible"] and one[1]["reason"] == "needs 2 hard sets, has 1"
+    assert not one["hard 25 > hard 25"]["feasible"]
+    assert one["hard 25 > hard 25"]["reason"] == "needs 2 hard sets, has 1"
     # Three medium stints need the qualifying medium too, on a short stint: 4 laps x 15.
-    assert one[2]["feasible"] and one[2]["extra_s"] == pytest.approx(0.06 * 4 * 15, abs=0.05)
+    three = one["medium 20 > medium 15 > medium 15"]
+    assert three["feasible"] and three["extra_s"] == pytest.approx(0.06 * 4 * 15, abs=0.05)
+    # What it cannot run goes last.
+    assert checks["1"]["plans"][-1]["plan"] == "hard 25 > hard 25"
+
+
+def test_each_car_ranks_the_plans_on_its_own_tyres(client):
+    """Car 1 has new mediums and hards, so the model's own order stands."""
+    weekend, _ = tyre_sets_view.weekend_for(f"{YEAR}_{ROUND:02d}_R")
+    plans = [{"plan": "medium 30 > hard 20", "green_s": 60.0},
+             {"plan": "hard 40 > medium 10", "green_s": 61.0}]
+    ranked = tyre_sets_view.plan_checks(weekend, "R", plans,
+                                        {"SOFT": 0.1, "MEDIUM": 0.06, "HARD": 0.04})["1"]["plans"]
+    assert [p["plan"] for p in ranked] == ["medium 30 > hard 20", "hard 40 > medium 10"]
+    assert [p["behind_best_s"] for p in ranked] == [0.0, 1.0]
+
+
+def test_a_worn_set_can_change_which_plan_is_cheapest():
+    class Weekend:
+        cars = {7: type("Car", (), {"driver": "WRN"})()}
+
+        def holding(self, number, code):
+            class Held:
+                def left(self):
+                    return {"SOFT": {"new": 0, "used": []}, "MEDIUM": {"new": 0, "used": [10]},
+                            "HARD": {"new": 2, "used": []}}
+            return Held()
+
+    plans = [{"plan": "medium 30 > hard 20", "green_s": 60.0},
+             {"plan": "hard 40 > medium 10", "green_s": 61.0}]
+    ranked = tyre_sets_view.plan_checks(Weekend(), "R", plans, {"SOFT": 0.1, "MEDIUM": 0.06, "HARD": 0.04})
+    order = [p["plan"] for p in ranked["7"]["plans"]]
+    # 10 laps on the medium: +18.0s over 30 laps, +6.0s over 10. The short medium stint wins.
+    assert order == ["hard 40 > medium 10", "medium 30 > hard 20"]
+    assert ranked["7"]["plans"][1]["behind_best_s"] == pytest.approx(78.0 - 67.0)
 
 
 def test_an_unknown_session_is_404(client):

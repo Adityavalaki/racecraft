@@ -823,7 +823,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   color: var(--ink-soft);
 }
 .sets-legend .chip { margin-left: 0.5rem; }
-.sets-focus { border-top: 1px solid var(--rule); padding-top: 0.2rem; }
+.sets-focus { border-block: 1px solid var(--rule); padding-block: 0.2rem; margin-bottom: 0.3rem; }
 .sets-focus h3 {
   margin: 0.45rem 0.7rem 0.3rem;
   font-size: 0.8rem;
@@ -831,7 +831,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   color: var(--ink);
 }
 .sets-focus h3 small { font-weight: 400; color: var(--ink-soft); margin-left: 0.4rem; }
-.sets-check { grid-template-columns: minmax(150px, 1.4fr) minmax(120px, 1.6fr); }
+.sets-check { grid-template-columns: minmax(150px, 1.4fr) 52px minmax(120px, 1.6fr); }
 .sets-check:first-of-type { background: transparent; }
 .sets-check.is-out { opacity: 0.55; }
 .sets-check.is-out .sets-verdict { color: var(--red); }

@@ -168,12 +168,15 @@ def _tyre_sets(session_key: str, out: dict, live=None, live_status: dict | None 
         weekend, code = tyre_sets_view.weekend_for(session_key, live, live_status)
     except (tyre_sets_view.NoSets, KeyError) as error:
         return {"unavailable": str(error), "cars": {}}
+    # Every plan either ranking offers, each with its cost on a green race:
+    # the seconds ranking calls it seconds_lost, the safety-car one green_s.
     seen: set[str] = set()
     plans = []
     for plan in out["plans"] + out["plans_with_risk"]:
         if plan["plan"] not in seen:
             seen.add(plan["plan"])
-            plans.append(plan)
+            green = plan.get("seconds_lost", plan.get("green_s"))
+            plans.append({"plan": plan["plan"], "green_s": green})
     return {"unavailable": None,
             "cars": tyre_sets_view.plan_checks(weekend, code, plans, out["degradation_used"])}
 

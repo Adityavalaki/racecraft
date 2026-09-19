@@ -152,6 +152,13 @@ export const TyreSets = memo(function TyreSets({ sessionKey, t, drivers, selecte
     <div className="sets">
       <Rules answer={answer} />
 
+      {/* Above the table, not below it: twenty rows would push the answer to
+          the click out of sight. */}
+      {focusCar && (
+        <Focus car={focusCar} checks={insight?.tyre_sets?.cars?.[String(focusCar.driver_number)] ?? null}
+               insight={insight} session={answer.session} />
+      )}
+
       <div className="sets-table" role="table" aria-label="Dry tyre sets per car">
         <div className="sets-head" role="row">
           <span role="columnheader">car</span>
@@ -174,10 +181,7 @@ export const TyreSets = memo(function TyreSets({ sessionKey, t, drivers, selecte
 
       <Legend />
 
-      {focusCar ? (
-        <Focus car={focusCar} checks={insight?.tyre_sets?.cars?.[String(focusCar.driver_number)] ?? null}
-               insight={insight} session={answer.session} />
-      ) : (
+      {!focusCar && (
         <p className="panel-note">Select a car to check the strategy model's plans against its tyres.</p>
       )}
 
@@ -274,6 +278,9 @@ function Legend() {
   );
 }
 
+/** How many of a car's plans are shown; the rest are summarised in a line. */
+const SHOWN_PLANS = 5;
+
 function Focus({
   car, checks, insight, session,
 }: { car: CarSets; checks: CarPlanChecks | null; insight: Insight | null; session: string }) {
@@ -289,28 +296,42 @@ function Focus({
   if (!checks) {
     return <p className="panel-note">{insight.tyre_sets?.unavailable ?? "No plans to check for this race."}</p>;
   }
+  const runnable = checks.plans.filter((c) => c.feasible);
+  const shown = runnable.slice(0, SHOWN_PLANS);
+  const hidden = runnable.length - shown.length;
+  const out = checks.plans.filter((c) => !c.feasible);
+  const reasons = [...new Set(out.map((c) => c.reason))].join("; ");
+  const modelBest = insight.plans[0]?.plan;
+  const modelOnCar = checks.plans.find((c) => c.plan === modelBest);
+
   return (
     <div className="sets-focus">
       <h3>
-        Can {car.driver} run the model's plans? <small>on the sets held at the start of the race</small>
+        {car.driver}'s cheapest plans <small>on the sets held at the start of the race</small>
       </h3>
       <div className="plan-table" role="table" aria-label={`Plans for ${car.driver}`}>
-        {checks.plans.map((check) => (
-          <div key={check.plan} className={check.feasible ? "plan-row sets-check" : "plan-row sets-check is-out"} role="row">
+        {shown.map((check) => (
+          <div key={check.plan} className="plan-row sets-check" role="row">
             <PlanName plan={check.plan} orders={[]} />
+            <span className="plan-cost num" role="cell">
+              {check.behind_best_s === 0 ? "best" : check.behind_best_s === null ? "—" : `+${check.behind_best_s.toFixed(1)}s`}
+            </span>
             <span className="sets-verdict" role="cell">
-              {!check.feasible
-                ? `can't: ${check.reason}`
-                : check.extra_s === 0
-                  ? "on new sets"
-                  : `+${check.extra_s.toFixed(1)}s · ${usedSummary(check)}`}
+              {check.extra_s === 0 ? "on new sets" : `${usedSummary(check)}: +${check.extra_s.toFixed(1)}s`}
             </span>
           </div>
         ))}
       </div>
       <p className="sets-caveat">
-        Extra seconds are the wear line carried on from where each used set already is. The feed counts
-        out-laps and cool-down laps, so a set from qualifying is fresher than its count and the figure is
+        {modelOnCar && modelOnCar.feasible && modelOnCar.behind_best_s
+          ? <>The model's cheapest plan on new tyres, {modelBest}, is <b>{modelOnCar.behind_best_s.toFixed(1)}s</b> behind on {car.driver}'s. </>
+          : modelOnCar && !modelOnCar.feasible
+            ? <>The model's cheapest plan, {modelBest}, is out: {modelOnCar.reason}. </>
+            : null}
+        {hidden > 0 && <>{hidden} more plan{hidden === 1 ? "" : "s"} run behind these. </>}
+        {out.length > 0 && <>{out.length} can't be run ({reasons}). </>}
+        Used sets are costed as the wear line carried on from the laps already on them. The feed counts
+        out-laps and cool-down laps, so a set from qualifying is fresher than its count and that cost is
         an upper bound.
       </p>
     </div>

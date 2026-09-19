@@ -116,7 +116,7 @@ describe("TyreSets", () => {
     expect(onSelect).toHaveBeenCalledWith(1);
   });
 
-  it("says which plans the selected car cannot run and what used sets cost it", async () => {
+  it("ranks the selected car's plans on its own tyres and says which it cannot run", async () => {
     mock(answer([car()]));
     const insight = {
       tyre_sets: {
@@ -125,23 +125,33 @@ describe("TyreSets", () => {
           "1": {
             driver: "VER", left: {},
             plans: [
+              { plan: "medium 16 > hard 35", feasible: true, reason: null, extra_s: 4.4,
+                green_s: 66.0, total_s: 70.4, behind_best_s: 0,
+                stints: [{ compound: "MEDIUM", laps: 16, set_laps: 4 }, { compound: "HARD", laps: 35, set_laps: 0 }] },
               { plan: "medium 22 > hard 29", feasible: true, reason: null, extra_s: 6.1,
+                green_s: 64.1, total_s: 70.8, behind_best_s: 0.4,
                 stints: [{ compound: "MEDIUM", laps: 22, set_laps: 4 }, { compound: "HARD", laps: 29, set_laps: 0 }] },
               { plan: "soft 15 > soft 15 > hard 21", feasible: false, reason: "needs 2 soft sets, has 1",
-                extra_s: 0, stints: [] },
+                extra_s: 0, green_s: 70, total_s: null, behind_best_s: null, stints: [] },
             ],
           },
         },
       },
+      plans: [{ plan: "medium 22 > hard 29" }],
     } as unknown as Insight;
     render(
       <TyreSets sessionKey="2025_17_R" t={0} drivers={[]} selected={[1]} onSelect={() => undefined}
                 insight={insight} />,
     );
-    await waitFor(() => expect(screen.getByText(/Can VER run/)).toBeDefined());
-    expect(screen.getByText("+6.1s · medium with 4 laps")).toBeDefined();
-    expect(screen.getByText("can't: needs 2 soft sets, has 1")).toBeDefined();
-    expect(screen.getByText(/upper bound/)).toBeDefined();
+    await waitFor(() => expect(screen.getByText(/VER's cheapest plans/)).toBeDefined());
+    // Ranked on the car's own tyres: the shorter stint on the used medium comes first.
+    const rows = [...document.querySelectorAll(".sets-check")].map((r) => r.textContent);
+    expect(rows[0]).toContain("medium 16");
+    expect(rows[0]).toContain("best");
+    expect(screen.getByText("medium with 4 laps: +6.1s")).toBeDefined();
+    const caveat = screen.getByText(/upper bound/).textContent ?? "";
+    expect(caveat).toContain("medium 22 > hard 29, is 0.4s behind on VER's");
+    expect(caveat).toContain("1 can't be run (needs 2 soft sets, has 1)");
   });
 
   it("does not check plans outside a race", async () => {

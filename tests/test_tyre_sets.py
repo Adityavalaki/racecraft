@@ -54,6 +54,13 @@ def test_a_used_set_carries_its_laps_from_qualifying_into_the_race():
     assert _sets(w)[0].laps_before("R", STANDARD) == 4
 
 
+def test_laps_the_feed_counted_but_never_timed_are_still_on_the_set():
+    """Baku 2025: two laps seen in qualifying, the race opened it at age five."""
+    w = _weekend(("Q", "MEDIUM", 1, 2), ("R", "MEDIUM", 5, 29))
+    assert len(_sets(w)) == 1
+    assert _sets(w)[0].laps_before("R", STANDARD) == 4
+
+
 def test_a_counter_that_did_not_tick_is_still_the_same_set():
     """Ends a stint at age 6, next starts at 6: an out-lap the feed did not count."""
     w = _weekend(("FP3", "SOFT", 1, 6), ("FP3", "SOFT", 6, 4))

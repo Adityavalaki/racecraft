@@ -155,9 +155,15 @@ def plan_checks(weekend: tyre_sets.Weekend, code: str, plans: list[dict],
     For every car, whether each plan can be run on the sets it held at the start
     of `code`, and what starting stints on used sets costs.
 
-    `plans` are the strategy model's, as it serves them: a name and stint
-    lengths in order. Degradation is the scaled line the plans were costed on,
-    so the extra seconds are on the same footing as the plan's own.
+    `plans` are the strategy model's, as it serves them: a name, and its cost
+    on a green race as `green_s` when known. Degradation is the scaled line the
+    plans were costed on, so the extra seconds are on the same footing as the
+    plan's own, and the two add up to what the plan costs this car.
+
+    Each car's plans come back cheapest first on its own tyres, the ones it
+    cannot run last. That order is the point: the model's best plan assumes new
+    sets, and a car whose mediums all ran in qualifying may do better with the
+    plan that runs them shortest.
     """
     out: dict[str, dict] = {}
     for number, car in weekend.cars.items():
@@ -167,7 +173,14 @@ def plan_checks(weekend: tyre_sets.Weekend, code: str, plans: list[dict],
         for plan in plans:
             stints = _stints(plan["plan"])
             check = tyre_sets.check_plan(stints, left, degradation)
-            checks.append({"plan": plan["plan"], **check.as_dict()})
+            green = plan.get("green_s")
+            total = green + check.extra_s if green is not None and check.feasible else None
+            checks.append({"plan": plan["plan"], **check.as_dict(),
+                           "green_s": green, "total_s": None if total is None else round(total, 1)})
+        checks.sort(key=lambda c: (not c["feasible"], c["total_s"] if c["total_s"] is not None else float("inf")))
+        best = next((c["total_s"] for c in checks if c["total_s"] is not None), None)
+        for c in checks:
+            c["behind_best_s"] = None if c["total_s"] is None or best is None else round(c["total_s"] - best, 1)
         out[str(number)] = {"driver": car.driver, "left": left, "plans": checks}
     return out
 

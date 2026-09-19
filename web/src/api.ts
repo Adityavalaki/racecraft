@@ -303,6 +303,12 @@ export interface PlanCheck {
   reason: string | null;
   stints: { compound: string; laps: number; set_laps: number }[];
   extra_s: number;
+  /** The plan's cost on a green race, on new tyres. */
+  green_s: number | null;
+  /** The same, on this car's tyres. */
+  total_s: number | null;
+  /** Behind this car's cheapest plan, on its tyres. */
+  behind_best_s: number | null;
 }
 
 export interface CarPlanChecks {
