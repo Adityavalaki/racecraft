@@ -39,6 +39,7 @@ from racecraft import config
 from racecraft.model import circuit as circuit_model
 from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
+from racecraft.api import tyre_sets_view
 from racecraft.store.db import connect
 
 log = logging.getLogger(__name__)
@@ -149,10 +150,35 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         out["plans_with_risk"] = []
         out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
 
+    out["tyre_sets"] = _tyre_sets(session_key, out)
     return out
 
 
-def for_live(live, scale: float = DEFAULT_SCALE) -> dict:
+def _tyre_sets(session_key: str, out: dict, live=None, live_status: dict | None = None) -> dict | None:
+    """
+    For a race: whether each car can run the plans above on the sets it had at
+    the start, and what starting a stint on a used set costs it.
+
+    The plans are the same for every car; the tyres are not. A plan that needs
+    a new hard is no plan at all for a car that ran both its hards in practice.
+    """
+    if not out["is_race"] or not out["plans"]:
+        return None
+    try:
+        weekend, code = tyre_sets_view.weekend_for(session_key, live, live_status)
+    except (tyre_sets_view.NoSets, KeyError) as error:
+        return {"unavailable": str(error), "cars": {}}
+    seen: set[str] = set()
+    plans = []
+    for plan in out["plans"] + out["plans_with_risk"]:
+        if plan["plan"] not in seen:
+            seen.add(plan["plan"])
+            plans.append(plan)
+    return {"unavailable": None,
+            "cars": tyre_sets_view.plan_checks(weekend, code, plans, out["degradation_used"])}
+
+
+def for_live(live, scale: float = DEFAULT_SCALE, live_status: dict | None = None) -> dict:
     """
     The same answer for a session still happening.
 
@@ -217,6 +243,7 @@ def for_live(live, scale: float = DEFAULT_SCALE) -> dict:
         out["plans"] = []
         out["plans_with_risk"] = []
         out["plans_unavailable"] = _why_no_plans(measured, loss, total_laps)
+    out["tyre_sets"] = _tyre_sets(live.session_key, out, live=live, live_status=live_status)
     return out
 
 

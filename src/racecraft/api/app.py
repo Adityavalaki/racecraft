@@ -32,6 +32,7 @@ from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import places_view
 from racecraft.api import session as session_store
+from racecraft.api import tyre_sets_view
 from racecraft.store.db import connect
 
 log = logging.getLogger(__name__)
@@ -128,7 +129,8 @@ def session_insight(session_key: str,
     """
     if session_key == live_store.SESSION_KEY:
         try:
-            return insight.for_live(_load(session_key), scale=scale)
+            return insight.for_live(_load(session_key), scale=scale,
+                                    live_status=live_store.store.status())
         except live_store.NotLive as error:
             raise HTTPException(status_code=409, detail=str(error)) from None
     try:
@@ -158,6 +160,24 @@ def session_places(session_key: str,
     except places_view.NotSimulable as error:
         # 422 rather than 404 or 409: the session exists and is ready, but the
         # races before it cannot support a simulation, and retrying will not help.
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/tyre-sets")
+def session_tyre_sets(session_key: str) -> dict:
+    """
+    Every car's dry tyre sets: what it held when the session started, the sets
+    handed back so far, and each set fitted during the session with its lap
+    times, so the panel can follow the replay clock.
+    """
+    live, status = None, None
+    if session_key == live_store.SESSION_KEY:
+        live, status = _load(session_key), live_store.store.status()
+    try:
+        return tyre_sets_view.for_session(session_key, live=live, live_status=status)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+    except tyre_sets_view.NoSets as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 
