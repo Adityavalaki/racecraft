@@ -968,6 +968,31 @@ So the table is shown — the tyre model and the sets tab say which compound eac
 label was — and not fitted on. What the 4× gap between the error and the noise
 *is*, none of these explain.
 
+### A used set's own history is at the edge of what the data can see
+
+Everything the simulator does with used tyres rests on one choice: wear is
+counted against the laps a set has done all weekend, not the laps since it was
+fitted. If the second clock fitted better, a set from qualifying would behave
+like a new one and charging a car for the laps on it would be inventing a
+penalty. `python scripts/compare_tyre_clock.py` fits both, same races, same
+model, same number of terms:
+
+| Wear counted against | Left over after the fit | R² |
+|---|---|---|
+| the set's whole life | 0.5539 s/lap | 0.827 |
+| laps in this stint | 0.5532 s/lap | 0.827 |
+
+A coin flip: the whole-life clock fits better in 40 of 78 races. The reason is
+in the second line of the output — only 17% of race laps run on a set with laps
+already on it, and those sets carry 2.6 laps on average, which is far too small
+to separate from a 0.55 s lap-to-lap scatter.
+
+So the model keeps the clock its wear was measured on, which is the consistent
+choice rather than the proven one, and the cost it charges a used set is
+reported as an upper bound: the feed counts out-laps and cool-down laps as laps,
+and a set that did three of those in Q1 is fresher than its count says. It is
+the one part of the tyre join that the lake cannot confirm.
+
 ### The 1.5 degradation scale was already right
 
 Race data cannot see past the tyre age teams accept, so measured wear understates
