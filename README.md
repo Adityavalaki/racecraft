@@ -993,6 +993,21 @@ reported as an upper bound: the feed counts out-laps and cool-down laps as laps,
 and a set that did three of those in Q1 is fresher than its count says. It is
 the one part of the tyre join that the lake cannot confirm.
 
+**How much rides on it.** Baku 2025 from P8, the same study with the laps
+carried into each stint taken as counted, halved, and ignored:
+
+| Carried laps | Best plan | Finish |
+|---|---|---|
+| as counted | `medium 25 > hard 26` | P8.82 |
+| halved | `medium 22 > hard 29` | P8.62 |
+| ignored | `medium 31 > hard 20` | P8.55 |
+
+The shape survives — one stop, medium then hard, in every case — and the stop
+lap does not, moving nine laps across an assumption the data cannot settle. The
+gaps between those plans are around two tenths of a place against an error bar
+of 0.17, which is why the panel shows which plans are tied and what track
+position costs rather than naming a lap and standing on it.
+
 ### The 1.5 degradation scale was already right
 
 Race data cannot see past the tyre age teams accept, so measured wear understates
