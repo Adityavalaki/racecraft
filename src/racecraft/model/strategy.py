@@ -35,7 +35,8 @@ KNOWN_OMISSIONS = (
     "track position: this counts seconds, not places, and races are scored in places",
     "the cliff: degradation past the point teams actually pit is unmeasured",
     "warm-up: an out-lap on cold tyres is slower than the model's fresh pace",
-    "allocation: only so many sets of each compound exist for a race weekend",
+    "allocation: this ranking assumes new tyres for every stint; the tyre sets "
+    "panel checks a plan against what a car actually has left",
 )
 
 

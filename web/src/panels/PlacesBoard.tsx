@@ -71,6 +71,7 @@ export function PlacesBoard({ sessionKey }: Props) {
           {GRID_SLOTS.map((slot) => (
             <option key={slot} value={slot}>
               P{slot}
+              {answer?.grid_drivers?.[String(slot)] ? ` · ${answer.grid_drivers[String(slot)]}` : ""}
             </option>
           ))}
         </select>
@@ -192,7 +193,10 @@ function Garage({ stock, dropped }: { stock: TyreStock; dropped: { plan: string;
     .map(([compound, held]) => {
       const parts = [];
       if (held.new) parts.push(`${held.new} new`);
-      if (held.used.length) parts.push(`${held.used.join(", ")} laps`);
+      if (held.used.length) {
+        const one = held.used.length === 1 && held.used[0] === 1;
+        parts.push(`${held.used.join(", ")} lap${one ? "" : "s"}`);
+      }
       return parts.length ? `${compound.toLowerCase()}: ${parts.join(" · ")}` : null;
     })
     .filter(Boolean);

@@ -128,11 +128,30 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -
         "runs": runs,
         "tyres": "car" if stock else "new",
         "stock": stock.as_dict() if stock else None,
+        # Who started where, so a grid slot can be chosen by name.
+        "grid_drivers": _grid_drivers(con, race_key),
         "inputs": inputs.as_dict(),
         "study": result.as_dict(),
         "verdict": places.verdict(result),
         "omissions": list(places.OMISSIONS),
     }
+
+
+def _grid_drivers(con, race_key: str | None) -> dict[str, str]:
+    """{grid slot: driver} for the race, or nothing when it is not in the lake."""
+    if race_key is None:
+        return {}
+    import duckdb
+
+    try:
+        rows = con.sql(f"""select grid_position, abbreviation from results
+                           where session_key = '{_safe(race_key)}'
+                             and grid_position is not null""").df()
+    except duckdb.CatalogException:
+        return {}
+    return {str(int(row.grid_position)): str(row.abbreviation)
+            for row in rows.itertuples(index=False)
+            if row.grid_position and row.abbreviation}
 
 
 def _year(meta: dict) -> int | None:

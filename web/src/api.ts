@@ -221,6 +221,8 @@ export interface PlacesAnswer {
   /** "car" when the sets that car actually had were raced, "new" for fresh ones. */
   tyres: "car" | "new";
   stock: TyreStock | null;
+  /** Who started in each grid slot, when the race is in the lake. */
+  grid_drivers: Record<string, string>;
   inputs: {
     circuit: string;
     season: number;

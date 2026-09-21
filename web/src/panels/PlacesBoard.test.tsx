@@ -22,6 +22,7 @@ function row(overrides: Partial<PlaceRow>): PlaceRow {
 function answer(overrides: Partial<PlacesAnswer> = {}): PlacesAnswer {
   return {
     session_key: "2025_17_R", grid: 8, runs: 300, tyres: "car",
+    grid_drivers: { "8": "HAD", "1": "VER" },
     stock: {
       driver: "HAD", driver_number: 6, grid: 8, sets: 6,
       left: { SOFT: { new: 0, used: [2, 3, 5] }, MEDIUM: { new: 0, used: [4, 7] },
@@ -118,6 +119,14 @@ describe("PlacesBoard", () => {
     await waitFor(() => expect(screen.getByText(/inside its error bar/i)).toBeDefined());
   });
 
+  it("names the driver who started in each grid slot", async () => {
+    mock(answer());
+    render(<PlacesBoard sessionKey="2025_17_R" />);
+    await waitFor(() => expect(screen.getByRole("option", { name: "P8 · HAD" })).toBeDefined());
+    expect(screen.getByRole("option", { name: "P1 · VER" })).toBeDefined();
+    expect(screen.getByRole("option", { name: "P2" })).toBeDefined();
+  });
+
   it("asks again for a different grid slot", async () => {
     const fetchMock = mock(answer());
     render(<PlacesBoard sessionKey="2025_17_R" />);
@@ -142,7 +151,7 @@ describe("PlacesBoard", () => {
     const line = container.querySelector(".places-garage")!;
     expect(line.textContent).toContain("HAD");
     expect(line.textContent).toContain("6 sets");
-    expect(line.textContent).toContain("hard: 1 laps");
+    expect(line.textContent).toContain("hard: 1 lap");
     // A plan the car has no sets for is named, not silently missing.
     expect(line.textContent).toContain("hard 25 > hard 26 (needs 2 hard sets, has 1)");
   });

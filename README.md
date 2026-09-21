@@ -355,7 +355,19 @@ racecraft-analyse circuits             # pit loss and neutralisation risk
 racecraft-analyse circuit Baku         # everything known about one circuit
 racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
 racecraft-analyse race Baku            # simulate the field, answer in places
+racecraft-analyse race Baku --driver HAD   # on the tyres that car actually had
 racecraft-analyse following            # time lost in the wake of the car ahead
+```
+
+The scripts beside them answer "is this worth anything?", and every figure this
+file quotes comes from one of them:
+
+```sh
+python scripts/validate_race.py prior      # finishing order, held out, against the grid
+python scripts/validate_tyres.py 2025      # what racing a car's own tyres changes
+python scripts/validate_tyre_sets.py       # how often the set tracker is right
+python scripts/compare_compounds.py        # C-number against label for tyre wear
+python scripts/calibrate_scale.py          # the 1.5 degradation scale
 ```
 
 Every model number quoted below comes from these, so they can be reproduced
