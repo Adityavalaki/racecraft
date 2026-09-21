@@ -210,18 +210,24 @@ def _weekend_round(con, circuit: str, season: int) -> int | None:
 
 def _driver_number_in(con, season: int, round_number: int, abbreviation: str) -> int | None:
     """The number behind a three-letter code, anywhere in a weekend."""
-    rows = con.sql(f"""select driver_number from results
-                       where year = {int(season)} and round = {int(round_number)}
-                         and upper(abbreviation) = '{abbreviation.upper()}'
-                       limit 1""").df()
-    return None if rows.empty else int(rows.iloc[0]["driver_number"])
+    return _number_from(con, f"""year = {int(season)} and round = {int(round_number)}
+                                 and upper(abbreviation) = '{abbreviation.upper()}'""")
 
 
 def _driver_number(con, session_key: str, abbreviation: str) -> int | None:
     """The number behind a three-letter code, in the race being studied."""
-    rows = con.sql(f"""select driver_number from results
-                       where session_key = '{session_key}'
-                         and upper(abbreviation) = '{abbreviation.upper()}'""").df()
+    return _number_from(con, f"""session_key = '{session_key}'
+                                 and upper(abbreviation) = '{abbreviation.upper()}'""")
+
+
+def _number_from(con, where: str) -> int | None:
+    """A driver number from the classification, or None — including when a lake has none."""
+    import duckdb
+
+    try:
+        rows = con.sql(f"select driver_number from results where {where} limit 1").df()
+    except duckdb.CatalogException:
+        return None
     return None if rows.empty else int(rows.iloc[0]["driver_number"])
 
 

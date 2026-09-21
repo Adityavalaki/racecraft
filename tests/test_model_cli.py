@@ -129,3 +129,27 @@ def test_the_race_command_does_not_split_plans_it_cannot_separate(small_lake, ca
 def test_race_command_refuses_an_unknown_circuit(small_lake, capsys):
     assert cli.main(["race", "Nowhere", "--season", "2026"]) == 1
     assert "no races at 'Nowhere'" in capsys.readouterr().out
+
+
+def test_the_race_command_says_when_it_is_racing_new_sets(small_lake, capsys):
+    """
+    This lake has no classification, so no car can be traced to a grid slot and
+    no sets can be read. That is a fact about the answer, not a detail.
+    """
+    assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30", "--grid", "3",
+                     "--cars", "6", "--runs", "20", "--plans", "4"]) == 0
+    assert "On new sets for every stint" in capsys.readouterr().out
+
+
+def test_the_race_command_can_be_told_to_ignore_the_tyres_a_car_had(small_lake, capsys):
+    assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30", "--grid", "3",
+                     "--cars", "6", "--runs", "20", "--plans", "4", "--new-tyres"]) == 0
+    out = capsys.readouterr().out
+    assert "best in places" in out
+    assert "own tyres" not in out
+
+
+def test_an_unknown_driver_is_refused_rather_than_quietly_ignored(small_lake, capsys):
+    assert cli.main(["race", "Baku", "--season", "2026", "--laps", "30",
+                     "--cars", "6", "--runs", "20", "--driver", "ZZZ"]) == 1
+    assert "no driver 'ZZZ'" in capsys.readouterr().out
