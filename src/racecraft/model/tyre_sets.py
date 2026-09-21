@@ -44,6 +44,7 @@ reported, not hidden: a set has been counted twice.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -538,6 +539,13 @@ def _field_wide_extra(weekend: Weekend) -> dict[str, int]:
 SPRINT_SESSIONS = ("SQ", "SS", "S")
 
 
+# Rebuilding a weekend costs a second, and the stock of twenty cars is the same
+# work for all of them. Keyed by lake, so a test on a temporary one cannot see
+# another's weekends. A session in progress is never kept.
+MAX_CACHED_WEEKENDS = 8
+_weekend_cache: "OrderedDict[tuple, Weekend]" = OrderedDict()
+
+
 def from_lake(con, year: int, round_number: int, *, live_laps: pd.DataFrame | None = None,
               live_session: str | None = None, sprint: bool | None = None) -> Weekend:
     """
@@ -547,6 +555,13 @@ def from_lake(con, year: int, round_number: int, *, live_laps: pd.DataFrame | No
     Whether the weekend is a sprint weekend is read from the sessions stored;
     before the sprint itself exists, pass `sprint` from the schedule.
     """
+    from racecraft import config
+
+    key = (str(config.LAKE_DIR.resolve()), int(year), int(round_number), sprint)
+    if live_laps is None and key in _weekend_cache:
+        _weekend_cache.move_to_end(key)
+        return _weekend_cache[key]
+
     meta = con.sql(f"""
         select session_key, "session", event_name, date_utc from sessions
         where year = {int(year)} and round = {int(round_number)} order by date_utc""").df()
@@ -580,9 +595,14 @@ def from_lake(con, year: int, round_number: int, *, live_laps: pd.DataFrame | No
     test = con.sql(f"""
         select count(*) from laps
         where year = {int(year)} and round = {int(round_number)} and compound = 'TEST_UNKNOWN'""").fetchone()[0]
-    return build(stints, order, regulars, year=year, round_number=round_number,
-                 event_name=event, sprint=is_sprint, q3_cars={int(n) for n in q3["driver_number"]},
-                 test_tyres=bool(test))
+    weekend = build(stints, order, regulars, year=year, round_number=round_number,
+                    event_name=event, sprint=is_sprint,
+                    q3_cars={int(n) for n in q3["driver_number"]}, test_tyres=bool(test))
+    if live_laps is None:
+        _weekend_cache[key] = weekend
+        while len(_weekend_cache) > MAX_CACHED_WEEKENDS:
+            _weekend_cache.popitem(last=False)
+    return weekend
 
 
 def _results(con, year: int, round_number: int, extra: str = "") -> pd.DataFrame:

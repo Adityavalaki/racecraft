@@ -26,6 +26,12 @@ Two things are deliberately still given to the simulator: each car's actual
 strategy, and its actual grid slot. This tests whether the race dynamics carry a
 grid through a race given the plans the teams chose; it does not test choosing
 the plans.
+
+Each race is simulated twice, with the same plans and the same luck, differing
+only in the tyres: once with every stint starting on a new set, and once with
+each stint starting at the age its set really carried, read from the feed's own
+lap count. The gap between the two columns is what modelling used tyres is worth
+to predicting a finishing order.
 """
 
 import sys
@@ -108,23 +114,38 @@ for year in SEASONS:
                         if stints.empty:
                             continue
                         plan = Plan(tuple((c, int(n)) for c, n in zip(stints.compound, stints.length)))
+                        # The age each of those sets really carried when the
+                        # stint began: the feed counts laps across sessions, so
+                        # a set that ran in qualifying starts the race worn.
+                        ages = tuple(max(0, int(a) - 1) for a in
+                                     (laps[laps.driver_number == drv].groupby("stint")
+                                      .tyre_life.min().reindex(stints.index).fillna(1)))
                         cars.append(race_model.Car(
                             driver_number=drv, abbreviation=r.abbreviation,
                             pace_s=inputs.quickest_lap_s + pace_by_driver[drv],
-                            grid=int(r.grid_position) or 20, plan=plan))
+                            grid=int(r.grid_position) or 20, plan=plan, start_ages=ages))
 
                     if len(cars) < 10:
                         skipped.append((key, f"only {len(cars)} cars with a known pace and plan"))
                     else:
                         passes = race_model.pass_probability(inputs.passes_per_race,
                                                              inputs.total_laps, len(cars))
-                        simulated = race_model.simulate(
-                            cars, inputs.total_laps, inputs.degradation, inputs.pit_loss_s,
-                            inputs.neutralisation, passes, compound_offset_s=inputs.compound_offset_s,
-                            runs=RUNS, rng=np.random.default_rng(11),
-                            following=inputs.following_table)
-                        predicted = {d: simulated.positions[d].mean() for d in simulated.positions}
-                        ranked = {d: i + 1 for i, d in enumerate(sorted(predicted, key=predicted.get))}
+
+                        def _order(field):
+                            simulated = race_model.simulate(
+                                field, inputs.total_laps, inputs.degradation, inputs.pit_loss_s,
+                                inputs.neutralisation, passes,
+                                compound_offset_s=inputs.compound_offset_s,
+                                runs=RUNS, rng=np.random.default_rng(11),
+                                following=inputs.following_table)
+                            mean = {d: simulated.positions[d].mean() for d in simulated.positions}
+                            return {d: i + 1 for i, d in enumerate(sorted(mean, key=mean.get))}
+
+                        # Same plans, same luck; only the tyres differ.
+                        on_new = [race_model.Car(c.driver_number, c.abbreviation, c.pace_s,
+                                                 c.grid, c.plan) for c in cars]
+                        ranked = _order(cars)
+                        ranked_new = _order(on_new)
                         actual = {int(r.driver_number): int(r.position) for _, r in results.iterrows()}
                         grid = {int(r.driver_number): int(r.grid_position) for _, r in results.iterrows()}
                         shared = [d for d in ranked if d in actual]
@@ -132,7 +153,9 @@ for year in SEASONS:
                             rows.append(dict(
                                 year=year, race=k.event_name, cars=len(shared),
                                 sim_error=np.mean([abs(ranked[d] - actual[d]) for d in shared]),
+                                new_tyre_error=np.mean([abs(ranked_new[d] - actual[d]) for d in shared]),
                                 grid_error=np.mean([abs(grid[d] - actual[d]) for d in shared]),
+                                worn=sum(1 for c in cars if any(c.start_ages)),
                                 sim_top3=len({d for d in shared if ranked[d] <= 3}
                                              & {d for d in shared if actual[d] <= 3}),
                                 grid_top3=len({d for d in shared if grid[d] <= 3}
@@ -151,6 +174,11 @@ if MODE == "prior":
     print("every input from races that started before the one being simulated")
 print()
 print(f"mean position error   simulator {df.sim_error.mean():.2f}   grid order {df.grid_error.mean():.2f}")
+print(f"                      the same races with every stint on a new set: "
+      f"{df.new_tyre_error.mean():.2f}")
+print(f"                      cars starting a stint on a used set, per race: {df.worn.mean():.1f}")
+better = (df.sim_error < df.new_tyre_error).sum()
+print(f"                      real tyres beat new ones in {better} of {len(df)} races")
 print(f"podium hits (of 3)    simulator {df.sim_top3.mean():.2f}   grid order {df.grid_top3.mean():.2f}")
 print(f"races where the simulator beats the grid: {(df.sim_error < df.grid_error).sum()} of {len(df)}")
 print("\nby season:")
