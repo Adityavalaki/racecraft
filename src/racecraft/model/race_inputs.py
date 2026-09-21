@@ -308,7 +308,8 @@ class Stock:
         }
 
 
-def field_stock(con, session_key: str) -> dict[int, dict]:
+def field_stock(con, session_key: str | None = None, *, year: int | None = None,
+                round_number: int | None = None, live_laps=None) -> dict[int, dict]:
     """
     What every car on the grid held at the start, by grid slot.
 
@@ -317,15 +318,23 @@ def field_stock(con, session_key: str) -> dict[int, dict]:
     """
     from racecraft.model import tyre_sets
 
-    rows = con.sql(f"""select year, round from sessions
-                       where session_key = '{_safe(session_key)}'""").df()
-    if rows.empty:
+    if session_key is not None:
+        rows = con.sql(f"""select year, round from sessions
+                           where session_key = '{_safe(session_key)}'""").df()
+        if rows.empty:
+            return {}
+        year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
+    elif year is not None and round_number is not None:
+        rnd = int(round_number)
+    else:
         return {}
-    year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
     entries = _classification(con, year, rnd)
     if entries.empty:
+        entries = _qualifying_order(con, year, rnd)
+    if entries.empty:
         return {}
-    weekend = tyre_sets.from_lake(con, year, rnd)
+    weekend = tyre_sets.from_lake(con, year, rnd, live_laps=live_laps,
+                                  live_session="R" if live_laps is not None else None)
     if "R" not in weekend.sessions:
         return {}
     out: dict[int, dict] = {}
@@ -335,6 +344,25 @@ def field_stock(con, session_key: str) -> dict[int, dict]:
             continue
         out[int(slot)] = weekend.holding(number, "R").left()
     return out
+
+
+def _qualifying_order(con, year: int, round_number: int) -> pd.DataFrame:
+    """
+    Qualifying's result as a grid: the order cars will start in, penalties aside.
+
+    Used on race day, when the race has no classification yet and so no grid
+    column to read.
+    """
+    import duckdb
+
+    try:
+        rows = con.sql(f"""select driver_number, abbreviation, position as grid_position
+                           from results
+                           where year = {int(year)} and round = {int(round_number)}
+                             and "session" = 'Q' and position is not null""").df()
+    except duckdb.CatalogException:
+        return pd.DataFrame(columns=["driver_number", "abbreviation", "grid_position"])
+    return rows
 
 
 def _classification(con, year: int, round_number: int) -> pd.DataFrame:
@@ -349,23 +377,42 @@ def _classification(con, year: int, round_number: int) -> pd.DataFrame:
         return pd.DataFrame(columns=["driver_number", "abbreviation", "grid_position"])
 
 
-def tyre_stock(con, session_key: str, *, grid: int | None = None,
-               driver_number: int | None = None) -> Stock | None:
+def tyre_stock(con, session_key: str | None = None, *, grid: int | None = None,
+               driver_number: int | None = None, year: int | None = None,
+               round_number: int | None = None, live_laps=None) -> Stock | None:
     """
     The tyres one car held at the start of a race, by grid slot or by number.
 
     Known before the race starts — every set it names was run in practice or
-    qualifying — so a held-out study may use it. Returns None when the race is
-    not in the lake yet, or when nobody started from that slot.
+    qualifying — so a held-out study may use it.
+
+    Before the race is classified there is no grid to read, so the order comes
+    from qualifying instead, which is the grid apart from penalties, and the
+    stock says so. `live_laps` is the race in progress, whose laps are not in
+    the lake; without it a race that has not been ingested has no sets at all.
+    Returns None when neither is available, or when nobody started from that
+    slot.
     """
     from racecraft.model import tyre_sets
 
-    rows = con.sql(f"""select year, round, "session" from sessions
-                       where session_key = '{_safe(session_key)}'""").df()
-    if rows.empty:
+    if session_key is not None:
+        rows = con.sql(f"""select year, round from sessions
+                           where session_key = '{_safe(session_key)}'""").df()
+        if rows.empty:
+            return None
+        year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
+    elif year is not None and round_number is not None:
+        rnd = int(round_number)
+    else:
         return None
-    year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
+
+    notes: list[str] = []
     entries = _classification(con, year, rnd)
+    if entries.empty:
+        # No classification yet: qualifying is the grid, penalties aside.
+        entries = _qualifying_order(con, year, rnd)
+        if not entries.empty:
+            notes.append("the grid is taken from qualifying: penalties are not applied")
     if entries.empty:
         return None
     if driver_number is None:
@@ -379,7 +426,8 @@ def tyre_stock(con, session_key: str, *, grid: int | None = None,
     if row.empty:
         return None
 
-    weekend = tyre_sets.from_lake(con, year, rnd)
+    weekend = tyre_sets.from_lake(con, year, rnd, live_laps=live_laps,
+                                  live_session="R" if live_laps is not None else None)
     if driver_number not in weekend.cars or "R" not in weekend.sessions:
         return None
     held = weekend.holding(driver_number, "R")
@@ -389,5 +437,5 @@ def tyre_stock(con, session_key: str, *, grid: int | None = None,
         driver_number=driver_number,
         grid=int(slot) if pd.notna(slot) and slot else None,
         left=held.left(),
-        notes=held.notes,
+        notes=held.notes + notes,
     )

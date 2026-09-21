@@ -154,11 +154,12 @@ def session_places(session_key: str,
     is the ideal case rather than the real one. Takes about half a minute the
     first time for a race, grid slot and tyre choice, then is served from memory.
     """
-    live = None
+    live, status = None, None
     if session_key == live_store.SESSION_KEY:
-        live = _load(session_key)
+        live, status = _load(session_key), live_store.store.status()
     try:
-        return places_view.for_session(session_key, grid, runs, live=live, tyres=tyres)
+        return places_view.for_session(session_key, grid, runs, live=live, tyres=tyres,
+                                       live_status=status)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
     except places_view.NotSimulable as error:

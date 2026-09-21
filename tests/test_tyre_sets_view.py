@@ -190,3 +190,26 @@ def test_live_puts_the_session_in_progress_on_top_of_the_lake(client, monkeypatc
     body = tyre_sets_view.for_session("live", live=Live(), live_status=status)
     assert body["session"] == "R"
     assert _car(body, 1)["at_start"]["MEDIUM"]["used"] == [{"set": 5, "laps": 4}]
+
+
+def test_on_race_day_the_grid_comes_from_qualifying(client, monkeypatch):
+    """
+    Before the race is classified there is no grid column to read. Qualifying is
+    the grid apart from penalties, and the answer says so rather than pretending.
+    """
+    import pandas as pd
+
+    from racecraft.model import race_inputs
+    from racecraft.store.db import connect
+
+    # As it is mid-race: the race has no classification yet, and its laps are
+    # in the recording rather than the lake.
+    monkeypatch.setattr(race_inputs, "_classification",
+                        lambda *a, **k: pd.DataFrame(columns=["driver_number", "abbreviation",
+                                                              "grid_position"]))
+    stock = race_inputs.tyre_stock(connect(), year=YEAR, round_number=ROUND, grid=1,
+                                   live_laps=_laps("live", "R"))
+    assert stock is not None and stock.driver_number == 1
+    assert any("penalties are not applied" in note for note in stock.notes)
+    # The sets are the ones the weekend's earlier sessions left it.
+    assert stock.left["MEDIUM"]["used"] == [4]

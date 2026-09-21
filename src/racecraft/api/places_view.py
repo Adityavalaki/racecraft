@@ -45,7 +45,7 @@ _computing: dict[tuple, threading.Event] = {}
 
 
 def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
-                live=None, tyres: str = "car") -> dict:
+                live=None, tyres: str = "car", live_status: dict | None = None) -> dict:
     """
     The places ranking for the race this session belongs to.
 
@@ -57,6 +57,11 @@ def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
     give it fresh sets for every stint, which is the ideal case and the one to
     compare against.
     """
+    if live is not None:
+        # A race in progress changes under the answer: its laps grow and so do
+        # the sets that have been run. Kept answers would go stale silently.
+        return _compute(session_key, grid, runs, live, tyres, live_status)
+
     key = (str(config.LAKE_DIR.resolve()), session_key, grid, runs, tyres)
     while True:
         with _lock:
@@ -82,12 +87,17 @@ def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
             _computing.pop(key).set()
 
 
-def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -> dict:
+def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car",
+             live_status: dict | None = None) -> dict:
     con = connect()
+    live_round = None
     if live is not None:
         location = str(live.meta.get("location") or "")
         year = _year(live.meta)
         race_key = None                      # the live race is not in the lake yet
+        session = (live_status or {}).get("session") or {}
+        if str(session.get("name") or "").lower().startswith("race"):
+            live_round = session.get("round")
     else:
         rows = con.sql(f"""select location, year, "session" from sessions
                            where session_key = '{_safe(session_key)}'""").df()
@@ -113,6 +123,13 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -
     if tyres == "car" and race_key is not None:
         stock = race_inputs.tyre_stock(con, race_key, grid=grid)
         field = race_inputs.field_stock(con, race_key)
+    elif tyres == "car" and live_round and year:
+        # A race in progress: the sets came from this weekend's earlier
+        # sessions, and the grid from qualifying.
+        stock = race_inputs.tyre_stock(con, year=year, round_number=int(live_round), grid=grid,
+                                       live_laps=live.laps)
+        field = race_inputs.field_stock(con, year=year, round_number=int(live_round),
+                                        live_laps=live.laps)
 
     result = places.study(inputs, grid, runs=runs, stock=stock.left if stock else None,
                           field_stock=field)
@@ -129,7 +146,7 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -
         "tyres": "car" if stock else "new",
         "stock": stock.as_dict() if stock else None,
         # Who started where, so a grid slot can be chosen by name.
-        "grid_drivers": _grid_drivers(con, race_key),
+        "grid_drivers": _grid_drivers(con, race_key, year, live_round),
         "inputs": inputs.as_dict(),
         "study": result.as_dict(),
         "verdict": places.verdict(result),
@@ -137,16 +154,25 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -
     }
 
 
-def _grid_drivers(con, race_key: str | None) -> dict[str, str]:
-    """{grid slot: driver} for the race, or nothing when it is not in the lake."""
-    if race_key is None:
-        return {}
+def _grid_drivers(con, race_key: str | None, year: int | None = None,
+                  live_round=None) -> dict[str, str]:
+    """
+    {grid slot: driver}, from the race's classification or — on race day, before
+    there is one — from qualifying, which is the grid apart from penalties.
+    """
     import duckdb
 
+    if race_key is not None:
+        where = f"session_key = '{_safe(race_key)}' and grid_position is not null"
+        column = "grid_position"
+    elif year and live_round:
+        where = (f"year = {int(year)} and round = {int(live_round)} "
+                 f"and \"session\" = 'Q' and position is not null")
+        column = "position as grid_position"
+    else:
+        return {}
     try:
-        rows = con.sql(f"""select grid_position, abbreviation from results
-                           where session_key = '{_safe(race_key)}'
-                             and grid_position is not null""").df()
+        rows = con.sql(f"select {column}, abbreviation from results where {where}").df()
     except duckdb.CatalogException:
         return {}
     return {str(int(row.grid_position)): str(row.abbreviation)
