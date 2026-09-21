@@ -777,6 +777,36 @@ qualifying is fresher than its count.
 
 The race simulator uses the same sets; see **The tyres the car has** below.
 
+## Showing it
+
+Five minutes, in this order, each step answering a question the last one raises.
+
+**1. A race, replayed.** `racecraft-serve`, open the page, pick a race. The
+timing tower, the trace and the track map all run off one clock, and the tower
+agrees with what the tyre panels say a car is on — that is the check that the
+data underneath is one thing rather than three.
+
+**2. What the tyre model says, and what it cannot.** The *Tyre model* tab draws
+modelled wear against what that race's tyres actually did. The line never saw
+the race it is drawn over. The panel names how many races it was fitted on, and
+which Pirelli compound each label was that weekend.
+
+**3. Three answers to one question.** The *Strategy* tab ranks plans in seconds,
+then with safety cars allowed for, then in finishing positions. The three
+disagree, and the interesting part is where: the seconds ranking understates how
+bad a bad plan is, because it cannot see a car rejoining into traffic.
+
+**4. The tyres that car actually had.** *In places* races the sets the car held
+at the start — click through the grid slots by driver name. At Baku 2025 from
+P8, Hadjar had no new set at all, and his best plan is not the best plan on new
+tyres. The *Tyre sets* tab shows where that came from, set by set, following the
+clock.
+
+**5. What none of it can do.** `python scripts/validate_race.py prior`:
+predicting a finishing order, held out, is level with predicting the starting
+grid. Car pace dominates a race and forecasting car pace is a different problem.
+The negative results below are the rest of that answer.
+
 ## Query
 
 ```python
