@@ -453,3 +453,14 @@ def test_a_practice_session_ships_no_observed_wear_or_stints(lake_dir, tmp_path,
     assert race["is_race"] is True
     assert race["stints"]
     assert "observed_unavailable" not in race
+
+
+def test_the_strategy_tab_and_the_simulator_use_the_same_safety_car_timing(lake_dir):
+    """
+    Two views of one race that disagreed about when safety cars arrive would be
+    two models, not one. The timing comes from the same measurement in both.
+    """
+    constants = insight._circuit_constants()
+    assert "neutralisation_profile" in constants
+    out = insight.for_session(f"{YEAR}_02_R")
+    assert out["plans_with_risk"], "nothing costed with safety cars"

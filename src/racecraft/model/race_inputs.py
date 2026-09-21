@@ -103,6 +103,7 @@ class RaceInputs:
     pit_loss_s: float
     pit_stops: int
     periods_per_race: float
+    neutralisation_profile: tuple[float, ...]   # when in a race they arrive
     neutralisation: Neutralisation
     min_stops: int                          # more than one stop, where the rules demand it
     passes_per_race: float
@@ -136,6 +137,7 @@ class RaceInputs:
             "min_stops": self.min_stops,
             "pit_stops": self.pit_stops,
             "periods_per_race": round(self.periods_per_race, 2),
+            "neutralisation_profile": [round(w, 2) for w in self.neutralisation_profile],
             "passes_per_race": round(self.passes_per_race, 1),
             "following": self.following.as_dict(),
             "notes": self.notes,
@@ -209,6 +211,11 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
     risk = next((r for r in circuit_model.safety_car_risk(
         status, prior[["session_key", "location"]], laps) if r.circuit == name), None)
     periods = risk.periods_per_race if risk else FALLBACK_PERIODS
+    # When in a race a neutralisation arrives, from every race before this one:
+    # a rate alone puts as many on lap three as on lap forty, and the data does
+    # not. Measured across the sport rather than per circuit, which has far too
+    # few neutralisations to shape a curve.
+    profile = circuit_model.neutralisation_profile(status, laps)
     if risk is None:
         notes.append(f"no safety-car history at {name} before this race; league average used")
 
@@ -288,7 +295,8 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
         pit_loss_s=loss.seconds,
         pit_stops=loss.stops,
         periods_per_race=periods,
-        neutralisation=Neutralisation.for_circuit(periods, total_laps),
+        neutralisation=Neutralisation.for_circuit(periods, total_laps, profile=profile),
+        neutralisation_profile=profile,
         passes_per_race=overtaking,
         passes_per_lap=race_model.pass_probability(overtaking, total_laps, cars),
         ladder=ladder,

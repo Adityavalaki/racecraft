@@ -99,3 +99,34 @@ def test_a_filter_that_allows_nothing_returns_nothing_rather_than_failing():
     assert simulate_model.rank_with_risk(
         50, {"SOFT": 0.1, "MEDIUM": 0.06, "HARD": 0.04}, 22.0, Neutralisation(),
         allow=lambda plan: False) == []
+
+
+# ------------------------------------------------------------- when they arrive
+
+FRONT_LOADED = (2.7, 0.8, 0.7, 1.2, 1.0, 0.8, 0.5, 0.8, 0.8, 0.7)
+
+
+def test_a_rate_alone_puts_as_many_safety_cars_on_lap_three_as_on_lap_forty():
+    flat = Neutralisation(per_lap=0.02).rate_by_lap(50)
+    assert flat.min() == flat.max() == pytest.approx(0.02)
+
+
+def test_the_measured_timing_front_loads_them_without_changing_how_many():
+    shaped = Neutralisation(per_lap=0.02, profile=FRONT_LOADED).rate_by_lap(50)
+    assert shaped[0] > 2 * shaped[-1]
+    # The profile says where in a race they fall, not how often they happen.
+    assert shaped.mean() == pytest.approx(0.02, rel=0.02)
+
+
+def test_the_draw_follows_the_timing():
+    """More of them in the opening laps, over many races."""
+    rng = np.random.default_rng(4)
+    flat = Neutralisation(per_lap=0.03)
+    shaped = Neutralisation(per_lap=0.03, profile=FRONT_LOADED)
+    early = {}
+    for label, neutralisation in (("flat", flat), ("shaped", shaped)):
+        opening = sum(1 for _ in range(400)
+                      if any(lap <= 5 for lap in
+                             simulate._draw_neutral_laps(50, neutralisation, rng)))
+        early[label] = opening
+    assert early["shaped"] > early["flat"] * 1.5

@@ -157,7 +157,8 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         out["min_stops"] = least
         out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"], least)
         out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
-                                                  loss["seconds"], risk, least)
+                                                  loss["seconds"], risk, least,
+                                                  constants.get("neutralisation_profile", ()))
     else:
         out["plans"] = []
         out["plans_with_risk"] = []
@@ -257,7 +258,8 @@ def for_live(live, scale: float = DEFAULT_SCALE, live_status: dict | None = None
         out["min_stops"] = least
         out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"], least)
         out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
-                                                  loss["seconds"], risk, least)
+                                                  loss["seconds"], risk, least,
+                                                  constants.get("neutralisation_profile", ()))
     else:
         out["plans"] = []
         out["plans_with_risk"] = []
@@ -418,13 +420,15 @@ def _plans(total_laps: int, measured: dict[str, float], scale: float,
 
 def _plans_with_risk(total_laps: int, measured: dict[str, float], scale: float,
                      offsets: dict[str, float], pit_loss_s: float,
-                     risk: dict | None, min_stops: int = 0) -> list[dict]:
+                     risk: dict | None, min_stops: int = 0,
+                     profile: tuple[float, ...] = ()) -> list[dict]:
     """The plans over races that can be neutralised; see `simulate.rank_with_risk`."""
     from racecraft.model import simulate as simulate_model
 
     degradation = {c: v * scale for c, v in measured.items()}
     periods = risk["periods_per_race"] if risk else simulate_model.NEUTRALISATION_PER_LAP * total_laps
-    neutralisation = simulate_model.Neutralisation.for_circuit(periods, total_laps)
+    neutralisation = simulate_model.Neutralisation.for_circuit(periods, total_laps,
+                                                               profile=profile)
     ranked = simulate_model.rank_with_risk(total_laps, degradation, pit_loss_s, neutralisation,
                                            offsets, keep=TOP_PLANS, min_stint=MIN_STINT_LAPS,
                                            min_stops=min_stops)
@@ -521,6 +525,10 @@ def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = No
     by_circuit = circuit_model.canonical_circuit(laps["location"]) if not laps.empty else laps["location"]
     value = {
         "pit_loss": {p.circuit: p.as_dict() for p in circuit_model.pit_loss(laps)} if not laps.empty else {},
+        # When in a race neutralisations arrive, across the sport: a rate alone
+        # would put as many on lap three as on lap forty.
+        "neutralisation_profile": (circuit_model.neutralisation_profile(status, laps)
+                                   if not laps.empty else ()),
         "safety_car": ({r.circuit: r.as_dict()
                         for r in circuit_model.safety_car_risk(status, sessions[["session_key", "location"]], laps)}
                        if not laps.empty else {}),

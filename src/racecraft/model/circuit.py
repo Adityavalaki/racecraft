@@ -224,6 +224,49 @@ def _neutralised_spans(status: pd.DataFrame) -> list[tuple[float, float]]:
     return spans
 
 
+# Fewer neutralisations than this and the shape is the sample, not the sport.
+MIN_NEUTRALISATIONS = 30
+NEUTRALISATION_BINS = 10
+
+
+def neutralisation_profile(track_status: pd.DataFrame, laps: pd.DataFrame,
+                           bins: int = NEUTRALISATION_BINS) -> tuple[float, ...]:
+    """
+    When in a race neutralisations begin, as a weight per tenth of the distance.
+
+    A flat rate says a safety car is as likely on lap 3 as on lap 40. It is not:
+    a quarter of them arrive in the first tenth of the race, where a car has run
+    too few laps for a cheap stop to be worth taking. Treating them as uniform
+    therefore overvalues a long first stint, which is exactly the decision the
+    safety-car ranking exists to make.
+
+    Weights average one, so they scale a per-lap rate without changing how many
+    neutralisations a race gets. Too few to measure returns a flat profile,
+    which is the old behaviour named rather than assumed.
+    """
+    flat = tuple(1.0 for _ in range(bins))
+    if track_status.empty or laps.empty:
+        return flat
+    counts = np.zeros(bins)
+    seen = 0
+    for key, group in track_status.groupby("session_key"):
+        race = laps[laps["session_key"] == key]
+        if race.empty:
+            continue
+        total = int(race["lap_number"].max())
+        ends = race.groupby("lap_number")["lap_end_t"].median()
+        if not total or ends.empty:
+            continue
+        for start, _ in _neutralised_spans(group.sort_values("t")):
+            lap = int((ends < start).sum()) + 1
+            index = min(bins - 1, int(bins * (lap - 1) / total))
+            counts[index] += 1
+            seen += 1
+    if seen < MIN_NEUTRALISATIONS:
+        return flat
+    return tuple(float(w) for w in counts / counts.mean())
+
+
 def passes_per_race(circuit_laps: pd.DataFrame) -> float:
     """
     On-track passes per race: pairs of cars that swapped places between laps

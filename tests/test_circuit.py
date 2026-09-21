@@ -88,3 +88,24 @@ class TestSafetyCarRisk:
         assert risks["Monza"].share_of_races == 0.0
         assert 0.0 < risks["Monza"].probability < 0.5
         assert risks["Baku"].probability > risks["Monza"].probability
+
+
+def test_a_handful_of_safety_cars_is_not_a_shape():
+    """Below the threshold the profile is flat, which is the old behaviour named."""
+    status = pd.DataFrame({"session_key": ["a", "a"], "t": [100.0, 200.0], "status": ["4", "1"]})
+    laps = pd.DataFrame({"session_key": ["a"] * 10, "lap_number": range(1, 11),
+                         "lap_end_t": [90.0 * n for n in range(1, 11)]})
+    assert circuit.neutralisation_profile(status, laps) == tuple([1.0] * 10)
+
+
+def test_safety_cars_that_cluster_early_come_back_as_weights():
+    rows, laps = [], []
+    for race in range(40):
+        key = f"r{race}"
+        laps += [{"session_key": key, "lap_number": n, "lap_end_t": 90.0 * n} for n in range(1, 51)]
+        # Every one of them on lap 2 of a fifty-lap race.
+        rows += [{"session_key": key, "t": 90.0 * 2 + 1, "status": "4"},
+                 {"session_key": key, "t": 90.0 * 4, "status": "1"}]
+    profile = circuit.neutralisation_profile(pd.DataFrame(rows), pd.DataFrame(laps))
+    assert profile[0] == pytest.approx(10.0)      # all of them in the first tenth
+    assert sum(profile) / len(profile) == pytest.approx(1.0)

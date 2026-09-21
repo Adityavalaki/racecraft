@@ -257,7 +257,7 @@ def _bunch_up(elapsed: np.ndarray) -> np.ndarray:
 
 def _draw_neutral_laps(total_laps: int, neutralisation: Neutralisation, rng: np.random.Generator) -> set[int]:
     neutral: set[int] = set()
-    for lap in np.flatnonzero(rng.random(total_laps) < neutralisation.per_lap) + 1:
+    for lap in np.flatnonzero(rng.random(total_laps) < neutralisation.rate_by_lap(total_laps)) + 1:
         length = max(1, int(round(rng.exponential(neutralisation.laps))))
         neutral.update(range(int(lap), min(total_laps, int(lap) + length) + 1))
     return neutral

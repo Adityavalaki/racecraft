@@ -38,11 +38,31 @@ class Neutralisation:
     per_lap: float = NEUTRALISATION_PER_LAP
     laps: float = NEUTRALISATION_LAPS
     stop_discount: float = SAFETY_CAR_STOP_DISCOUNT
+    # When in the race they arrive, as a weight per tenth of the distance,
+    # averaging one. Empty is flat, which is what a rate alone assumes.
+    profile: tuple[float, ...] = ()
 
     @classmethod
     def for_circuit(cls, periods_per_race: float, total_laps: int, laps: float = NEUTRALISATION_LAPS,
-                    discount: float = SAFETY_CAR_STOP_DISCOUNT) -> "Neutralisation":
-        return cls(per_lap=periods_per_race / max(1, total_laps), laps=laps, stop_discount=discount)
+                    discount: float = SAFETY_CAR_STOP_DISCOUNT,
+                    profile: tuple[float, ...] = ()) -> "Neutralisation":
+        return cls(per_lap=periods_per_race / max(1, total_laps), laps=laps, stop_discount=discount,
+                   profile=tuple(profile))
+
+    def rate_by_lap(self, total_laps: int) -> "np.ndarray":
+        """
+        The chance a neutralisation begins on each lap of the race.
+
+        The rate is what a circuit averages; the profile says where in a race
+        they fall. A quarter of them arrive in the opening tenth, where a stop
+        is not yet worth taking, so spreading them evenly overvalues waiting.
+        """
+        rate = np.full(total_laps, self.per_lap, dtype=float)
+        if not self.profile:
+            return rate
+        bins = len(self.profile)
+        index = np.minimum(bins - 1, (np.arange(total_laps) * bins) // max(1, total_laps))
+        return np.clip(rate * np.asarray(self.profile)[index], 0.0, 1.0)
 
 
 @dataclass
@@ -107,7 +127,7 @@ def simulate_plan(plan: Plan, degradation: dict[str, float], pit_loss_s: float,
 
 def _draw_neutral_laps(total_laps: int, neutralisation: Neutralisation, rng: np.random.Generator) -> set[int]:
     """Which laps of this race are run under a safety car or VSC."""
-    starts = rng.random(total_laps) < neutralisation.per_lap
+    starts = rng.random(total_laps) < neutralisation.rate_by_lap(total_laps)
     neutral: set[int] = set()
     for lap in np.flatnonzero(starts) + 1:
         length = max(1, int(round(rng.exponential(neutralisation.laps))))
