@@ -180,6 +180,12 @@ describe("PlacesBoard", () => {
     await waitFor(() => expect(screen.getByText(/not in the lake, so they cannot be raced/)).toBeDefined());
   });
 
+  it("says the ranking is only of the plans the car could run", async () => {
+    mock(answer());
+    render(<PlacesBoard sessionKey="2025_17_R" />);
+    await waitFor(() => expect(screen.getByText(/1 cheaper plan is out of reach/)).toBeDefined());
+  });
+
   it("lists what this view still cannot see", async () => {
     mock(answer());
     render(<PlacesBoard sessionKey="2025_17_R" />);

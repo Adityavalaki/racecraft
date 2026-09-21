@@ -153,6 +153,12 @@ function Answer({ answer }: { answer: PlacesAnswer }) {
       </div>
 
       <div className="places-verdict">
+        {study.dropped.length > 0 && (
+          <p className="places-note">
+            Everything below is among the plans this car had the sets for; {study.dropped.length}{" "}
+            cheaper {study.dropped.length === 1 ? "plan is" : "plans are"} out of reach.
+          </p>
+        )}
         {verdict.price ? (
           <p>
             <b>{verdict.price.plan}</b> is as good as the best in places and costs{" "}
