@@ -306,6 +306,12 @@ a statement of intent as an interface is going to get. An empty recording is not
 offered: a recorder started before a session sits connected and writes nothing,
 and listing that would hand back an error when clicked.
 
+On race day the strategy views work off the weekend's own sessions: the sets
+each car has left come from practice and qualifying, already in the lake, and
+the grid from the qualifying result, since the race has no classification until
+it ends. Penalties are not applied to that grid, and the panel says so. Live
+answers are never cached — the race changes underneath them.
+
 Live is a session key, not a second set of endpoints. `/api/sessions/live/state`,
 `/laps` and `/insight` all work, so the timing tower, the race trace, the tyre
 model and the strategy board need no live code path at all. The only part of the
