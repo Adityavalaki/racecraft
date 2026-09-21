@@ -53,6 +53,8 @@ DEFAULT_CARS = 20
 LADDER_RACES = 5             # the most recent races a pace ladder is averaged over
 MIN_LAPS_TO_FIT = 200
 FALLBACK_PERIODS = 1.27      # league-wide neutralisations per race, when a circuit has no history
+# Laps on intermediates or wets past which a dry ranking describes another race.
+WET_SHARE = 0.15
 
 
 class NotEnoughData(ValueError):
@@ -210,6 +212,15 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
     if risk is None:
         notes.append(f"no safety-car history at {name} before this race; league average used")
 
+    # Whether the race being studied actually ran wet. This is hindsight and is
+    # labelled as such: it is here because a dry-tyre ranking of a wet race is
+    # not a wrong answer to the question, it is an answer to another question.
+    if target_row is not None:
+        wet = _wet_share(con, str(target_row["session_key"]))
+        if wet >= WET_SHARE:
+            notes.append(f"looking back: this race ran wet, {wet:.0%} of its laps on "
+                         "intermediates or wets, and nothing below is about that race")
+
     if total_laps is None:
         if target_row is not None and pd.notna(target_row["total_laps"]):
             total_laps = int(target_row["total_laps"])       # scheduled, so known in advance
@@ -289,6 +300,14 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
 
 
 # ------------------------------------------------------------- the garage
+
+def _wet_share(con, session_key: str) -> float:
+    """How much of a race ran on intermediates or wets."""
+    rows = con.sql(f"""
+        select avg(case when compound in ('INTERMEDIATE', 'WET') then 1.0 else 0.0 end)
+        from laps where session_key = '{_safe(session_key)}'""").fetchone()
+    return float(rows[0] or 0.0)
+
 
 def mandatory_stops(circuit: str, season: int) -> int:
     """

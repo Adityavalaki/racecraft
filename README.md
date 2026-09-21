@@ -646,6 +646,12 @@ window for the other, and it was deleted from the 2026 regulations. A model that
 had assumed "2025 onward" would now be putting an extra stop into every Monaco
 race it is asked about.
 
+**A wet race is a different race.** Three of the 2025 races ran mostly on
+intermediates — Australia at 81% of laps, Silverstone at 74%, Spa at 27% — and a
+ranking of dry plans describes none of them. Studying one now says so first, in
+as many words, and marks it as the hindsight it is: the forecast could not have
+known, the review has no excuse.
+
 **A car can be short of the whole shortlist.** Verstappen started Monaco 2025
 with one new medium, one new hard and four used softs, and every plan in the
 shortlist — Monaco requires two stops — called for two hard stints. Filtering

@@ -355,3 +355,18 @@ def test_a_study_of_monaco_never_offers_a_one_stop(con, monkeypatch):
     result = places.study(inputs, grid=4, plans=4, runs=40, field_draws=4)
     assert result.ranking
     assert all(entry.plan.stops == 2 for entry in result.ranking)
+
+
+def test_a_race_that_ran_wet_says_so_before_anything_else_is_read(con, monkeypatch):
+    """
+    Hindsight, and labelled as such. A dry-tyre ranking of a wet race is not a
+    wrong answer to the question asked; it is an answer to a different one.
+    """
+    monkeypatch.setattr(race_inputs, "_wet_share", lambda con, key: 0.74)
+    notes = race_inputs.build(con, "Baku", 2024).notes
+    assert any("looking back" in note and "74%" in note for note in notes)
+
+
+def test_a_dry_race_is_not_flagged(con, monkeypatch):
+    monkeypatch.setattr(race_inputs, "_wet_share", lambda con, key: 0.02)
+    assert not any("looking back" in note for note in race_inputs.build(con, "Baku", 2024).notes)
