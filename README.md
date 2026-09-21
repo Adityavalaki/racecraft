@@ -697,8 +697,9 @@ not a model that changes every call. But in 18 of 66 cases it was a plan the car
 had no sets for — advice that cannot be taken is worse than advice that is
 slightly wrong, and the old model gave it without noticing.
 
-(Monaco's two-stop rule reached the model after this run, so its three
-car-races were studied without it; everything else stands.)
+(Rerun with Monaco's two-stop rule in place: Verstappen's answer there changes
+from an illegal one-stop to `soft 19 > medium 25 > hard 34`, and every figure in
+the table above is unchanged.)
 
 *Predicting a finishing order* — no. `scripts/validate_race.py prior` simulates
 each race twice, once with every stint on a new set and once at the age each set
