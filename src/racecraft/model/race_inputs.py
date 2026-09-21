@@ -41,12 +41,14 @@ log = logging.getLogger(__name__)
 
 DEFAULT_SCALE = 1.5
 
-# Races that demand more than one stop, from the season the rule came in.
-# Monaco has required three sets of tyres — so two stops — since 2025
-# (Sporting Regulations 30.5 m), and the field's median stop count there goes
-# from one in 2023 and 2024 to two in 2025, which is the rule showing up in the
-# data rather than a preference.
-MANDATORY_STOPS = {("Monaco", 2025): 2}          # calibrated against 76 dry races; see scripts/calibrate_scale.py
+# Races that demand more than one stop, by circuit and the seasons it applied.
+# Monaco required three sets of tyres — so two stops — in 2025 alone: the rule
+# was introduced to break up a processional race, teams answered it by having
+# one car back the field up to make a pit window for the other, and it was
+# deleted from the 2026 regulations. The data shows both ends of it — Monaco's
+# median stop count runs 1, 1, 2 across 2023, 2024 and 2025 — which is why it
+# is a table of seasons rather than a rule that carries forward.
+MANDATORY_STOPS = {("Monaco", 2025, 2025): 2}          # calibrated against 76 dry races; see scripts/calibrate_scale.py
 DEFAULT_CARS = 20
 LADDER_RACES = 5             # the most recent races a pace ladder is averaged over
 MIN_LAPS_TO_FIT = 200
@@ -292,10 +294,10 @@ def mandatory_stops(circuit: str, season: int) -> int:
     """
     The fewest stops the rules allow at this race, which is one almost everywhere.
 
-    Monaco is the exception: three sets of tyres, and so two stops, since 2025.
+    Monaco 2025 is the only exception so far, and it lasted one season.
     """
-    for (where, from_season), stops in MANDATORY_STOPS.items():
-        if circuit == where and season >= from_season:
+    for (where, first, last), stops in MANDATORY_STOPS.items():
+        if circuit == where and first <= season <= last:
             return stops
     return 0
 

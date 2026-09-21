@@ -633,13 +633,18 @@ the difference looked like a finding; at 1500 it is a tenth of a place and the
 same plan wins both. The rule the rest of this file follows applies to its own
 results: a ranking has an error bar, and a change smaller than it is noise.
 
-**Some races demand more than one stop.** Monaco has required three sets of
-tyres, and so two stops, since 2025 — and the field's median stop count there
-goes from one in 2023 and 2024 to two in 2025, which is the rule showing up in
-the data. The plan sweep did not know it, and the tyre join is what exposed
-that: given a car short of hard sets, the shortlist fell back to a one-stop the
-regulations forbid. `race_inputs.mandatory_stops` now holds the rule, and the
-sweep starts at two stops there.
+**Some races demand more than one stop.** Monaco required three sets of tyres,
+and so two stops, in 2025 — and the field's median stop count there runs 1, 1, 2
+across 2023, 2024 and 2025, which is the rule showing up in the data. The plan
+sweep did not know it, and the tyre join is what exposed that: given a car short
+of hard sets, the shortlist fell back to a one-stop the regulations forbade.
+
+`race_inputs.mandatory_stops` now holds it, as a table of seasons rather than a
+rule that carries forward — which matters, because it does not. The rule lasted
+one year: teams answered it by having one car back the field up to make a pit
+window for the other, and it was deleted from the 2026 regulations. A model that
+had assumed "2025 onward" would now be putting an extra stop into every Monaco
+race it is asked about.
 
 **A car can be short of the whole shortlist.** Verstappen started Monaco 2025
 with one new medium, one new hard and four used softs, and every plan in the

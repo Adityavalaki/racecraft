@@ -335,16 +335,21 @@ def test_a_car_that_cannot_run_the_best_plans_is_given_the_best_it_can(con):
     assert {entry["plan"] for entry in limited.dropped} <= plain_plans
 
 
-def test_monacos_two_stop_rule_is_known_from_the_season_it_came_in():
+def test_monacos_two_stop_rule_applied_to_one_season_only():
+    """
+    Introduced for 2025 and deleted from the 2026 regulations after teams
+    answered it by backing the field up. A rule that carried forward would put
+    a stop in every Monaco race from here on.
+    """
     assert race_inputs.mandatory_stops("Monaco", 2024) == 0
     assert race_inputs.mandatory_stops("Monaco", 2025) == 2
-    assert race_inputs.mandatory_stops("Monaco", 2026) == 2
+    assert race_inputs.mandatory_stops("Monaco", 2026) == 0
     assert race_inputs.mandatory_stops("Baku", 2025) == 0
 
 
 def test_a_study_of_monaco_never_offers_a_one_stop(con, monkeypatch):
     """The rule reaches the shortlist, not just the enumeration."""
-    monkeypatch.setitem(race_inputs.MANDATORY_STOPS, ("Baku", 2024), 2)
+    monkeypatch.setitem(race_inputs.MANDATORY_STOPS, ("Baku", 2024, 2024), 2)
     inputs = race_inputs.build(con, "Baku", 2024)
     assert inputs.min_stops == 2
     result = places.study(inputs, grid=4, plans=4, runs=40, field_draws=4)
