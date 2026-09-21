@@ -194,10 +194,14 @@ def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: f
     This is a different question from the green-flag ranking, not a refinement
     of it. A stop under a safety car costs about 61% of a green one, so the best
     plan on a circuit that neutralises often is usually a *later* first stop — a
-    longer first stint leaves more laps in which a cheap stop can arrive. It is
-    also the better description of what teams actually do: across the fourteen
-    2026 races it is 0.43 stops off the field's median, against 0.57 for the
-    green ranking.
+    longer first stint leaves more laps in which a cheap stop can arrive.
+
+    How much later depends on when safety cars arrive, which is not evenly: a
+    quarter of them begin in the opening tenth of a race, where a stop is not
+    yet worth taking. `Neutralisation.profile` carries that shape, and without
+    it this ranking holds the first stop about a lap too long. What it does not
+    do, held out, is pick a better *number* of stops than the green arithmetic —
+    both are 0.516 stops off the field across 32 dry races. See the README.
 
     Simulating every plan took 12 seconds for an answer settled by a handful of
     them, so the hopeless ones are dropped first, by a bound rather than a guess.

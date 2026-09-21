@@ -101,17 +101,34 @@ trace, and the two that show the models rather than the feed.
   where a stop costs 61% of a green one — which usually rewards a longer first
   stint, because more laps remain in which a cheap stop can arrive.
 
-  The second is measurably the better description of what teams do. Across the
-  fourteen 2026 races in the lake, comparing each ranking's cheapest stop count
-  against what the field actually ran:
+  What that is worth is measured, held out, over 32 dry races in 2025 and
+  2026 (`python scripts/validate_safety_car_timing.py`), against what the field
+  actually did:
 
-  | Ranking | Mean error in stops |
-  |---|---|
-  | If green | 0.57 |
-  | Expected, with safety cars | **0.43** |
+  | Ranking | Error in stop count | Error in first stop lap |
+  |---|---|---|
+  | If green | 0.516 stops | — |
+  | Expected, flat safety-car rate | 0.516 stops | 9.0 laps |
+  | Expected, measured timing | 0.516 stops | **8.2 laps** |
 
-  Neither is good. Both are worse at Monaco (4.24 stops actually run) and at
-  Barcelona (2.41 against a modelled 1), which is what a model with no traffic
+  Two things to read there, and the first corrects an earlier claim in this
+  file. Allowing for safety cars does **not** pick a better stop count than the
+  green arithmetic: held out, both are 0.516 stops out. The figures once quoted
+  here — 0.57 against 0.43 — came from a version that was not held out, and they
+  did not survive being one. What survives is the direction of the bias: the
+  safety-car ranking under-stops by 0.20 against the green ranking's 0.27.
+
+  Where it does earn its place is *when* to stop, and only once the timing is
+  measured rather than assumed. A quarter of all neutralisations begin in the
+  opening tenth of a race, where a car has run too few laps for a cheap stop to
+  be worth taking; a flat rate promises a discount those cannot deliver and
+  holds the first stop too long for it. Shaping the rate by when they really
+  arrive moves the first stop in 9 of 32 races and closes the gap to the field
+  from 9.0 laps to 8.2, with the bias toward stopping late falling from +5.9 to
+  +4.9 laps.
+
+  None of it is good. The model still stops five laps later than the field, and
+  it is worst at Monaco and Barcelona, which is what a ranking with no traffic
   and no track position should be expected to get wrong.
 
   *In places* is the third, and it has both, and it races the tyres the car

@@ -347,10 +347,10 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
     Shortlist plans for one car, then race each against the field.
 
     The shortlist comes from the ranking that allows for safety cars rather than
-    the green-flag one, because it is the better description of what teams do —
-    0.43 stops off the field's median across the 2026 races, against 0.57 — and
-    the shortlist decides which plans ever get raced. The field, on average,
-    runs the best of them.
+    the green-flag one. The two pick the same number of stops, held out, but not
+    the same lap to take them on, and the safety-car one is closer to what the
+    field does once the timing of a neutralisation is measured rather than
+    assumed flat. The field, on average, runs the best of them.
 
     With a `stock`, the shortlist is drawn from the plans the car has the sets
     for — filtered before the ranking, not after, so a car that cannot run any
