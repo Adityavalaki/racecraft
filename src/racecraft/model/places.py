@@ -352,16 +352,20 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
     the shortlist decides which plans ever get raced. The field, on average,
     runs the best of them.
 
-    With a `stock`, the shortlist is cut to the plans the car has the sets for,
-    and each stint starts on the set it would use. The field plan is chosen
-    before that cut: the rest of the field is not short of tyres because this
-    car is.
+    With a `stock`, the shortlist is drawn from the plans the car has the sets
+    for — filtered before the ranking, not after, so a car that cannot run any
+    of the best plans gets the best plan it *can* run rather than an empty
+    table — and each stint starts on the set it would use. The field plan is
+    chosen without that filter: the rest of the field is not short of tyres
+    because this car is.
 
     `inputs` is a `race_inputs.RaceInputs`, so everything here was measured only
     from races that had finished before the one being studied.
     """
     from racecraft.model import simulate as simulate_model
 
+    # The field's plan comes from the unfiltered ranking; the car's own
+    # shortlist is drawn from what it can run.
     shortlist = simulate_model.rank_with_risk(
         inputs.total_laps, inputs.degradation, inputs.pit_loss_s, inputs.neutralisation,
         inputs.compound_offset_s, keep=plans)
@@ -372,12 +376,17 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
     field_plan = shortlist[0].plan
     dropped = []
     if stock:
-        kept = []
         for costed in shortlist:
             ok, reason = runnable(costed.plan, stock, inputs.degradation)
-            (kept if ok else dropped).append(costed if ok else
-                                             {"plan": str(costed.plan), "reason": reason})
-        shortlist = kept
+            if not ok:
+                dropped.append({"plan": str(costed.plan), "reason": reason})
+        if dropped:
+            # Some of the best plans are out of reach, so ask again among the
+            # ones that are not, rather than racing whatever survived.
+            shortlist = simulate_model.rank_with_risk(
+                inputs.total_laps, inputs.degradation, inputs.pit_loss_s, inputs.neutralisation,
+                inputs.compound_offset_s, keep=plans,
+                allow=lambda plan: runnable(plan, stock, inputs.degradation)[0])
     if not shortlist:
         return RaceStudy(grid=grid, shortlist=[], ranking=[], field_plan=field_plan,
                          stock=stock, dropped=dropped)

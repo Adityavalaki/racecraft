@@ -284,3 +284,52 @@ def test_an_answer_is_kept_rather_than_simulated_again(client):
 def test_the_grid_slot_is_bounded(client):
     assert client.get("/api/sessions/2024_02_R/places", params={"grid": 0}).status_code == 422
     assert client.get("/api/sessions/2024_02_R/places", params={"grid": 30}).status_code == 422
+
+
+def test_a_car_with_nothing_left_to_run_is_told_so_rather_than_given_a_plan(con, monkeypatch):
+    """
+    Every shortlisted plan needs a set the car has not got. That is an answer —
+    the wrong one to hide behind an empty table.
+    """
+    from racecraft.api import places_view
+
+    empty = race_inputs.Stock(driver="D04", driver_number=4, grid=4, notes=[],
+                              left={c: {"new": 0, "used": []} for c in ("SOFT", "MEDIUM", "HARD")})
+    monkeypatch.setattr(race_inputs, "tyre_stock", lambda *a, **k: empty)
+    places_view._cache.clear()
+    with pytest.raises(places_view.NotSimulable, match="could not run any"):
+        places_view.for_session("2024_02_R", grid=4, runs=40)
+
+
+def test_the_study_keeps_the_plans_it_can_run_and_drops_the_rest(con):
+    inputs = race_inputs.build(con, "Baku", 2024)
+    # One hard set and nothing else: only plans with a single hard stint survive.
+    left = {"SOFT": {"new": 0, "used": []}, "MEDIUM": {"new": 3, "used": []},
+            "HARD": {"new": 1, "used": []}}
+    result = places.study(inputs, grid=4, plans=6, runs=40, field_draws=4, stock=left)
+
+    for entry in result.ranking:
+        assert sum(1 for compound, _ in entry.plan.stints if compound == "HARD") <= 1
+    assert all("hard" in entry["reason"] or "soft" in entry["reason"] for entry in result.dropped)
+
+
+def test_a_car_that_cannot_run_the_best_plans_is_given_the_best_it_can(con):
+    """
+    Verstappen at Monaco 2025: one new medium, one new hard, four used softs,
+    and every plan in the shortlist calling for two hard stints. The answer is
+    the best plan he could have run, not an empty table.
+    """
+    inputs = race_inputs.build(con, "Baku", 2024)
+    no_hards = {"SOFT": {"new": 2, "used": []}, "MEDIUM": {"new": 2, "used": []},
+                "HARD": {"new": 0, "used": []}}
+    plain = places.study(inputs, grid=4, plans=5, runs=40, field_draws=4)
+    limited = places.study(inputs, grid=4, plans=5, runs=40, field_draws=4, stock=no_hards)
+
+    assert any("HARD" in str(c.plan).upper() for c in plain.shortlist), "nothing to be short of"
+    assert limited.ranking, "a car with tyres left was given nothing to race"
+    for entry in limited.ranking:
+        assert all(compound != "HARD" for compound, _ in entry.plan.stints)
+    # The plans it could not run are named, and they were in the plain shortlist.
+    assert limited.dropped
+    plain_plans = {str(c.plan) for c in plain.shortlist}
+    assert {entry["plan"] for entry in limited.dropped} <= plain_plans

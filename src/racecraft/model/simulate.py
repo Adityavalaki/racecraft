@@ -166,7 +166,8 @@ RISK_RUNS = 1500
 
 def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: float,
                    neutralisation: Neutralisation, compound_offset_s: dict[str, float] | None = None,
-                   *, keep: int = 8, min_stint: int = 10, max_stops: int = 2) -> list[RiskyCost]:
+                   *, keep: int = 8, min_stint: int = 10, max_stops: int = 2,
+                   allow=None) -> list[RiskyCost]:
     """
     The best plans over races that can be neutralised, one per shape.
 
@@ -189,12 +190,21 @@ def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: f
     Mirror images — soft then medium against medium then soft — cost the same
     here, so the ranking keeps one of each and the caller is not handed the same
     answer twice.
+
+    `allow` filters the plans before any of that, and is how a car's own tyres
+    reach the shortlist: ranking first and filtering after would leave a car
+    that cannot run any of the best plans with nothing at all, which is what
+    happened to Verstappen at Monaco 2025 — one new medium, one new hard, four
+    used softs, and every two-stop plan in the shortlist calling for two hards.
+    The right answer there is the best plan he could run, not silence.
     """
     from racecraft.model import strategy as strategy_model
 
     offsets = compound_offset_s or {}
     plans = strategy_model.enumerate_plans(total_laps, tuple(degradation), max_stops=max_stops,
                                            min_stint=min_stint, step=RISK_STEP)
+    if allow is not None:
+        plans = [plan for plan in plans if allow(plan)]
     if not plans:
         return []
 

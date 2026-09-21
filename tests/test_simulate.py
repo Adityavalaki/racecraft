@@ -72,3 +72,30 @@ def test_risk_can_reorder_plans_that_look_equal_when_green():
 def test_circuit_rate_converts_periods_per_race_into_a_per_lap_chance():
     risk = Neutralisation.for_circuit(periods_per_race=1.5, total_laps=50)
     assert risk.per_lap == pytest.approx(0.03)
+
+
+def test_the_ranking_can_be_asked_for_plans_of_a_certain_shape_only():
+    """
+    How a car's own tyres reach the shortlist. Filtering after the ranking would
+    leave a car that cannot run any of the best plans with nothing at all.
+    """
+    from racecraft.model import simulate as simulate_model
+
+    common = dict(total_laps=50, degradation={"SOFT": 0.10, "MEDIUM": 0.06, "HARD": 0.04},
+                  pit_loss_s=22.0, neutralisation=Neutralisation(per_lap=0.02), keep=5)
+    everything = simulate_model.rank_with_risk(**common)
+    one_stop_only = simulate_model.rank_with_risk(**common, allow=lambda plan: plan.stops == 1)
+
+    assert everything, "nothing to compare"
+    assert one_stop_only, "the filter left nothing at all"
+    assert all(cost.plan.stops == 1 for cost in one_stop_only)
+    # And the filtered ranking is still a ranking: cheapest first.
+    assert [c.expected_s for c in one_stop_only] == sorted(c.expected_s for c in one_stop_only)
+
+
+def test_a_filter_that_allows_nothing_returns_nothing_rather_than_failing():
+    from racecraft.model import simulate as simulate_model
+
+    assert simulate_model.rank_with_risk(
+        50, {"SOFT": 0.1, "MEDIUM": 0.06, "HARD": 0.04}, 22.0, Neutralisation(),
+        allow=lambda plan: False) == []
