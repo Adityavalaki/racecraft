@@ -276,6 +276,11 @@ def cmd_race(args) -> int:
     print(f"  {inputs.total_laps} laps | pit lane {inputs.pit_loss_s:.1f}s ({inputs.pit_stops} stops) | "
           f"{inputs.passes_per_race:.0f} passes per race | "
           f"{inputs.periods_per_race:.2f} safety cars per race")
+    profile = inputs.neutralisation_profile
+    if profile:
+        opening = profile[0] / sum(profile)
+        print(f"  safety cars arrive unevenly: {opening:.0%} of them in the opening tenth of a "
+              f"race, where a stop is not yet worth taking")
     print(f"  tyres from {len(inputs.fitted_on)} {inputs.season} races, "
           + ", ".join(f"{c.lower()} {v:.4f}" for c, v in inputs.degradation.items())
           + f" s/lap (x{inputs.scale})")
