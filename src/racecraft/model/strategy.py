@@ -98,16 +98,17 @@ def cost(plan: Plan, degradation: dict[str, float], pit_loss_s: float,
 
 
 def enumerate_plans(total_laps: int, compounds: tuple[str, ...], max_stops: int = 3,
-                    min_stint: int = 8, step: int = 1) -> list[Plan]:
+                    min_stint: int = 8, step: int = 1, min_stops: int = 0) -> list[Plan]:
     """
     Every plan worth considering: each compound sequence, each split of the
     race into stints of at least `min_stint` laps.
 
     The rules require two different dry compounds in a dry race, so sequences
-    using only one are dropped.
+    using only one are dropped. `min_stops` is for the race that requires more:
+    Monaco has demanded three sets, and so two stops, since 2025.
     """
     plans: list[Plan] = []
-    for stops in range(0, max_stops + 1):
+    for stops in range(max(0, min_stops), max_stops + 1):
         for sequence in itertools.product(compounds, repeat=stops + 1):
             if len(set(sequence)) < 2:
                 continue                      # a dry race must use two compounds
@@ -129,11 +130,13 @@ def _splits(total: int, parts: int, minimum: int, step: int) -> list[tuple[int, 
 def best_plans(total_laps: int, degradation: dict[str, float], pit_loss_s: float,
                curvature: dict[str, float] | None = None, max_stops: int = 3,
                min_stint: int = 8, step: int = 1, top: int = 5,
-               compound_offset_s: dict[str, float] | None = None) -> list[PlanCost]:
+               compound_offset_s: dict[str, float] | None = None,
+               min_stops: int = 0) -> list[PlanCost]:
     """The cheapest plans, best first."""
     compounds = tuple(degradation)
     costs = [cost(plan, degradation, pit_loss_s, curvature, compound_offset_s)
-             for plan in enumerate_plans(total_laps, compounds, max_stops, min_stint, step)]
+             for plan in enumerate_plans(total_laps, compounds, max_stops, min_stint, step,
+                                         min_stops=min_stops)]
     return sorted(costs, key=lambda c: c.seconds_lost)[:top]
 
 

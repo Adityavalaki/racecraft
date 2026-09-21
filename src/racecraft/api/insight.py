@@ -38,6 +38,7 @@ import pandas as pd
 from racecraft import config
 from racecraft.model import circuit as circuit_model
 from racecraft.model import compounds as compounds_model
+from racecraft.model import race_inputs as race_inputs_model
 from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
 from racecraft.api import tyre_sets_view
@@ -152,9 +153,11 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         )
 
     if measured and loss and total_laps:
-        out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"])
+        least = race_inputs_model.mandatory_stops(name, year or 0)
+        out["min_stops"] = least
+        out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"], least)
         out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
-                                                  loss["seconds"], risk)
+                                                  loss["seconds"], risk, least)
     else:
         out["plans"] = []
         out["plans_with_risk"] = []
@@ -250,9 +253,11 @@ def for_live(live, scale: float = DEFAULT_SCALE, live_status: dict | None = None
         )
 
     if measured and loss and total_laps:
-        out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"])
+        least = race_inputs_model.mandatory_stops(name, year or 0)
+        out["min_stops"] = least
+        out["plans"] = _plans(total_laps, measured, scale, offsets, loss["seconds"], least)
         out["plans_with_risk"] = _plans_with_risk(total_laps, measured, scale, offsets,
-                                                  loss["seconds"], risk)
+                                                  loss["seconds"], risk, least)
     else:
         out["plans"] = []
         out["plans_with_risk"] = []
@@ -375,10 +380,10 @@ def _observed_stints(laps: pd.DataFrame) -> list[dict]:
 # ---------------------------------------------------------------- plans
 
 def _plans(total_laps: int, measured: dict[str, float], scale: float,
-           offsets: dict[str, float], pit_loss_s: float) -> list[dict]:
+           offsets: dict[str, float], pit_loss_s: float, min_stops: int = 0) -> list[dict]:
     degradation = {c: v * scale for c, v in measured.items()}
     plans = strategy_model.enumerate_plans(total_laps, tuple(degradation), max_stops=2,
-                                           min_stint=MIN_STINT_LAPS, step=1)
+                                           min_stint=MIN_STINT_LAPS, step=1, min_stops=min_stops)
     costed = [strategy_model.cost(plan, degradation, pit_loss_s, compound_offset_s=offsets)
               for plan in plans]
     costed.sort(key=lambda c: c.seconds_lost)
@@ -413,7 +418,7 @@ def _plans(total_laps: int, measured: dict[str, float], scale: float,
 
 def _plans_with_risk(total_laps: int, measured: dict[str, float], scale: float,
                      offsets: dict[str, float], pit_loss_s: float,
-                     risk: dict | None) -> list[dict]:
+                     risk: dict | None, min_stops: int = 0) -> list[dict]:
     """The plans over races that can be neutralised; see `simulate.rank_with_risk`."""
     from racecraft.model import simulate as simulate_model
 
@@ -421,7 +426,8 @@ def _plans_with_risk(total_laps: int, measured: dict[str, float], scale: float,
     periods = risk["periods_per_race"] if risk else simulate_model.NEUTRALISATION_PER_LAP * total_laps
     neutralisation = simulate_model.Neutralisation.for_circuit(periods, total_laps)
     ranked = simulate_model.rank_with_risk(total_laps, degradation, pit_loss_s, neutralisation,
-                                           offsets, keep=TOP_PLANS, min_stint=MIN_STINT_LAPS)
+                                           offsets, keep=TOP_PLANS, min_stint=MIN_STINT_LAPS,
+                                           min_stops=min_stops)
     out = []
     for costed in ranked:
         record = costed.as_dict()

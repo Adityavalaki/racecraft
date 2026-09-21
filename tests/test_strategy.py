@@ -61,3 +61,16 @@ def test_the_models_limits_are_stated_alongside_it():
     # A number this simple should not travel without them.
     assert any("safety car" in omission for omission in strategy.KNOWN_OMISSIONS)
     assert any("traffic" in omission for omission in strategy.KNOWN_OMISSIONS)
+
+
+def test_a_race_can_demand_more_than_one_stop():
+    """
+    Monaco has required three sets of tyres, and so two stops, since 2025. A
+    sweep that does not know it offers a one-stop the rules forbid.
+    """
+    free = strategy.enumerate_plans(78, ("SOFT", "MEDIUM", "HARD"), max_stops=2, min_stint=10, step=6)
+    monaco = strategy.enumerate_plans(78, ("SOFT", "MEDIUM", "HARD"), max_stops=2, min_stint=10,
+                                      step=6, min_stops=2)
+    assert any(plan.stops == 1 for plan in free)
+    assert monaco and all(plan.stops == 2 for plan in monaco)
+    assert set(monaco) <= set(free)

@@ -613,17 +613,33 @@ racecraft-analyse race Baku --season 2025 --grid 8 --new-tyres
 ```
 
 Baku 2025, P8. That was Hadjar, who reached Q3 and started the race without a
-single new set — three used softs, two used mediums, one hard with a lap on it:
+single new set — three used softs, two used mediums, one hard with a lap on it.
+The same three plans, raced on new sets and on his, 1500 runs each:
 
-| | Best plan | Finish |
+| Plan | On new sets | On his tyres |
 |---|---|---|
-| On new sets | `hard 31 > medium 20` | P8.41 |
-| On his tyres | `medium 25 > hard 26` | P8.75 |
+| `medium 22 > hard 29` | **P8.59** ±0.08 | **P9.03** ±0.08 |
+| `medium 31 > hard 20` | P8.68 ±0.08 | P9.35 ±0.09 |
+| `medium 25 > hard 26` | P8.79 ±0.08 | P9.06 ±0.08 |
 
-The ranking inverts. On new tyres the long first stint on the hard is best; on
-his, the plan that runs the four-lap medium *short* is, and the new-tyre pick
-drops to third. A model that assumed new sets would have handed him the wrong
-plan and been confident about it.
+His tyres cost him about four tenths of a place, and they cost the long first
+stint most — `medium 31 > hard 20` is a tenth behind on new sets and three
+tenths behind on his, because the set it runs long is the one with laps on it.
+The plan at the top does not change here.
+
+**The first version of this table said it did**, and that was the run count
+talking. At 300 runs the order of the top three moved between tyre settings, and
+the difference looked like a finding; at 1500 it is a tenth of a place and the
+same plan wins both. The rule the rest of this file follows applies to its own
+results: a ranking has an error bar, and a change smaller than it is noise.
+
+**Some races demand more than one stop.** Monaco has required three sets of
+tyres, and so two stops, since 2025 — and the field's median stop count there
+goes from one in 2023 and 2024 to two in 2025, which is the rule showing up in
+the data. The plan sweep did not know it, and the tyre join is what exposed
+that: given a car short of hard sets, the shortlist fell back to a one-stop the
+regulations forbid. `race_inputs.mandatory_stops` now holds the rule, and the
+sweep starts at two stops there.
 
 **A car can be short of the whole shortlist.** Verstappen started Monaco 2025
 with one new medium, one new hard and four used softs, and every plan in the
@@ -652,10 +668,26 @@ field, differing only in the tyres:
 
 | | |
 |---|---|
-| Car started on at least one used set | TYRES_WORN |
-| Best plan changed with the real tyres | **TYRES_CHANGED** |
-| Plans ruled out for want of a set | TYRES_DROPPED |
-| Cost of following the new-tyre answer | TYRES_COST |
+| Car started on at least one used set | 35% |
+| Best plan changed with the real tyres | 41% (27 of 66) |
+| ...by more than the error bars on both | **30%** (20 of 66) |
+| Plans ruled out for want of a set | 146 |
+| The new-tyre answer was a plan the car **could not run** | 18 of 66 |
+| Cost of following it where it could be run | +0.06 places, +1.34 at worst |
+
+The first two lines are one measurement with and without a noise test: a top
+plan that changes by less than the error bars on both finishes has not changed,
+it has wobbled. Counting the wobble gives 41%; requiring the new-tyre answer to
+actually cost something gives 30%.
+
+The last two lines are the point, and they say different things. Most of the
+time the ideal-tyre answer is runnable and costs a rounding error, so this is
+not a model that changes every call. But in 18 of 66 cases it was a plan the car
+had no sets for — advice that cannot be taken is worse than advice that is
+slightly wrong, and the old model gave it without noticing.
+
+(Monaco's two-stop rule reached the model after this run, so its three
+car-races were studied without it; everything else stands.)
 
 *Predicting a finishing order* — no. `scripts/validate_race.py prior` simulates
 each race twice, once with every stint on a new set and once at the age each set
@@ -1039,7 +1071,7 @@ Worth reading the bias column beside the error. At 1.5 the model under-stops by
 gets *worse*. One constant can correct the average or the individual races, not
 both, which is the clearest sign available that what is missing is not a number.
 
-### What all three have in common
+### What the dead ends have in common
 
 The model says one stop where Barcelona, Silverstone, Hungary and Austria ran
 two, and two where Monaco ran four. It under-stops, and it under-stops because
@@ -1047,10 +1079,12 @@ teams buy **track position** with a stop, not lap time — a plan two seconds
 quicker that rejoins behind a car it cannot pass has lost, and a model counting
 seconds in a vacuum cannot see that.
 
-No constant fixes it. Scoring plans in places rather than seconds does, which
-means joining the strategy model to `model/race.py`, where a field to rejoin
-into already exists. That is the remaining modelling work, and three measured
-dead ends are what establish it as the only one left worth doing.
+No constant fixes it, and the dead ends above are all attempts at a constant:
+a circuit multiplier, a compound, a temperature, a scale. Scoring plans in
+places rather than seconds does fix it, which meant joining the strategy model
+to `model/race.py`, where a field to rejoin into already existed. That join is
+built; what the measurements establish is that it was the only work left worth
+doing.
 
 ### The rejoin penalty is not measurable from where a car leaves the pits
 
@@ -1123,18 +1157,18 @@ of stopping on the lap they stopped — the simulation rewarding a car for copyi
 a field that does not exist. Spreading the field's stop laps and redrawing them
 fifteen times per plan removes it, and the spread falls from 4.03 places to 1.78.
 
-It has since been corrected three more ways: inputs held out to races before
-the one simulated, the wake penalty measured rather than assumed, and the
-shortlist drawn from the safety-car ranking. At Baku 2025 from P8, four plans
-tie at the top; the cheapest of them costs 0.1 s more than the seconds-cheapest
-plan and is worth 0.40 places.
+It has since been corrected four more ways: inputs held out to races before the
+one simulated, the wake penalty measured rather than assumed, the shortlist
+drawn from the safety-car ranking, and the car racing the tyres it actually had
+rather than new ones — see *The tyres the car has* above for what that is worth
+and what it is not.
 
-Where the models differ most is **how bad a bad plan is**. Stopping on lap 16
-costs 2.7 s more in seconds and **1.91 places** more here — less than the 2.46
-the double-counted wake penalty claimed, and still far more than 2.7 s
-suggests. The value of modelling track
-position turns out to be less about choosing between good plans than about
-knowing the cost of a wrong one, which the seconds model understates badly.
+Where the models differ most is **how bad a bad plan is**. At Baku 2025 from P8
+the worst plan on the shortlist costs about a second more in seconds and a place
+and a half more here. The value of modelling track position turns out to be less
+about choosing between good plans — which usually tie, and are reported as tied
+— than about knowing the cost of a wrong one, which the seconds model
+understates badly.
 
 Untested against real races. It is a model of racing against a field, not
 against a strategist: rivals run a fixed plan and never cover a stop.

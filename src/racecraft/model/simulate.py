@@ -167,7 +167,7 @@ RISK_RUNS = 1500
 def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: float,
                    neutralisation: Neutralisation, compound_offset_s: dict[str, float] | None = None,
                    *, keep: int = 8, min_stint: int = 10, max_stops: int = 2,
-                   allow=None) -> list[RiskyCost]:
+                   min_stops: int = 0, allow=None) -> list[RiskyCost]:
     """
     The best plans over races that can be neutralised, one per shape.
 
@@ -202,7 +202,8 @@ def rank_with_risk(total_laps: int, degradation: dict[str, float], pit_loss_s: f
 
     offsets = compound_offset_s or {}
     plans = strategy_model.enumerate_plans(total_laps, tuple(degradation), max_stops=max_stops,
-                                           min_stint=min_stint, step=RISK_STEP)
+                                           min_stint=min_stint, step=RISK_STEP,
+                                           min_stops=min_stops)
     if allow is not None:
         plans = [plan for plan in plans if allow(plan)]
     if not plans:

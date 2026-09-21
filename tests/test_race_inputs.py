@@ -333,3 +333,20 @@ def test_a_car_that_cannot_run_the_best_plans_is_given_the_best_it_can(con):
     assert limited.dropped
     plain_plans = {str(c.plan) for c in plain.shortlist}
     assert {entry["plan"] for entry in limited.dropped} <= plain_plans
+
+
+def test_monacos_two_stop_rule_is_known_from_the_season_it_came_in():
+    assert race_inputs.mandatory_stops("Monaco", 2024) == 0
+    assert race_inputs.mandatory_stops("Monaco", 2025) == 2
+    assert race_inputs.mandatory_stops("Monaco", 2026) == 2
+    assert race_inputs.mandatory_stops("Baku", 2025) == 0
+
+
+def test_a_study_of_monaco_never_offers_a_one_stop(con, monkeypatch):
+    """The rule reaches the shortlist, not just the enumeration."""
+    monkeypatch.setitem(race_inputs.MANDATORY_STOPS, ("Baku", 2024), 2)
+    inputs = race_inputs.build(con, "Baku", 2024)
+    assert inputs.min_stops == 2
+    result = places.study(inputs, grid=4, plans=4, runs=40, field_draws=4)
+    assert result.ranking
+    assert all(entry.plan.stops == 2 for entry in result.ranking)

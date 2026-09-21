@@ -39,7 +39,14 @@ from racecraft.model.simulate import Neutralisation
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SCALE = 1.5          # calibrated against 76 dry races; see scripts/calibrate_scale.py
+DEFAULT_SCALE = 1.5
+
+# Races that demand more than one stop, from the season the rule came in.
+# Monaco has required three sets of tyres — so two stops — since 2025
+# (Sporting Regulations 30.5 m), and the field's median stop count there goes
+# from one in 2023 and 2024 to two in 2025, which is the rule showing up in the
+# data rather than a preference.
+MANDATORY_STOPS = {("Monaco", 2025): 2}          # calibrated against 76 dry races; see scripts/calibrate_scale.py
 DEFAULT_CARS = 20
 LADDER_RACES = 5             # the most recent races a pace ladder is averaged over
 MIN_LAPS_TO_FIT = 200
@@ -93,6 +100,7 @@ class RaceInputs:
     pit_stops: int
     periods_per_race: float
     neutralisation: Neutralisation
+    min_stops: int                          # more than one stop, where the rules demand it
     passes_per_race: float
     passes_per_lap: float
     ladder: list[float]
@@ -121,6 +129,7 @@ class RaceInputs:
             "degradation_measured": {c: round(v, 4) for c, v in self.degradation_measured.items()},
             "scale": self.scale,
             "pit_loss_s": round(self.pit_loss_s, 2),
+            "min_stops": self.min_stops,
             "pit_stops": self.pit_stops,
             "periods_per_race": round(self.periods_per_race, 2),
             "passes_per_race": round(self.passes_per_race, 1),
@@ -262,6 +271,7 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
         degradation_measured=measured,
         scale=scale,
         compound_offset_s=offsets,
+        min_stops=mandatory_stops(name, season),
         pit_loss_s=loss.seconds,
         pit_stops=loss.stops,
         periods_per_race=periods,
@@ -277,6 +287,18 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
 
 
 # ------------------------------------------------------------- the garage
+
+def mandatory_stops(circuit: str, season: int) -> int:
+    """
+    The fewest stops the rules allow at this race, which is one almost everywhere.
+
+    Monaco is the exception: three sets of tyres, and so two stops, since 2025.
+    """
+    for (where, from_season), stops in MANDATORY_STOPS.items():
+        if circuit == where and season >= from_season:
+            return stops
+    return 0
+
 
 def _safe(value: str) -> str:
     if not value.replace("_", "").isalnum():

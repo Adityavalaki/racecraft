@@ -368,7 +368,7 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
     # shortlist is drawn from what it can run.
     shortlist = simulate_model.rank_with_risk(
         inputs.total_laps, inputs.degradation, inputs.pit_loss_s, inputs.neutralisation,
-        inputs.compound_offset_s, keep=plans)
+        inputs.compound_offset_s, keep=plans, min_stops=inputs.min_stops)
     if not shortlist:
         return RaceStudy(grid=grid, shortlist=[], ranking=[], field_plan=Plan(()),
                          stock=stock, dropped=[])
@@ -385,7 +385,7 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
             # ones that are not, rather than racing whatever survived.
             shortlist = simulate_model.rank_with_risk(
                 inputs.total_laps, inputs.degradation, inputs.pit_loss_s, inputs.neutralisation,
-                inputs.compound_offset_s, keep=plans,
+                inputs.compound_offset_s, keep=plans, min_stops=inputs.min_stops,
                 allow=lambda plan: runnable(plan, stock, inputs.degradation)[0])
     if not shortlist:
         return RaceStudy(grid=grid, shortlist=[], ranking=[], field_plan=field_plan,
