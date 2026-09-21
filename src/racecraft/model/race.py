@@ -7,7 +7,9 @@ but rejoins behind a car it cannot pass has lost, and a lap-time model cannot
 see that because it never looks at anyone else.
 
 So this puts the whole field on track together and runs the race lap by lap.
-Each car has its own pace, tyres that wear, and a plan. Cars that catch
+Each car has its own pace, a plan, and tyres that wear from wherever they
+already are — a stint that starts on a set with four laps on it from qualifying
+begins four laps worn, which is what `start_ages` carries. Cars that catch
 another lose time in its wake and only get past when the circuit allows, which
 is measured per circuit and is why Monaco behaves differently from Monza.
 Safety cars arrive on the circuit's own schedule, bunch the field up and hand
