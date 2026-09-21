@@ -193,6 +193,30 @@ def cmd_strategy(args) -> int:
     return 0
 
 
+def _weekend_round(con, circuit: str, season: int) -> int | None:
+    """
+    The round a circuit's weekend is, from any session of it in the lake.
+
+    A race still to come has no race session, but its practice and qualifying
+    are there once ingested, and they are what say which sets each car has left.
+    """
+    name = circuit_model.canonical_circuit(circuit)
+    rows = con.sql(f"select round, location from sessions where year = {int(season)}").df()
+    if rows.empty:
+        return None
+    rows = rows[circuit_model.canonical_circuit(rows["location"]) == name]
+    return None if rows.empty else int(rows["round"].max())
+
+
+def _driver_number_in(con, season: int, round_number: int, abbreviation: str) -> int | None:
+    """The number behind a three-letter code, anywhere in a weekend."""
+    rows = con.sql(f"""select driver_number from results
+                       where year = {int(season)} and round = {int(round_number)}
+                         and upper(abbreviation) = '{abbreviation.upper()}'
+                       limit 1""").df()
+    return None if rows.empty else int(rows.iloc[0]["driver_number"])
+
+
 def _driver_number(con, session_key: str, abbreviation: str) -> int | None:
     """The number behind a three-letter code, in the race being studied."""
     rows = con.sql(f"""select driver_number from results
@@ -258,18 +282,30 @@ def cmd_race(args) -> int:
     print()
 
     stock, grid = None, args.grid
-    if inputs.target_session and (args.driver or not args.new_tyres):
-        number = _driver_number(con, inputs.target_session, args.driver) if args.driver else None
-        if args.driver and number is None:
-            print(f"no driver {args.driver!r} in this race")
-            return 1
-        stock = race_inputs.tyre_stock(con, inputs.target_session,
-                                       grid=None if number else grid, driver_number=number)
+    # The race itself when it is in the lake; otherwise the weekend it belongs
+    # to, so a race still to come can be advised on the sets practice and
+    # qualifying have already used up.
+    weekend = None if inputs.target_session else _weekend_round(con, inputs.circuit, args.season)
+    if (inputs.target_session or weekend) and (args.driver or not args.new_tyres):
+        where = {"session_key": inputs.target_session} if inputs.target_session else \
+            {"year": args.season, "round_number": weekend}
+        number = None
+        if args.driver:
+            number = _driver_number(con, inputs.target_session, args.driver) if inputs.target_session \
+                else _driver_number_in(con, args.season, weekend, args.driver)
+            if number is None:
+                print(f"no driver {args.driver!r} in this race")
+                return 1
+        stock = race_inputs.tyre_stock(con, grid=None if number else grid,
+                                       driver_number=number, **where)
         if stock and stock.grid:
             grid = stock.grid            # a named driver is advised from where they started
         if args.new_tyres:
             stock = None
-    field = race_inputs.field_stock(con, inputs.target_session) if stock else None
+    field = None
+    if stock:
+        field = (race_inputs.field_stock(con, inputs.target_session) if inputs.target_session
+                 else race_inputs.field_stock(con, year=args.season, round_number=weekend))
     result = places_model.study(inputs, grid, plans=args.plans, runs=args.runs,
                                 stock=stock.left if stock else None, field_stock=field)
     if not result.ranking:
