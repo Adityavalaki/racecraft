@@ -197,7 +197,8 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
                compound_offset_s: dict[str, float] | None = None,
                runs: int = DEFAULT_RUNS, cars: int = DEFAULT_CARS,
                field_draws: int = DEFAULT_FIELD_DRAWS, seed: int = 11,
-               following=None, stock: dict | None = None) -> list[PlaceRanking]:
+               following=None, stock: dict | None = None,
+               field_stock: dict[int, dict] | None = None) -> list[PlaceRanking]:
     """
     Every candidate plan, run as a whole race, ranked by where it finishes.
 
@@ -209,9 +210,10 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
     `stock` is what the car being advised has in its garage: `{compound: {"new":
     n, "used": [laps, ...]}}`, as `tyre_sets` reconstructs it. With one, its
     stints start on the sets it would really use and carry the laps those sets
-    already have; without, every stint starts on a new tyre. The rest of the
-    field always runs new sets, because what they have is not knowable from
-    their own plans.
+    already have; without, every stint starts on a new tyre. `field_stock` does
+    the same for the rivals, by grid slot: one whose drawn plan fits the sets it
+    really had starts on them, and one whose plan does not is left on new tyres
+    rather than handed a plan it could not have run.
 
     The same seed is used for every candidate, so two plans are compared over
     the same races and the same fields rather than over different luck.
@@ -237,7 +239,9 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
                 race_model.Car(driver_number=index + 1, abbreviation=f"P{index + 1}",
                                pace_s=quickest_lap_s + ladder[index], grid=index + 1,
                                plan=plan if index + 1 == grid else rivals[index],
-                               start_ages=ages if index + 1 == grid else ())
+                               start_ages=(ages if index + 1 == grid else
+                                           _rival_ages(rivals[index], index + 1, field_stock,
+                                                       degradation)))
                 for index in range(cars)
             ]
             result = race_model.simulate(
@@ -270,6 +274,23 @@ def rank_plans(candidates: list[Plan], field_plan: Plan, *, grid: int, ladder: l
         spread = float(np.hypot(entry.std_error, best.std_error))
         entry.within_noise = entry.behind_best <= NOISE_SIGMAS * spread
     return ranked
+
+
+def _rival_ages(plan: Plan, slot: int, field_stock: dict[int, dict] | None,
+                degradation: dict[str, float]) -> tuple[int, ...]:
+    """
+    A rival's starting set ages, where its tyres are known and fit its plan.
+
+    Their plans are drawn, not read, so a drawn plan can call for sets the real
+    car did not have. Rather than invent a different plan for it, that rival
+    runs new tyres — the one place this model is kinder to the field than to the
+    car it is advising.
+    """
+    held = (field_stock or {}).get(slot)
+    if not held:
+        return ()
+    ok, _ = runnable(plan, held, degradation)
+    return start_ages(plan, held, degradation) if ok else ()
 
 
 def _stop_laps(plan: Plan) -> list[int]:
@@ -320,7 +341,8 @@ class RaceStudy:
 
 
 def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
-          field_draws: int = DEFAULT_FIELD_DRAWS, stock: dict | None = None) -> RaceStudy:
+          field_draws: int = DEFAULT_FIELD_DRAWS, stock: dict | None = None,
+          field_stock: dict[int, dict] | None = None) -> RaceStudy:
     """
     Shortlist plans for one car, then race each against the field.
 
@@ -366,7 +388,8 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
         degradation=inputs.degradation, pit_loss_s=inputs.pit_loss_s,
         neutralisation=inputs.neutralisation, passes_per_lap=inputs.passes_per_lap,
         compound_offset_s=inputs.compound_offset_s, runs=runs, cars=inputs.cars,
-        field_draws=field_draws, following=inputs.following_table, stock=stock)
+        field_draws=field_draws, following=inputs.following_table, stock=stock,
+        field_stock=field_stock)
     return RaceStudy(grid=grid, shortlist=shortlist, ranking=ranking, field_plan=field_plan,
                      stock=stock, dropped=dropped)
 
@@ -376,8 +399,8 @@ def study(inputs, grid: int, *, plans: int = 10, runs: int = DEFAULT_RUNS,
 # left, and the new limit this one brings, belong here instead.
 OMISSIONS = (
     "rivals: the rest of the field runs a fixed plan and never covers a stop",
-    "the field's tyres: rivals run new sets, because what they have left cannot "
-    "be read from their plans",
+    "rivals' tyres: theirs are raced where their drawn plan fits what they had, "
+    "and a rival whose plan does not fit runs new sets",
     "the cliff: degradation past the point teams actually pit is unmeasured",
     "warm-up: an out-lap on cold tyres is slower than the model's fresh pace",
     "car pace on the day: the field's order comes from earlier races, and that is "

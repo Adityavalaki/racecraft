@@ -114,7 +114,9 @@ trace, and the two that show the models rather than the feed.
   Barcelona (2.41 against a modelled 1), which is what a model with no traffic
   and no track position should be expected to get wrong.
 
-  *In places* is the third, and it has both. It races each shortlisted plan
+  *In places* is the third, and it has both, and it races the tyres the car
+  actually has — *Its own tyres* against *New sets* is the difference between
+  the plan a car can run and the plan it would run in an ideal world. It races each shortlisted plan
   against the whole field from a chosen grid slot and ranks by finishing
   position — the race simulator below, on inputs taken only from races that
   started before this one. Plans whose finishes cannot be told apart are marked
@@ -212,7 +214,7 @@ crossed the line*; comparing current lap counts would label the whole field
 | `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
 | `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
 | `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
-| `GET /api/sessions/{key}/places?grid=` | plans raced against the field, ranked in places |
+| `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
 | `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
 A session is read into memory once (about 1.6 s), after which a state costs
@@ -573,6 +575,48 @@ what changed in 2026 is how quickly it fades — gone by 1.5 s, where in 2024 it
 was still there at 2.5 s. The simulator uses the season's own table, fitted
 only on races before the one being simulated.
 
+### The tyres the car has
+
+A plan is a sequence of compounds, and a car cannot run one it has no sets for.
+The simulator used to give every stint a new tyre, so it would happily
+recommend two new hards to a car that had run one of them in practice, and cost
+a stint on a four-lap medium as if the rubber were fresh.
+
+It now races what the car has. `race_inputs.tyre_stock` reads the sets the car
+on a grid slot held when the race started — from the weekend's earlier sessions,
+so the study stays held out — and the study drops the plans it cannot run and
+starts each stint on the set it would really use, at the age that set carries.
+The assignment is the cheapest one: new sets first, then the least worn, with
+the oldest set on the shortest stint.
+
+```sh
+racecraft-analyse race Baku --season 2025 --driver HAD    # on the tyres he had
+racecraft-analyse race Baku --season 2025 --grid 8 --new-tyres
+```
+
+Baku 2025, P8. That was Hadjar, who reached Q3 and started the race without a
+single new set — three used softs, two used mediums, one hard with a lap on it:
+
+| | Best plan | Finish |
+|---|---|---|
+| On new sets | `hard 31 > medium 20` | P8.41 |
+| On his tyres | `medium 25 > hard 26` | P8.75 |
+
+The ranking inverts. On new tyres the long first stint on the hard is best; on
+his, the plan that runs the four-lap medium *short* is, and the new-tyre pick
+drops to third. A model that assumed new sets would have handed him the wrong
+plan and been confident about it.
+
+The rivals get their own tyres too, where the plan drawn for them fits what
+they had; one whose drawn plan it does not fit stays on new sets, because
+inventing a different plan for a rival would be modelling a strategist rather
+than a field. **It makes no measurable difference**: at Baku 2025 the answer
+moves 0.02 places against an error bar of 0.13. The reason is in the grid — only
+2 of the 20 cars started with no new set at all, and the set assignment gives
+the fresh rubber to the long stints anyway. It stays in because "every rival has
+new tyres" is an assumption that cannot be defended once the real sets are
+known, not because it changed the answer.
+
 ### What it is for, and what it is not for
 
 **It does not predict finishing order.** Validated over 30 races with every
@@ -688,6 +732,8 @@ ran one in practice. At Baku 2025 the model's cheapest plan on new tyres is 0.4 
 behind for Russell, whose mediums had all run in qualifying. The used-set cost
 is an upper bound: the feed counts out-laps and cool-down laps, so a set from
 qualifying is fresher than its count.
+
+The race simulator uses the same sets; see **The tyres the car has** below.
 
 ## Query
 
@@ -975,8 +1021,9 @@ knowing the cost of a wrong one, which the seconds model understates badly.
 Untested against real races. It is a model of racing against a field, not
 against a strategist: rivals run a fixed plan and never cover a stop.
 
-**4. Tyre sets — built.** Every car's sets through a weekend, right about 96.7%
-of the sets raced, and each car's plans ranked on the tyres it had. Live, it
+**4. Tyre sets — built, and joined to the simulator.** Every car's sets through a
+weekend, right about 96.7% of the sets raced; each car's plans ranked on the
+tyres it had; and the race simulator racing those sets rather than new ones. Live, it
 needs the weekend's earlier sessions in the lake, so ingest each one after it
 ends — timing only is enough, and quick:
 

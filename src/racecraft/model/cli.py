@@ -269,8 +269,9 @@ def cmd_race(args) -> int:
             grid = stock.grid            # a named driver is advised from where they started
         if args.new_tyres:
             stock = None
+    field = race_inputs.field_stock(con, inputs.target_session) if stock else None
     result = places_model.study(inputs, grid, plans=args.plans, runs=args.runs,
-                                stock=stock.left if stock else None)
+                                stock=stock.left if stock else None, field_stock=field)
     if not result.ranking:
         print("no plans to race")
         if result.dropped:

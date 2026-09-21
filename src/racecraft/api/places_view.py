@@ -109,11 +109,13 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -
     # The tyres that car had are known from the sessions before the race, so
     # using them costs nothing in honesty. A race not in the lake — live, or one
     # not yet run — has no sets to read, and the study says so.
-    stock = None
+    stock, field = None, None
     if tyres == "car" and race_key is not None:
         stock = race_inputs.tyre_stock(con, race_key, grid=grid)
+        field = race_inputs.field_stock(con, race_key)
 
-    result = places.study(inputs, grid, runs=runs, stock=stock.left if stock else None)
+    result = places.study(inputs, grid, runs=runs, stock=stock.left if stock else None,
+                          field_stock=field)
     if not result.ranking:
         if result.dropped:
             reasons = "; ".join(sorted({d["reason"] for d in result.dropped}))

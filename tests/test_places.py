@@ -205,3 +205,23 @@ def test_the_ranking_can_change_when_the_tyres_do():
                                 "HARD": {"new": 2, "used": []}})}
     long_stint, short_stint = str(_stop(30)), str(_stop(18))
     assert worn[long_stint] - worn[short_stint] > fresh[long_stint] - fresh[short_stint]
+
+
+def test_a_rival_runs_its_own_tyres_when_its_drawn_plan_fits_them():
+    plan = _stop(24)                              # medium then hard
+    held = {"SOFT": {"new": 0, "used": []}, "MEDIUM": {"new": 0, "used": [6]},
+            "HARD": {"new": 1, "used": []}}
+    assert places._rival_ages(plan, 5, {5: held}, DEGRADATION) == (6, 0)
+
+
+def test_a_rival_whose_drawn_plan_it_could_not_have_run_keeps_new_tyres():
+    """
+    Their plans are drawn rather than read, so a drawn plan can call for sets
+    the real car never had. Inventing a different plan for a rival would be
+    modelling a strategist; leaving it on new tyres is the honest fallback.
+    """
+    plan = _stop(24)
+    without_hards = {"SOFT": {"new": 2, "used": []}, "MEDIUM": {"new": 2, "used": []},
+                     "HARD": {"new": 0, "used": []}}
+    assert places._rival_ages(plan, 5, {5: without_hards}, DEGRADATION) == ()
+    assert places._rival_ages(plan, 9, {5: without_hards}, DEGRADATION) == ()   # unknown slot

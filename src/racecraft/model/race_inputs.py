@@ -308,6 +308,35 @@ class Stock:
         }
 
 
+def field_stock(con, session_key: str) -> dict[int, dict]:
+    """
+    What every car on the grid held at the start, by grid slot.
+
+    One pass over the weekend, rather than one per car: the reconstruction is
+    the expensive part and it is the same work for all twenty.
+    """
+    from racecraft.model import tyre_sets
+
+    rows = con.sql(f"""select year, round from sessions
+                       where session_key = '{_safe(session_key)}'""").df()
+    if rows.empty:
+        return {}
+    year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
+    entries = _classification(con, year, rnd)
+    if entries.empty:
+        return {}
+    weekend = tyre_sets.from_lake(con, year, rnd)
+    if "R" not in weekend.sessions:
+        return {}
+    out: dict[int, dict] = {}
+    for row in entries.itertuples(index=False):
+        slot, number = row.grid_position, int(row.driver_number)
+        if not pd.notna(slot) or not slot or number not in weekend.cars:
+            continue
+        out[int(slot)] = weekend.holding(number, "R").left()
+    return out
+
+
 def _classification(con, year: int, round_number: int) -> pd.DataFrame:
     """The race's classification, or nothing when the lake has no results at all."""
     import duckdb
