@@ -313,6 +313,20 @@ function Focus({
   const modelBest = insight.plans[0]?.plan;
   const modelOnCar = checks.plans.find((c) => c.plan === modelBest);
 
+  if (runnable.length === 0) {
+    return (
+      <div className="sets-focus">
+        <h3>
+          {car.driver} could not run any of these plans <small>on the sets held at the start</small>
+        </h3>
+        <p className="sets-caveat">
+          {reasons}. The <b>In places</b> view on the Strategy tab shortlists the plans this car
+          <em> can</em> run and races those instead; this list is the model's plans for any car.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="sets-focus">
       <h3>

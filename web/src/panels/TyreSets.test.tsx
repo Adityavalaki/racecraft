@@ -158,6 +158,33 @@ describe("TyreSets", () => {
     expect(caveat).toContain("1 can't be run (needs 2 soft sets, has 1)");
   });
 
+  it("points at the places view when a car can run none of the plans", async () => {
+    mock(answer([car()]));
+    const insight = {
+      tyre_sets: {
+        unavailable: null,
+        cars: {
+          "1": {
+            driver: "VER", left: {},
+            plans: [
+              { plan: "medium 22 > hard 28 > hard 28", feasible: false,
+                reason: "needs 2 hard sets, has 1", extra_s: 0, green_s: 70, total_s: null,
+                behind_best_s: null, stints: [] },
+            ],
+          },
+        },
+      },
+      plans: [{ plan: "medium 22 > hard 28 > hard 28" }],
+    } as unknown as Insight;
+    render(
+      <TyreSets sessionKey="2025_08_R" t={0} drivers={[]} selected={[1]} onSelect={() => undefined}
+                insight={insight} />,
+    );
+    await waitFor(() => expect(screen.getByText(/could not run any of these plans/)).toBeDefined());
+    expect(screen.getByText(/needs 2 hard sets, has 1/)).toBeDefined();
+    expect(screen.getByText(/In places/)).toBeDefined();
+  });
+
   it("does not check plans outside a race", async () => {
     mock(answer([car()], "FP2"));
     render(

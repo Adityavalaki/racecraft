@@ -619,6 +619,14 @@ his, the plan that runs the four-lap medium *short* is, and the new-tyre pick
 drops to third. A model that assumed new sets would have handed him the wrong
 plan and been confident about it.
 
+**A car can be short of the whole shortlist.** Verstappen started Monaco 2025
+with one new medium, one new hard and four used softs, and every plan in the
+shortlist — Monaco requires two stops — called for two hard stints. Filtering
+the ranking *after* it was built left him with nothing at all. The filter now
+runs before the sweep (`rank_with_risk(allow=...)`), so what comes back is the
+best plan he could actually have run, `soft 19 > medium 25 > hard 34` starting
+on a three-lap soft, with the out-of-reach plans still named.
+
 The rivals get their own tyres too, where the plan drawn for them fits what
 they had; one whose drawn plan it does not fit stays on new sets, because
 inventing a different plan for a rival would be modelling a strategist rather
@@ -628,6 +636,28 @@ moves 0.02 places against an error bar of 0.13. The reason is in the grid — on
 the fresh rubber to the long stints anyway. It stays in because "every rival has
 new tyres" is an assumption that cannot be defended once the real sets are
 known, not because it changed the answer.
+
+**Is it worth anything?** Two questions, two answers, and only one of them is
+yes.
+
+*Choosing a plan for one car* — `python scripts/validate_tyres.py 2025`, every
+race and three grid slots, each studied twice with the same luck and the same
+field, differing only in the tyres:
+
+| | |
+|---|---|
+| Car started on at least one used set | TYRES_WORN |
+| Best plan changed with the real tyres | **TYRES_CHANGED** |
+| Plans ruled out for want of a set | TYRES_DROPPED |
+| Cost of following the new-tyre answer | TYRES_COST |
+
+*Predicting a finishing order* — no. `scripts/validate_race.py prior` simulates
+each race twice, once with every stint on a new set and once at the age each set
+really carried, and the mean position error is **3.27 against 3.24**: the real
+tyres are very slightly worse, and beat new sets in 10 of 30 races. About seven
+cars a race start a stint on a used set, so the information is there; it just
+does not move a finishing order, which car pace dominates. The join earns its
+place in choosing a plan, not in predicting a race.
 
 ### What it is for, and what it is not for
 
