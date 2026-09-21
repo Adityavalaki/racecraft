@@ -14,13 +14,20 @@ function row(overrides: Partial<PlaceRow>): PlaceRow {
     plan: "medium 22 > hard 29", stops: 1, stop_laps: [22], mean_finish: 8.44, std_error: 0.16,
     median_finish: 8, best: 2, worst: 17, podium_share: 0.1, points_share: 0.86,
     gained: -0.44, behind_best: 0, within_noise: true, expected_s: 60.0, green_s: 61.0,
+    start_ages: [4, 0], on_used_sets: true,
     ...overrides,
   };
 }
 
 function answer(overrides: Partial<PlacesAnswer> = {}): PlacesAnswer {
   return {
-    session_key: "2025_17_R", grid: 8, runs: 300,
+    session_key: "2025_17_R", grid: 8, runs: 300, tyres: "car",
+    stock: {
+      driver: "HAD", driver_number: 6, grid: 8, sets: 6,
+      left: { SOFT: { new: 0, used: [2, 3, 5] }, MEDIUM: { new: 0, used: [4, 7] },
+              HARD: { new: 0, used: [1] } },
+      notes: [],
+    },
     inputs: {
       circuit: "Baku", season: 2025, event_name: "Azerbaijan Grand Prix", total_laps: 51,
       held_out: true, target_session: "2025_17_R", cutoff: "2025-09-21 11:00:00+00:00",
@@ -41,6 +48,9 @@ function answer(overrides: Partial<PlacesAnswer> = {}): PlacesAnswer {
       ],
       cheapest_in_seconds: "medium 25 > hard 26", best_in_places: "hard 31 > medium 20",
       field_plan: "medium 25 > hard 26", field_stop_window: [20, 31], field_draws: 15,
+      stock: { SOFT: { new: 0, used: [2, 3, 5] }, MEDIUM: { new: 0, used: [4, 7] },
+               HARD: { new: 0, used: [1] } },
+      dropped: [{ plan: "hard 25 > hard 26", reason: "needs 2 hard sets, has 1" }],
     },
     verdict: {
       cheapest_in_seconds: "medium 25 > hard 26", best_in_places: "hard 31 > medium 20", agree: false,
@@ -123,6 +133,42 @@ describe("PlacesBoard", () => {
     mock({ detail: "no earlier race at Madrid to measure its pit lane from" }, false);
     render(<PlacesBoard sessionKey="2026_14_R" />);
     await waitFor(() => expect(screen.getByText(/no earlier race at Madrid/)).toBeDefined());
+  });
+
+  it("says whose tyres it raced and what they ruled out", async () => {
+    mock(answer());
+    const { container } = render(<PlacesBoard sessionKey="2025_17_R" />);
+    await waitFor(() => expect(container.querySelector(".places-garage")).not.toBeNull());
+    const line = container.querySelector(".places-garage")!;
+    expect(line.textContent).toContain("HAD");
+    expect(line.textContent).toContain("6 sets");
+    expect(line.textContent).toContain("hard: 1 laps");
+    // A plan the car has no sets for is named, not silently missing.
+    expect(line.textContent).toContain("hard 25 > hard 26 (needs 2 hard sets, has 1)");
+  });
+
+  it("shows the laps on the set each stint starts on", async () => {
+    mock(answer());
+    const { container } = render(<PlacesBoard sessionKey="2025_17_R" />);
+    await waitFor(() => expect(container.querySelectorAll(".plan-row-places").length).toBe(4));
+    expect(container.querySelector(".plan-sets")!.textContent).toBe("4 · new");
+  });
+
+  it("asks again for new sets, which is the ideal case rather than the real one", async () => {
+    const fetchMock = mock(answer());
+    render(<PlacesBoard sessionKey="2025_17_R" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("tyres=car");
+
+    fireEvent.click(screen.getByRole("radio", { name: /new sets/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("tyres=new");
+  });
+
+  it("says when it is racing new sets because the car's own are not known", async () => {
+    mock(answer({ stock: null, tyres: "car" }));
+    render(<PlacesBoard sessionKey="live" />);
+    await waitFor(() => expect(screen.getByText(/not in the lake, so they cannot be raced/)).toBeDefined());
   });
 
   it("lists what this view still cannot see", async () => {

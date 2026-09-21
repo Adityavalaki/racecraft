@@ -94,3 +94,47 @@ def test_passes_per_race_becomes_a_per_lap_chance():
     vegas = race.pass_probability(48.3, 50)
     assert monaco < vegas
     assert 0 < monaco < 1 and 0 < vegas < 1
+
+
+# ------------------------------------------------------------- used sets
+
+def test_a_car_on_a_worn_set_loses_the_laps_that_set_already_did():
+    """
+    Two identical cars, identical plans, one starting its first stint on a set
+    with twenty laps on it. Wear is counted from where the set already is, so it
+    starts the race at the pace the other car will only reach twenty laps in.
+    """
+    cars = field(size=6)
+    cars[0] = race.Car(1, "D1", 90.0, 1, PLAN, start_ages=(20, 0))
+    result = run(cars, runs=80)
+    assert result.positions[1].mean() > result.positions[2].mean()
+
+
+def test_a_fresh_set_is_the_default_and_matches_zero_ages():
+    cars = field(size=6)
+    spelled_out = [race.Car(c.driver_number, c.abbreviation, c.pace_s, c.grid, c.plan,
+                            start_ages=(0, 0)) for c in cars]
+    assert (run(cars).positions[1] == run(spelled_out).positions[1]).all()
+
+
+def test_the_age_a_stint_starts_on_is_read_per_stint():
+    car = race.Car(1, "D1", 90.0, 1, PLAN, start_ages=(0, 9))
+    assert car.age_at(0) == 0 and car.age_at(1) == 9
+    assert car.age_at(5) == 0            # beyond the plan: a new set
+
+
+def test_a_stop_is_due_when_the_plan_says_so_whatever_else_is_happening():
+    assert race.stops_now(lap=25, total_laps=LAPS, due_lap=25, neutral=False, stint_laps=25)
+    assert not race.stops_now(lap=24, total_laps=LAPS, due_lap=25, neutral=False, stint_laps=24)
+
+
+def test_a_safety_car_stop_is_taken_only_after_a_stint_worth_ending():
+    """
+    Counted in laps run in the stint, not in the age of the set. Counting the
+    set's age would send a car that started on a twenty-lap tyre into the pits
+    on the first safety car of lap two, which is the model inventing a stop.
+    """
+    assert race.stops_now(lap=12, total_laps=LAPS, due_lap=25, neutral=True, stint_laps=12)
+    assert not race.stops_now(lap=2, total_laps=LAPS, due_lap=25, neutral=True, stint_laps=2)
+    # Nor with the flag out near the end, where the stop cannot be paid back.
+    assert not race.stops_now(lap=LAPS - 2, total_laps=LAPS, due_lap=LAPS, neutral=True, stint_laps=30)

@@ -142,19 +142,23 @@ def session_insight(session_key: str,
 @app.get("/api/sessions/{session_key}/places")
 def session_places(session_key: str,
                    grid: int = Query(8, ge=1, le=22, description="grid slot of the car being advised"),
-                   runs: int = Query(300, ge=40, le=1000, description="simulated races per plan")) -> dict:
+                   runs: int = Query(300, ge=40, le=1000, description="simulated races per plan"),
+                   tyres: str = Query("car", pattern="^(car|new)$",
+                                      description="race the sets that car had, or new sets")) -> dict:
     """
     Plans for one car, ranked by where they finish against the whole field.
 
     Held out: for a race that has happened, everything is fitted on races that
-    started before it. Takes about half a minute the first time for a race and a
-    grid slot, then is served from memory.
+    started before it, including the tyres the car had left, which were known
+    before the lights went out. `tyres=new` gives it fresh sets instead, which
+    is the ideal case rather than the real one. Takes about half a minute the
+    first time for a race, grid slot and tyre choice, then is served from memory.
     """
     live = None
     if session_key == live_store.SESSION_KEY:
         live = _load(session_key)
     try:
-        return places_view.for_session(session_key, grid, runs, live=live)
+        return places_view.for_session(session_key, grid, runs, live=live, tyres=tyres)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
     except places_view.NotSimulable as error:

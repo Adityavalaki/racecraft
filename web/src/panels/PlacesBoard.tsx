@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PlacesAnswer, type PlaceRow } from "../api";
+import { api, type PlacesAnswer, type PlaceRow, type TyreStock } from "../api";
 import { Omissions, PlanName } from "./planParts";
 
 interface Props {
@@ -18,6 +18,12 @@ const DEFAULT_GRID = 8;
  * ranks by finishing position. It is the only view that can see a plan two
  * seconds quicker rejoining behind a car it cannot pass.
  *
+ * It races the tyres the car had. The sets a car still held at the start of a
+ * race are known from the weekend's earlier sessions, so the study stays held
+ * out, and a plan it had no sets for is dropped rather than recommended. *New
+ * sets* switches to the ideal case, which is what the difference between the
+ * two is for.
+ *
  * Three things on screen are there so that it cannot oversell itself. Plans
  * whose finishes cannot be told apart at these run counts are marked tied rather
  * than ranked. Every figure is held out: for a race that has happened, the model
@@ -30,6 +36,7 @@ const DEFAULT_GRID = 8;
  */
 export function PlacesBoard({ sessionKey }: Props) {
   const [grid, setGrid] = useState(DEFAULT_GRID);
+  const [tyres, setTyres] = useState<"car" | "new">("car");
   const [answer, setAnswer] = useState<PlacesAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +46,7 @@ export function PlacesBoard({ sessionKey }: Props) {
     setLoading(true);
     setError(null);
     api
-      .places(sessionKey, grid, controller.signal)
+      .places(sessionKey, grid, tyres, controller.signal)
       .then((next) => {
         setAnswer(next);
         setLoading(false);
@@ -50,7 +57,7 @@ export function PlacesBoard({ sessionKey }: Props) {
         setLoading(false);
       });
     return () => controller.abort();
-  }, [sessionKey, grid]);
+  }, [sessionKey, grid, tyres]);
 
   return (
     <div className="places">
@@ -67,6 +74,27 @@ export function PlacesBoard({ sessionKey }: Props) {
             </option>
           ))}
         </select>
+
+        <span className="places-tyres" role="radiogroup" aria-label="Which tyres the car races">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={tyres === "car"}
+            className={tyres === "car" ? "mode is-active" : "mode"}
+            onClick={() => setTyres("car")}
+          >
+            Its own tyres
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={tyres === "new"}
+            className={tyres === "new" ? "mode is-active" : "mode"}
+            onClick={() => setTyres("new")}
+          >
+            New sets
+          </button>
+        </span>
       </div>
 
       {loading && (
@@ -98,11 +126,22 @@ function Answer({ answer }: { answer: PlacesAnswer }) {
         times so that no one guess about them decides this.
       </p>
 
+      {answer.stock ? (
+        <Garage stock={answer.stock} dropped={study.dropped} />
+      ) : (
+        <p className="places-scope">
+          Every stint starts on a new set. {answer.tyres === "new"
+            ? "That is the ideal case; “its own tyres” races what the car actually had left."
+            : "The sets this car had are not in the lake, so they cannot be raced."}
+        </p>
+      )}
+
       <div className="plan-table" role="table" aria-label="Plans ranked by where they finish">
         <div className="plan-head plan-head-places" role="row">
           <span role="columnheader">plan</span>
           <span role="columnheader">stop</span>
           <span role="columnheader">expected</span>
+          <span role="columnheader" title="laps on the set each stint starts on">sets</span>
           <span role="columnheader">finish</span>
           <span role="columnheader">behind</span>
           <span role="columnheader">points</span>
@@ -147,6 +186,33 @@ function Answer({ answer }: { answer: PlacesAnswer }) {
   );
 }
 
+/** What the car has in the garage, and the plans that rules out. */
+function Garage({ stock, dropped }: { stock: TyreStock; dropped: { plan: string; reason: string }[] }) {
+  const held = Object.entries(stock.left)
+    .map(([compound, held]) => {
+      const parts = [];
+      if (held.new) parts.push(`${held.new} new`);
+      if (held.used.length) parts.push(`${held.used.join(", ")} laps`);
+      return parts.length ? `${compound.toLowerCase()}: ${parts.join(" · ")}` : null;
+    })
+    .filter(Boolean);
+  return (
+    <p className="places-scope places-garage">
+      Racing <b>{stock.driver}</b>&rsquo;s own tyres, as they were at the start
+      {stock.grid ? ` from P${stock.grid}` : ""} — {stock.sets} sets: {held.join("; ")}.
+      {dropped.length > 0 && (
+        <>
+          {" "}
+          Ruled out: {dropped.map((d) => `${d.plan} (${d.reason})`).join("; ")}.
+        </>
+      )}
+      {stock.notes.map((note) => (
+        <span key={note} className="places-note"> {note}</span>
+      ))}
+    </p>
+  );
+}
+
 function PlaceRowView({ row }: { row: PlaceRow }) {
   return (
     <div className={`plan-row plan-row-places${row.within_noise ? " is-tied" : ""}`} role="row">
@@ -156,6 +222,11 @@ function PlaceRowView({ row }: { row: PlaceRow }) {
       </span>
       <span className="plan-green num" role="cell">
         {row.expected_s !== undefined ? `${row.expected_s.toFixed(1)}s` : "—"}
+      </span>
+      <span className="plan-sets" role="cell">
+        {row.on_used_sets
+          ? row.start_ages.map((age) => (age === 0 ? "new" : `${age}`)).join(" · ")
+          : ""}
       </span>
       <span className="plan-finish num" role="cell" title={`${row.best}–${row.worst} across all runs`}>
         P{row.mean_finish.toFixed(2)}

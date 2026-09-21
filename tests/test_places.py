@@ -156,3 +156,52 @@ def test_an_empty_ladder_is_refused_rather_than_invented():
 
 def test_a_long_ladder_is_cut_to_the_field():
     assert len(places.pace_ladder([0.1 * i for i in range(30)], cars=20)) == 20
+
+
+# ------------------------------------------------------------- the car's own tyres
+
+STOCK_NEW = {"SOFT": {"new": 2, "used": []}, "MEDIUM": {"new": 2, "used": []},
+             "HARD": {"new": 2, "used": []}}
+STOCK_WORN = {"SOFT": {"new": 0, "used": []}, "MEDIUM": {"new": 0, "used": [4]},
+              "HARD": {"new": 1, "used": [12]}}
+
+
+def test_a_plan_starts_on_the_sets_the_car_would_actually_use():
+    ages = places.start_ages(_stop(24), STOCK_WORN, DEGRADATION)
+    assert ages == (4, 0)                 # the 4-lap medium, then the new hard
+
+
+def test_without_a_stock_every_stint_starts_new():
+    assert places.start_ages(_stop(24), None, DEGRADATION) == (0, 0)
+
+
+def test_a_plan_the_car_has_no_sets_for_is_refused_with_a_reason():
+    ok, reason = places.runnable(Plan((("HARD", 25), ("HARD", 26))), STOCK_WORN, DEGRADATION)
+    assert ok is True                     # one new hard and one with 12 laps: it can
+    ok, reason = places.runnable(Plan((("SOFT", 25), ("SOFT", 26))), STOCK_WORN, DEGRADATION)
+    assert not ok and reason == "no soft sets left"
+
+
+def test_worn_tyres_finish_behind_the_same_plan_on_new_ones():
+    """The whole point of the join: the same plan is not the same race."""
+    fresh = _rank([_stop(24)], stock=STOCK_NEW)[0]
+    worn = _rank([_stop(24)], stock={"SOFT": {"new": 0, "used": []},
+                                     "MEDIUM": {"new": 0, "used": [15]},
+                                     "HARD": {"new": 1, "used": []}})[0]
+    assert worn.start_ages == (15, 0)
+    assert worn.mean_finish > fresh.mean_finish
+
+
+def test_the_ranking_can_change_when_the_tyres_do():
+    """
+    A car with one worn medium is better off running it short. On new sets the
+    two plans are the other way round.
+    """
+    plans = [_stop(18), _stop(30)]
+    fresh = {str(r.plan): r.mean_finish for r in _rank(plans, stock=STOCK_NEW)}
+    worn = {str(r.plan): r.mean_finish for r in
+            _rank(plans, stock={"SOFT": {"new": 0, "used": []},
+                                "MEDIUM": {"new": 0, "used": [18]},
+                                "HARD": {"new": 2, "used": []}})}
+    long_stint, short_stint = str(_stop(30)), str(_stop(18))
+    assert worn[long_stint] - worn[short_stint] > fresh[long_stint] - fresh[short_stint]

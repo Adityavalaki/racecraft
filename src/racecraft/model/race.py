@@ -50,6 +50,12 @@ SAFETY_CAR_LAP_MULTIPLIER = 1.4
 LAP_NOISE_S = 0.35
 
 
+# A stint has to run at least this long before a safety car makes a stop worth
+# taking. Counted in laps of this stint, not in the age of the set: a car that
+# started on a set with ten laps on it has not yet run a stint worth ending.
+MIN_STINT_BEFORE_CHEAP_STOP = 8
+
+
 @dataclass
 class Car:
     driver_number: int
@@ -58,6 +64,14 @@ class Car:
     grid: int
     plan: Plan
     team_color: str | None = None
+    # Laps already on the set each stint starts on, in order. A car with no new
+    # mediums left starts its medium stint on a set that ran in qualifying, and
+    # wears from there. Empty means every stint starts on a new set.
+    start_ages: tuple[int, ...] = ()
+
+    def age_at(self, stint: int) -> int:
+        """Laps on the set this stint begins on."""
+        return self.start_ages[stint] if stint < len(self.start_ages) else 0
 
 
 @dataclass
@@ -130,7 +144,10 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
     n = len(cars)
     numbers = [car.driver_number for car in cars]
     elapsed = np.array([0.6 * (car.grid - 1) for car in cars], dtype=float)   # the grid is staggered
-    tyre_age = np.ones(n)
+    # Age counts the laps on the set, including any it arrived with; the stint
+    # counter is the laps run here, which is what a stop decision looks at.
+    tyre_age = np.array([car.age_at(0) + 1 for car in cars], dtype=float)
+    stint_laps = np.ones(n)
     stint = np.zeros(n, dtype=int)
     stops_left = [[sum(length for _, length in car.plan.stints[:i + 1]) for i in range(car.plan.stops)]
                   for car in cars]
@@ -158,17 +175,17 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
 
         elapsed = elapsed + lap_times
         tyre_age += 1
+        stint_laps += 1
 
         for index, car in enumerate(cars):
             if not stops_left[index]:
                 continue
-            due = lap >= stops_left[index][0]
-            opportunity = neutral and tyre_age[index] >= 8 and total_laps - lap >= 8
-            if due or opportunity:
+            if stops_now(lap, total_laps, stops_left[index][0], neutral, stint_laps[index]):
                 elapsed[index] += pit_loss_s * (neutralisation.stop_discount if neutral else 1.0)
                 stops_left[index].pop(0)
                 stint[index] += 1
-                tyre_age[index] = 1
+                tyre_age[index] = car.age_at(stint[index]) + 1
+                stint_laps[index] = 1
 
         if neutral:
             elapsed = _bunch_up(elapsed)
@@ -179,6 +196,21 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
             elapsed = _apply_blocking(elapsed, order, passes_per_lap, rng)
 
     return [numbers[i] for i in np.argsort(elapsed)]
+
+
+def stops_now(lap: int, total_laps: int, due_lap: int, neutral: bool, stint_laps: float) -> bool:
+    """
+    Whether a car pits at the end of this lap: its plan says so, or a safety car
+    has made a stop cheap and the stint is long enough to be worth ending.
+
+    The stint is counted in laps run in it, not in the age of the set. A car
+    that started on a set with twenty laps on it has not run a stint yet, and
+    pitting it on the first safety car would be the model inventing a stop.
+    """
+    if lap >= due_lap:
+        return True
+    return (neutral and stint_laps >= MIN_STINT_BEFORE_CHEAP_STOP
+            and total_laps - lap >= MIN_STINT_BEFORE_CHEAP_STOP)
 
 
 def _gaps_to_car_ahead(elapsed: np.ndarray, order: np.ndarray) -> np.ndarray:

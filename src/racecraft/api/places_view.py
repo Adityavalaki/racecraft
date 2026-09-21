@@ -45,14 +45,19 @@ _computing: dict[tuple, threading.Event] = {}
 
 
 def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
-                live=None) -> dict:
+                live=None, tyres: str = "car") -> dict:
     """
     The places ranking for the race this session belongs to.
 
     `live` is the live `SessionData` when `session_key` is the live key; its
     circuit and season come from the recording, everything else from the lake.
+
+    `tyres` is "car" to race the sets the car on that grid slot actually had —
+    known before the race started, so it keeps the study held out — or "new" to
+    give it fresh sets for every stint, which is the ideal case and the one to
+    compare against.
     """
-    key = (str(config.LAKE_DIR.resolve()), session_key, grid, runs)
+    key = (str(config.LAKE_DIR.resolve()), session_key, grid, runs, tyres)
     while True:
         with _lock:
             if key in _cache:
@@ -65,7 +70,7 @@ def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
         waiting.wait(timeout=300)
 
     try:
-        answer = _compute(session_key, grid, runs, live)
+        answer = _compute(session_key, grid, runs, live, tyres)
         with _lock:
             _cache[key] = answer
             _cache.move_to_end(key)
@@ -77,7 +82,7 @@ def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
             _computing.pop(key).set()
 
 
-def _compute(session_key: str, grid: int, runs: int, live) -> dict:
+def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car") -> dict:
     con = connect()
     if live is not None:
         location = str(live.meta.get("location") or "")
@@ -101,14 +106,26 @@ def _compute(session_key: str, grid: int, runs: int, live) -> dict:
     except race_inputs.NotEnoughData as error:
         raise NotSimulable(str(error)) from None
 
-    result = places.study(inputs, grid, runs=runs)
+    # The tyres that car had are known from the sessions before the race, so
+    # using them costs nothing in honesty. A race not in the lake — live, or one
+    # not yet run — has no sets to read, and the study says so.
+    stock = None
+    if tyres == "car" and race_key is not None:
+        stock = race_inputs.tyre_stock(con, race_key, grid=grid)
+
+    result = places.study(inputs, grid, runs=runs, stock=stock.left if stock else None)
     if not result.ranking:
+        if result.dropped:
+            reasons = "; ".join(sorted({d["reason"] for d in result.dropped}))
+            raise NotSimulable(f"{stock.driver} could not run any of the shortlisted plans: {reasons}")
         raise NotSimulable("no plans to race at this circuit")
 
     return {
         "session_key": session_key,
         "grid": grid,
         "runs": runs,
+        "tyres": "car" if stock else "new",
+        "stock": stock.as_dict() if stock else None,
         "inputs": inputs.as_dict(),
         "study": result.as_dict(),
         "verdict": places.verdict(result),

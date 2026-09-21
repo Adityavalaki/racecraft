@@ -274,3 +274,91 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
         cars=cars,
         notes=notes,
     )
+
+
+# ------------------------------------------------------------- the garage
+
+def _safe(value: str) -> str:
+    if not value.replace("_", "").isalnum():
+        raise ValueError(f"bad session key '{value}'")
+    return value
+
+
+@dataclass
+class Stock:
+    """What one car had in the garage at the start of a race."""
+    driver: str
+    driver_number: int
+    grid: int | None
+    left: dict[str, dict]                  # compound -> {"new": n, "used": [laps, ...]}
+    notes: list[str]
+
+    @property
+    def sets(self) -> int:
+        return sum(held["new"] + len(held["used"]) for held in self.left.values())
+
+    def as_dict(self) -> dict:
+        return {
+            "driver": self.driver,
+            "driver_number": self.driver_number,
+            "grid": self.grid,
+            "left": {c: {"new": h["new"], "used": list(h["used"])} for c, h in self.left.items()},
+            "sets": self.sets,
+            "notes": self.notes,
+        }
+
+
+def _classification(con, year: int, round_number: int) -> pd.DataFrame:
+    """The race's classification, or nothing when the lake has no results at all."""
+    import duckdb
+
+    try:
+        return con.sql(f"""select driver_number, abbreviation, grid_position from results
+                           where year = {int(year)} and round = {int(round_number)}
+                             and "session" = 'R'""").df()
+    except duckdb.CatalogException:
+        return pd.DataFrame(columns=["driver_number", "abbreviation", "grid_position"])
+
+
+def tyre_stock(con, session_key: str, *, grid: int | None = None,
+               driver_number: int | None = None) -> Stock | None:
+    """
+    The tyres one car held at the start of a race, by grid slot or by number.
+
+    Known before the race starts — every set it names was run in practice or
+    qualifying — so a held-out study may use it. Returns None when the race is
+    not in the lake yet, or when nobody started from that slot.
+    """
+    from racecraft.model import tyre_sets
+
+    rows = con.sql(f"""select year, round, "session" from sessions
+                       where session_key = '{_safe(session_key)}'""").df()
+    if rows.empty:
+        return None
+    year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
+    entries = _classification(con, year, rnd)
+    if entries.empty:
+        return None
+    if driver_number is None:
+        if grid is None:
+            return None
+        match = entries[entries["grid_position"] == grid]
+        if match.empty:
+            return None
+        driver_number = int(match.iloc[0]["driver_number"])
+    row = entries[entries["driver_number"] == driver_number]
+    if row.empty:
+        return None
+
+    weekend = tyre_sets.from_lake(con, year, rnd)
+    if driver_number not in weekend.cars or "R" not in weekend.sessions:
+        return None
+    held = weekend.holding(driver_number, "R")
+    slot = row.iloc[0]["grid_position"]
+    return Stock(
+        driver=str(row.iloc[0]["abbreviation"] or weekend.cars[driver_number].driver),
+        driver_number=driver_number,
+        grid=int(slot) if pd.notna(slot) and slot else None,
+        left=held.left(),
+        notes=held.notes,
+    )

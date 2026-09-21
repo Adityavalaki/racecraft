@@ -69,6 +69,19 @@ def _race(key: str, seed: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _results(key: str) -> pd.DataFrame:
+    """A classification, so a grid slot can be traced to a car and its tyres."""
+    numbers = list(range(1, len(PLANS) + 1))
+    return pd.DataFrame({
+        "session_key": key, "driver_number": numbers,
+        "abbreviation": [f"D{n:02d}" for n in numbers], "full_name": [f"Driver {n}" for n in numbers],
+        "team_name": "T", "team_id": "t", "team_color": "ffffff",
+        "grid_position": numbers, "position": numbers,
+        "classified_position": [str(n) for n in numbers], "status": "Finished",
+        "points": 0.0, "laps": TOTAL_LAPS, "result_time_s": 0.0,
+        "q1_s": None, "q2_s": None, "q3_s": None})
+
+
 @pytest.fixture
 def con(tmp_path, monkeypatch):
     for year, rnd, location, date in RACES:
@@ -82,6 +95,7 @@ def con(tmp_path, monkeypatch):
                 "total_laps": [TOTAL_LAPS], "circuit_rotation_deg": [0.0],
                 "fastf1_version": ["test"], "ingested_at": [pd.Timestamp.now(tz="UTC")]}),
             "laps": _race(key, seed=year * 10 + rnd),
+            "results": _results(key),
             "track_status": pd.DataFrame({"session_key": [key], "t": [0.0],
                                           "status": ["1"], "message": ["AllClear"]}),
         }, year, rnd, "R", lake=tmp_path)
@@ -176,6 +190,40 @@ def test_a_study_runs_on_held_out_inputs(con):
     assert record["plans"][0]["expected_s"] is not None
 
 
+# ------------------------------------------------------------- the garage
+
+def test_the_car_on_a_grid_slot_brings_the_tyres_it_had(con):
+    from racecraft.model import race_inputs as inputs_module
+
+    stock = inputs_module.tyre_stock(con, "2024_02_R", grid=3)
+    assert stock is not None
+    assert stock.driver == "D03" and stock.grid == 3
+    # Every set it ran in the race is one it held at the start.
+    assert stock.sets > 0
+    assert set(stock.left) == {"SOFT", "MEDIUM", "HARD"}
+
+
+def test_a_grid_slot_nobody_started_from_has_no_tyres(con):
+    from racecraft.model import race_inputs as inputs_module
+
+    assert inputs_module.tyre_stock(con, "2024_02_R", grid=19) is None
+
+
+def test_a_study_races_the_sets_the_car_had(con):
+    stock = race_inputs.tyre_stock(con, "2024_02_R", grid=4)
+    inputs = race_inputs.build(con, "Baku", 2024)
+    result = places.study(inputs, grid=4, plans=4, runs=40, field_draws=4, stock=stock.left)
+
+    assert result.stock == stock.left
+    raced = {str(entry.plan) for entry in result.ranking}
+    dropped = {entry["plan"] for entry in result.dropped}
+    assert not (raced & dropped), "a plan was both raced and ruled out"
+    for entry in result.ranking:
+        assert len(entry.start_ages) == len(entry.plan.stints)
+    for entry in result.dropped:
+        assert "set" in entry["reason"]
+
+
 # ------------------------------------------------------------- over HTTP
 
 @pytest.fixture
@@ -183,6 +231,19 @@ def client(con):
     from fastapi.testclient import TestClient
     from racecraft.api.app import app
     return TestClient(app)
+
+
+def test_the_interface_races_the_cars_own_tyres_and_can_be_told_not_to(client):
+    on_its_own = client.get("/api/sessions/2024_02_R/places",
+                            params={"grid": 4, "runs": 40}).json()
+    assert on_its_own["tyres"] == "car"
+    assert on_its_own["stock"]["driver"] == "D04"
+    assert on_its_own["study"]["stock"] is not None
+
+    fresh = client.get("/api/sessions/2024_02_R/places",
+                       params={"grid": 4, "runs": 40, "tyres": "new"}).json()
+    assert fresh["tyres"] == "new" and fresh["stock"] is None
+    assert all(row["on_used_sets"] is False for row in fresh["study"]["plans"])
 
 
 def test_the_interface_gets_the_same_held_out_answer_as_the_terminal(client):

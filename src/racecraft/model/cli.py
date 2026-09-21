@@ -193,6 +193,26 @@ def cmd_strategy(args) -> int:
     return 0
 
 
+def _driver_number(con, session_key: str, abbreviation: str) -> int | None:
+    """The number behind a three-letter code, in the race being studied."""
+    rows = con.sql(f"""select driver_number from results
+                       where session_key = '{session_key}'
+                         and upper(abbreviation) = '{abbreviation.upper()}'""").df()
+    return None if rows.empty else int(rows.iloc[0]["driver_number"])
+
+
+def _held(compound: str, held: dict) -> str:
+    """'2 new hard' / 'medium with 4, 7 laps'."""
+    parts = []
+    if held["new"]:
+        parts.append(f"{held['new']} new {compound.lower()}")
+    if held["used"]:
+        laps = ", ".join(str(n) for n in held["used"])
+        plural = "s" if len(held["used"]) > 1 or held["used"][0] != 1 else ""
+        parts.append(f"{compound.lower()} with {laps} lap{plural}")
+    return " and ".join(parts)
+
+
 def cmd_race(args) -> int:
     """
     Rank plans for one car by where they finish, racing the whole field.
@@ -200,6 +220,11 @@ def cmd_race(args) -> int:
     Every input comes from `race_inputs`, which uses only races that finished
     before the one being studied: a race that has happened is never fitted on
     itself or on anything after it. See that module for why.
+
+    That includes the tyres. For a race in the lake, the car on the chosen grid
+    slot races the sets it actually had left — reconstructed from the weekend's
+    earlier sessions, so still known before the start — unless `--new-tyres`
+    asks for the ideal case instead.
     """
     from racecraft.model import places as places_model
     from racecraft.model import race_inputs
@@ -232,24 +257,58 @@ def cmd_race(args) -> int:
         print(f"  note: {note}")
     print()
 
-    result = places_model.study(inputs, args.grid, plans=args.plans, runs=args.runs)
+    stock, grid = None, args.grid
+    if inputs.target_session and (args.driver or not args.new_tyres):
+        number = _driver_number(con, inputs.target_session, args.driver) if args.driver else None
+        if args.driver and number is None:
+            print(f"no driver {args.driver!r} in this race")
+            return 1
+        stock = race_inputs.tyre_stock(con, inputs.target_session,
+                                       grid=None if number else grid, driver_number=number)
+        if stock and stock.grid:
+            grid = stock.grid            # a named driver is advised from where they started
+        if args.new_tyres:
+            stock = None
+    result = places_model.study(inputs, grid, plans=args.plans, runs=args.runs,
+                                stock=stock.left if stock else None)
     if not result.ranking:
         print("no plans to race")
+        if result.dropped:
+            for entry in result.dropped:
+                print(f"  {entry['plan']}: {entry['reason']}")
         return 1
 
+    if stock:
+        print(f"  On {stock.driver}'s own tyres, as they were at the start: "
+              + ", ".join(_held(compound, held) for compound, held in stock.left.items()
+                          if held["new"] or held["used"]))
+        for entry in result.dropped:
+            print(f"    cannot run {entry['plan']}: {entry['reason']}")
+        for note in stock.notes:
+            print(f"    note: {note}")
+    elif inputs.target_session:
+        print("  On new sets for every stint, which is the ideal case rather than the real one.")
+    print()
+
     low, high = places_model.field_stop_window(inputs.total_laps, result.field_plan)
-    print(f"  A car starting P{args.grid}. The rest of the field stops between laps {low} and "
+    print(f"  A car starting P{grid}. The rest of the field stops between laps {low} and "
           f"{high}, redrawn {places_model.DEFAULT_FIELD_DRAWS} times so that no one guess about")
     print("  them decides this. Plans are shortlisted allowing for safety cars.")
     print()
 
     expected = {str(c.plan): c.expected_s for c in result.shortlist}
-    print(f"  {'plan':<30} {'expected':>9} {'finish':>8} {'±':>6} {'behind':>7} {'points':>8}")
+    header = f"  {'plan':<30} {'expected':>9} {'finish':>8} {'±':>6} {'behind':>7} {'points':>8}"
+    print(header + ("   starts on" if stock else ""))
     for entry in result.ranking:
         name = str(entry.plan)
         tie = " tied" if entry.within_noise else ""
+        sets = ""
+        if stock:
+            sets = "   " + ", ".join(
+                "new" if age == 0 else f"{age} lap" + ("" if age == 1 else "s")
+                for age in entry.start_ages)
         print(f"  {name:<30} {expected[name]:>8.1f}s {entry.mean_finish:>8.2f} "
-              f"{entry.std_error:>6.2f} {entry.behind_best:>7.2f} {entry.points_share:>7.0%}{tie}")
+              f"{entry.std_error:>6.2f} {entry.behind_best:>7.2f} {entry.points_share:>7.0%}{tie}{sets}")
 
     said = places_model.verdict(result)
     print()
@@ -420,6 +479,10 @@ def main(argv: list[str] | None = None) -> int:
                                   "for comparison only")
     race_parser.add_argument("--scale", type=float, default=1.5,
                              help="multiply measured degradation; 1.5 matches real stop counts")
+    race_parser.add_argument("--driver", help="advise this driver, from the slot they started")
+    race_parser.add_argument("--new-tyres", action="store_true",
+                             help="give the car new sets for every stint instead of the ones it "
+                                  "actually had left")
     race_parser.set_defaults(handler=cmd_race)
 
     circuit_parser = commands.add_parser("circuit", help="everything known about one circuit")

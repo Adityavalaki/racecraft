@@ -197,14 +197,30 @@ export interface PlaceRow {
   behind_best: number;
   /** Indistinguishable from the best plan at these run counts. */
   within_noise: boolean;
+  /** Laps already on the set each stint starts on; all zeros on new tyres. */
+  start_ages: number[];
+  on_used_sets: boolean;
   expected_s?: number;
   green_s?: number;
+}
+
+/** What one car had in the garage when the race started. */
+export interface TyreStock {
+  driver: string;
+  driver_number: number;
+  grid: number | null;
+  left: Record<string, { new: number; used: number[] }>;
+  sets: number;
+  notes: string[];
 }
 
 export interface PlacesAnswer {
   session_key: string;
   grid: number;
   runs: number;
+  /** "car" when the sets that car actually had were raced, "new" for fresh ones. */
+  tyres: "car" | "new";
+  stock: TyreStock | null;
   inputs: {
     circuit: string;
     season: number;
@@ -235,6 +251,9 @@ export interface PlacesAnswer {
     field_plan: string;
     field_stop_window: [number, number];
     field_draws: number;
+    stock: Record<string, { new: number; used: number[] }> | null;
+    /** Plans the car had no sets for, and why. */
+    dropped: { plan: string; reason: string }[];
   };
   verdict: {
     cheapest_in_seconds: string;
@@ -422,8 +441,8 @@ export const api = {
     get<Insight>(`/api/sessions/${key}/insight`, signal),
   liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
   /** Slow the first time for a race and grid slot — a few thousand races — then cached. */
-  places: (key: string, grid: number, signal?: AbortSignal) =>
-    get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}`, signal),
+  places: (key: string, grid: number, tyres: "car" | "new" = "car", signal?: AbortSignal) =>
+    get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
   liveAttach: () => post<LiveStatus>("/api/live/attach"),

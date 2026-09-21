@@ -568,25 +568,39 @@ def from_lake(con, year: int, round_number: int, *, live_laps: pd.DataFrame | No
         stints_from_laps(None, "")
 
     stints = _fill_teams(con, stints, year)
-    entries = con.sql(f"""
-        select "session", driver_number from results
-        where year = {int(year)} and round = {int(round_number)}""").df()
+    entries = _results(con, year, round_number)
     if live_laps is not None and live_session:
         entries = pd.concat([entries, pd.DataFrame({
             "session": live_session, "driver_number": live_laps["driver_number"].dropna().unique()})])
     regulars = _regulars(entries, order)
     event = str(meta["event_name"].iloc[0]) if not meta.empty else ""
     is_sprint = sprint if sprint is not None else any(code in SPRINT_SESSIONS for code in order)
-    q3 = con.sql(f"""
-        select driver_number from results
-        where year = {int(year)} and round = {int(round_number)}
-          and "session" = 'Q' and q3_s is not null""").df()
+    classification = _results(con, year, round_number, extra=", q3_s")
+    q3 = classification[(classification["session"] == "Q") & classification["q3_s"].notna()]         if "q3_s" in classification else classification.iloc[0:0]
     test = con.sql(f"""
         select count(*) from laps
         where year = {int(year)} and round = {int(round_number)} and compound = 'TEST_UNKNOWN'""").fetchone()[0]
     return build(stints, order, regulars, year=year, round_number=round_number,
                  event_name=event, sprint=is_sprint, q3_cars={int(n) for n in q3["driver_number"]},
                  test_tyres=bool(test))
+
+
+def _results(con, year: int, round_number: int, extra: str = "") -> pd.DataFrame:
+    """
+    Every session's classification for a weekend, or nothing at all.
+
+    A lake written without results — some tests, and any session ingested
+    before the table existed — is a lake where the entry list is unknown, not a
+    broken one.
+    """
+    import duckdb
+
+    try:
+        return con.sql(f"""
+            select "session", driver_number{extra} from results
+            where year = {int(year)} and round = {int(round_number)}""").df()
+    except duckdb.CatalogException:
+        return pd.DataFrame(columns=["session", "driver_number"])
 
 
 def _fill_teams(con, stints: pd.DataFrame, year: int) -> pd.DataFrame:

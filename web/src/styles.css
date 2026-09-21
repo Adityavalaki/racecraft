@@ -857,3 +857,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .sets-rules a { color: var(--ink-mid); text-decoration-color: var(--rule-strong); }
 .sets-rules a:hover { color: var(--signal); }
+
+.places-tyres { display: inline-flex; gap: 1px; margin-left: 0.6rem; }
+.places-garage b { color: var(--ink); font-weight: 600; }
+.plan-sets {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  text-align: right;
+}
+.plan-head-places,
+.plan-row-places { grid-template-columns: minmax(130px, 1.3fr) 40px 54px 62px 80px 58px 44px; }
