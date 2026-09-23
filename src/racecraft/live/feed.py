@@ -24,7 +24,6 @@ stays historic-only until this is proven on a real weekend.
 
 from __future__ import annotations
 
-import ast
 import json
 import logging
 import threading
@@ -109,15 +108,43 @@ def current_session(now: datetime | None = None, within: timedelta = timedelta(h
     return best[1] if best else None
 
 
+def live_t0(livedata, path: Path) -> pd.Timestamp | None:
+    """
+    Session time zero for a recording: the moment FastF1 measured its laps from.
+
+    Race control is stored as absolute times and has to be turned into session
+    time on the same clock as the laps, and the laps are FastF1's. So the zero
+    is read from FastF1's own parse of the recording rather than worked out a
+    second time — two derivations of one number drift apart, and did:
+
+    * FastF1 takes the moment the session status became **Started**, when the
+      recording holds it, and only otherwise the first message it can read.
+      Taking the first message regardless put a recorder switched on at 08:10
+      for an 08:30 session twenty minutes out, and the runbook says to switch
+      it on early.
+    * FastF1 cannot read a line with an apostrophe in it, so its zero is the
+      next line; reading that line properly put our zero a line earlier than
+      its own.
+
+    `recording_t0` remains as the fallback for a FastF1 that does not expose
+    its start date, and it reads the file the way FastF1 does for that reason.
+    """
+    start = getattr(livedata, "_start_date", None)
+    if start is not None:
+        moment = pd.Timestamp(start)
+        return moment.tz_localize(None) if moment.tzinfo else moment
+    return recording_t0(path)
+
+
 def recording_t0(path: Path) -> pd.Timestamp | None:
     """
-    The timestamp of a recording's first message.
+    The timestamp of the first message FastF1 would read from a recording.
 
-    Every session time in a recording is measured from here — FastF1's parser
-    takes the first message it reads as zero — so this is session t0. It has to
-    be read off the file because the usual source is the telemetry stream, which
-    live mode does not carry: `LapStartDate` comes back entirely null, so t0
-    cannot be recovered from the laps either.
+    FastF1's fallback zero when the recording has no Started status, read the
+    way FastF1 reads it — including skipping a line it cannot parse — because
+    what matters is agreeing with FastF1, not reading the file better than it.
+    Outside a session the recording is only the connection snapshot, whose
+    lines carry no timestamp at all, and then there is no zero to find.
     """
     try:
         with path.open(encoding="utf-8", errors="replace") as handle:
@@ -125,10 +152,10 @@ def recording_t0(path: Path) -> pd.Timestamp | None:
                 line = line.strip()
                 if not line.startswith("["):
                     continue
-                parsed = _parse_line(line)
-                if parsed is None:
+                try:
+                    _category, _message, stamp = json.loads(_as_json(line))
+                except (ValueError, TypeError):
                     continue
-                _category, _message, stamp = parsed
                 if not stamp:
                     continue
                 moment = pd.Timestamp(stamp)
@@ -138,31 +165,8 @@ def recording_t0(path: Path) -> pd.Timestamp | None:
     return None
 
 
-def _parse_line(line: str) -> tuple | None:
-    """
-    One recording line — `[category, message, timestamp]` — or None if unreadable.
-
-    The recording is Python reprs, so Python reads it exactly. Swapping every
-    `'` for `"` to make JSON of it, as this used to, breaks on any string with an
-    apostrophe in it, which Python writes in double quotes: the line was skipped
-    and the *next* line's timestamp became session zero, shifting every time in
-    the session. The swap is kept only as a fallback for a line that is not a
-    Python literal at all.
-    """
-    try:
-        value = ast.literal_eval(line)
-    except (ValueError, SyntaxError, MemoryError, RecursionError):
-        try:
-            value = json.loads(_as_json(line))
-        except (ValueError, TypeError):
-            return None
-    if not isinstance(value, (list, tuple)) or len(value) != 3:
-        return None
-    return tuple(value)
-
-
 def _as_json(line: str) -> str:
-    """The fallback: FastF1's own repair of a repr into JSON."""
+    """FastF1's own repair of a recording line into JSON, so both read the same lines."""
     return line.replace("'", '"').replace("True", "true").replace("False", "false")
 
 
@@ -183,7 +187,7 @@ def tables_from_recording(path: Path, session: LiveSession,
     ses = fastf1.get_session(session.year, session.round_number, session.session_name)
     ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
     return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
-                                 t0=recording_t0(path))
+                                 t0=live_t0(livedata, path))
 
 
 @dataclass

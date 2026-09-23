@@ -370,12 +370,9 @@ needs it is opened, so a replay never pays for a fit nobody looked at.
 ## Live timing
 
 ```powershell
-.venv\Scripts
-acecraft-live record --name baku-2026     # leave running from FP1
-.venv\Scripts
-acecraft-live status                      # what has been recorded
-.venv\Scripts
-acecraft-live read                        # parse it and report
+.venv\Scripts\racecraft-live record --name baku-2026     # leave running from FP1
+.venv\Scripts\racecraft-live status                      # what has been recorded
+.venv\Scripts\racecraft-live read                        # parse it and report
 ```
 
 F1's own timing feed is a SignalR stream at `livetiming.formula1.com` — the same
@@ -423,10 +420,8 @@ board read.
 ### Watching it
 
 ```powershell
-.venv\Scripts
-acecraft-live record --name baku-2026    # one terminal
-.venv\Scripts
-acecraft-serve                           # another
+.venv\Scripts\racecraft-live record --name baku-2026    # one terminal
+.venv\Scripts\racecraft-serve                           # another
 ```
 
 Open the interface and `LIVE` is at the top of the session dropdown, selected by
@@ -467,15 +462,23 @@ VER +8.416; the lap chart carries 22 drivers over 57 laps; the strategy board
 costs plans against Madrid's measured 26.5 s pit lane.
 
 Finding session time zero is what that exercise cost. FastF1 derives it from the
-telemetry stream, which live mode does not carry, and it cannot be recovered
-from the laps either — a live recording's `LapStartDate` comes back entirely
-null for the same reason. It is read off the recording instead: the first
-message's timestamp is the zero every session time in it was measured against.
-Without it, parsing fails outright on race control, the one table FastF1 stores
-as absolute datetimes.
+telemetry stream, which live mode does not carry, and a live recording's
+`LapStartDate` comes back entirely null, so it cannot come from the laps either.
+It is taken from FastF1's own parse of the recording instead (`live/feed.live_t0`):
+the moment the session status became Started, or failing that the first message
+FastF1 could read. Reading the first message ourselves, as this first did, put a
+recorder switched on at 08:10 for an 08:30 session **twenty minutes** off the laps,
+so every penalty would have sat beside the wrong lap. The laps are FastF1's, so
+race control has to be on FastF1's clock, and now reads it rather than re-deriving it.
+
+**What that exercise did not prove.** Repeated on 23 September, the recording held
+only the connection snapshot, and none of its lines carries a timestamp, so FastF1
+had nothing to parse and quietly filled the laps from its cache of the finished race
+— which is why they matched the lake to the millisecond. The endpoints and panels
+were exercised on real data; parsing laps *from the feed* was not.
 
 **Still unproven:** a session actually in progress, where the recording grows
-under the reader. That waits for Friday practice at Baku. Everything testable offline is tested
+under the reader. That waits for first practice at Baku, Thursday 24 September. Everything testable offline is tested
 — the recording format round-trips through FastF1's own parser, a dropped feed
 appends rather than starting a second file, a half-written recording reads as
 "not ready" rather than crashing, and the reader caches instead of re-parsing on
@@ -1289,7 +1292,7 @@ not a dependency; adding it is a decision for when a judgment above earns it.
 
 In the order they are worth doing.
 
-**1. Run live through Friday practice at Baku, 25 September.** Everything about
+**1. Run live through practice at Baku, Thursday 24 September** (FP1 08:30 UTC, FP2 12:00 UTC). Everything about
 live mode works against a recording — the format, a dropped feed, a half-written
 file, the full parse of a real 1,106-lap recording served to every panel. What
 has never happened is a recording *growing under the reader* while a session
