@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { mergeFrames, sample, usePositions } from "./positions";
+import { HISTORY_S, WINDOW_S, mergeFrames, plan, sample, usePositions } from "./positions";
 import type { Frames } from "./api";
 
 const frames: Frames = {
@@ -125,5 +125,61 @@ describe("curved interpolation", () => {
     const edge: Frames = { t: [10, 11, 12], drivers: { "1": { x: [0, 100, 200], y: [0, 0, 0] } } };
     expect(sample(edge, 10.5)["1"]!.x).toBeCloseTo(50, 6);
     expect(sample(edge, 11.5)["1"]!.x).toBeCloseTo(150, 6);
+  });
+});
+
+describe("playback across window joins", () => {
+  // A car at constant speed: x = 100 * t. The server's windows, at the rate and
+  // length the hook really uses, so the join happens where it does in the app.
+  const SPEED = 100;
+  const window = (start: number, end: number, hz = 10): Frames => {
+    const count = Math.round((end - start) * hz) + 1;
+    const t = Array.from({ length: count }, (_, i) => +(start + i / hz).toFixed(2));
+    return { t, drivers: { "1": { x: t.map((v) => v * SPEED), y: t.map(() => 0) } } };
+  };
+
+  it.each([1, 2, 5, 10, 30])("never moves a car backwards while playing at %ix", (speed) => {
+    // The bug: joining a new window kept the last five seconds of the old one,
+    // counted back from its end, while the clock was still ten seconds short
+    // of that end. The clock fell before the buffer, every car was pinned to
+    // its first sample — about 4.6 s of racing ahead — and the next check saw
+    // the clock outside the buffer, fetched afresh and snapped every car back.
+    let buffer: Frames | null = null;
+    let pending: { due: number; frames: Frames; replace: boolean } | null = null;
+    let previousX = -Infinity;
+    let now = 600;
+    const fps = 60;
+    const latencyFrames = 6;               // ~100 ms for a frames request
+    for (let frame = 0; frame < fps * 60; frame += 1) {  // a minute of real time
+      now += speed / fps;
+      if (pending && frame >= pending.due) {
+        buffer = pending.replace || !buffer
+          ? pending.frames
+          : mergeFrames(buffer, pending.frames, now - HISTORY_S);
+        pending = null;
+      }
+      if (!pending && frame % 7 === 0) {                 // the hook checks every 120 ms
+        const next = plan(buffer, now);
+        if (next) {
+          pending = {
+            due: frame + latencyFrames,
+            frames: window(next.start, next.start + WINDOW_S),
+            replace: next.replace,
+          };
+        }
+      }
+      const car = sample(buffer, now)["1"];
+      if (!car) continue;
+      expect(car.x).toBeGreaterThanOrEqual(previousX - 1e-6);
+      // Never more than a frame's travel away from where the car really is.
+      expect(Math.abs(car.x - now * SPEED)).toBeLessThan((speed / fps) * SPEED + 1);
+      previousX = car.x;
+    }
+  });
+
+  it("keeps the history that covers the clock when it joins a window", () => {
+    const merged = mergeFrames(window(600, 624), window(624, 648), 614.4 - HISTORY_S);
+    expect(merged.t[0]!).toBeLessThanOrEqual(614.4);
+    expect(merged.t[merged.t.length - 1]!).toBe(648);
   });
 });

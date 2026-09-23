@@ -5,6 +5,7 @@ import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
 import { Stewards, filterLabel } from "./panels/Stewards";
+import { TrackLog } from "./panels/TrackLog";
 import { RaceTrace } from "./panels/RaceTrace";
 import { StrategyBoard } from "./panels/StrategyBoard";
 import { TimingTower } from "./panels/TimingTower";
@@ -333,12 +334,16 @@ export default function App() {
             </h2>
             <Stewards
               events={stewards}
-              track={trackLog}
               start={info.t_start}
               codes={driverCodes}
               selected={selected}
               onSelect={toggleDriver}
             />
+          </section>
+
+          <section className="panel panel-track">
+            <h2>Track</h2>
+            <TrackLog events={trackLog} start={info.t_start} />
           </section>
 
           <section className="panel panel-trace">

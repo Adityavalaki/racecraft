@@ -18,7 +18,6 @@ function show(props: Partial<Parameters<typeof Stewards>[0]> = {}) {
   return render(
     <Stewards
       events={[]}
-      track={[]}
       start={0}
       codes={CODES}
       selected={[]}
@@ -28,43 +27,10 @@ function show(props: Partial<Parameters<typeof Stewards>[0]> = {}) {
   );
 }
 
-function trackEvent(overrides: Partial<RaceControlEvent> = {}): RaceControlEvent {
-  return {
-    t: 100, lap: 10, kind: "other", seconds: null, reason: null, cars: [],
-    incident: null, stewards: false, topic: "track", message: "SAFETY CAR DEPLOYED",
-    ...overrides,
-  };
-}
-
 describe("Stewards", () => {
   it("says so when the stewards have said nothing", () => {
     show();
     expect(screen.getByText("The stewards have said nothing yet.")).toBeTruthy();
-  });
-
-  it("shows both lists at once, with nothing to click between them", () => {
-    show({
-      events: [verdict({ kind: "time_penalty", seconds: 5, reason: "UNSAFE RELEASE" })],
-      track: [trackEvent({ message: "SAFETY CAR DEPLOYED" })],
-    });
-    expect(screen.getByText("+5s PENALTY")).toBeTruthy();
-    expect(screen.getByText("SAFETY CAR DEPLOYED")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Track" })).toBeTruthy();
-  });
-
-  it("shows the track list in the feed's own words", () => {
-    show({ track: [trackEvent({ message: "GREEN LIGHT - PIT EXIT OPEN" })] });
-    expect(screen.getByText("GREEN LIGHT - PIT EXIT OPEN")).toBeTruthy();
-  });
-
-  it("never narrows the track list, which is not about cars", () => {
-    show({ track: [trackEvent()], selected: [44] });
-    expect(screen.getByText("SAFETY CAR DEPLOYED")).toBeTruthy();
-  });
-
-  it("survives a track list that is not the shape it expects", () => {
-    show({ track: [null, { t: 1 }] as unknown as RaceControlEvent[] });
-    expect(screen.getByText("Nothing yet.")).toBeTruthy();
   });
 
   it("shows the verdict and the offence", () => {
@@ -188,7 +154,7 @@ describe("Stewards", () => {
   it("offers no controls of its own", () => {
     // The tower's selection is the only filter; anything else is another thing
     // to learn in a panel that is meant to be glanced at.
-    const { container } = show({ events: [verdict()], track: [trackEvent()] });
+    const { container } = show({ events: [verdict()] });
     const buttons = [...container.querySelectorAll("button")];
     expect(buttons.every((b) => b.className.includes("rc-car"))).toBe(true);
   });

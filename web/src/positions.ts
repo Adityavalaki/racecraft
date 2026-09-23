@@ -16,10 +16,28 @@ import { api, type Frames } from "./api";
  * Instead a timer looks at the latest clock value held in a ref, and requests
  * are only aborted when the session changes or the component goes away.
  */
-const WINDOW_S = 24;
+export const WINDOW_S = 24;
 const SAMPLE_HZ = 10;   // twice the old rate: less to invent between samples
 const REFETCH_AT = 0.6; // fraction of the window consumed before fetching the next
 const CHECK_MS = 120;
+/** Seconds of already-played positions kept behind the clock when a window is joined. */
+export const HISTORY_S = 5;
+
+/**
+ * Whether to fetch now, and from where. `replace` means the result should
+ * replace the buffer (after a seek) rather than be joined onto its end.
+ */
+export function plan(held: Frames | null, now: number): { start: number; replace: boolean } | null {
+  const covered = held !== null && held.t.length > 0;
+  const first = covered ? held!.t[0]! : 0;
+  const last = covered ? held!.t[held!.t.length - 1]! : 0;
+  const outside = !covered || now < first - 1 || now > last;
+  const consumed = covered && last > first ? (now - first) / (last - first) : 1;
+  if (!outside && consumed < REFETCH_AT) return null;
+  // Continue from the end of the buffer when merely running low, and start
+  // fresh at the clock after a seek that landed outside it.
+  return { start: outside ? now : last, replace: outside };
+}
 
 export interface Positions {
   at: (t: number) => Record<number, { x: number; y: number }>;
@@ -43,18 +61,9 @@ export function usePositions(sessionKey: string | null, t: number, enabled: bool
 
     const maybeFetch = () => {
       if (stopped || fetching.current) return;
-      const held = buffer.current;
-      const now = clock.current;
-      const covered = held !== null && held.t.length > 0;
-      const first = covered ? held!.t[0]! : 0;
-      const last = covered ? held!.t[held!.t.length - 1]! : 0;
-      const outside = !covered || now < first - 1 || now > last;
-      const consumed = covered && last > first ? (now - first) / (last - first) : 1;
-      if (!outside && consumed < REFETCH_AT) return;
-
-      // Continue from the end of the buffer when merely running low, and
-      // start fresh at the clock after a seek that landed outside it.
-      const start = outside ? now : last;
+      const next = plan(buffer.current, clock.current);
+      if (!next) return;
+      const { start, replace: outside } = next;
       fetching.current = true;
       setLoading(true);
       api
@@ -62,7 +71,9 @@ export function usePositions(sessionKey: string | null, t: number, enabled: bool
         .then((frames) => {
           if (stopped) return;
           const previous = buffer.current;
-          buffer.current = !outside && previous ? mergeFrames(previous, frames) : frames;
+          buffer.current = !outside && previous
+            ? mergeFrames(previous, frames, clock.current - HISTORY_S)
+            : frames;
           setVersion((v) => v + 1);
         })
         .catch((error) => {
@@ -89,9 +100,23 @@ export function usePositions(sessionKey: string | null, t: number, enabled: bool
   };
 }
 
-/** Join a new window onto the tail of the old one, keeping a little history. */
-export function mergeFrames(a: Frames, b: Frames): Frames {
-  const keep = Math.max(0, a.t.length - SAMPLE_HZ * 5);
+/**
+ * Join a new window onto the tail of the old one, keeping the old samples from
+ * `keepFrom` on — the caller passes a few seconds behind the clock.
+ *
+ * The history kept has to be measured from the clock, not from the end of the
+ * old window. It used to be the old window's last five seconds, but the next
+ * window is fetched with 40% of the old one still to play: the clock sat ten
+ * seconds short of the end, so it fell before the joined buffer, every car was
+ * pinned to the buffer's first sample — about 4.6 s of racing ahead — and the
+ * next check found the clock outside the buffer, fetched afresh and snapped
+ * every car back. At 5x that was a jump forward and back every three seconds.
+ */
+export function mergeFrames(a: Frames, b: Frames, keepFrom = -Infinity): Frames {
+  const from = a.t.findIndex((value) => value >= keepFrom);
+  // Everything is older than `keepFrom`: keep one sample so the join still
+  // has a left-hand neighbour to curve from.
+  const keep = from === -1 ? Math.max(0, a.t.length - 1) : from;
   const overlap = b.t.length && a.t.length && b.t[0]! <= a.t[a.t.length - 1]! ? 1 : 0;
   const merged: Frames = { t: [...a.t.slice(keep), ...b.t.slice(overlap)], drivers: {} };
   for (const number of new Set([...Object.keys(a.drivers), ...Object.keys(b.drivers)])) {
