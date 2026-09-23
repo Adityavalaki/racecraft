@@ -936,11 +936,31 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .stw-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
 .stw-row {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--when-width) minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.4rem 0.7rem;
   border-bottom: 1px solid #1b222a;
 }
+/*
+  The time column is sized for the widest label it can hold. A race gives a lap
+  (`L12`), but practice and qualifying have no laps in race control, so they give
+  the session clock, and before the green light that clock is negative:
+  `-0:14:48`, eight characters. The column was sized for `L12` and the clock ran
+  into the message beside it. Both panels share the width so their rows line up.
+*/
+.panel-stewards, .panel-track { --when-width: 3.7rem; }
+.stw-when, .log-when { white-space: nowrap; }
+
+/* An empty panel says so on the same grid as a row would, not against the border. */
+.panel-stewards .empty,
+.panel-track .empty {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
 .stw-when {
   font-family: "JetBrains Mono", monospace;
   font-size: 0.66rem;
@@ -977,7 +997,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .log-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
 .log-row {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--when-width) minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.4rem 0.7rem;
   border-bottom: 1px solid #1b222a;
