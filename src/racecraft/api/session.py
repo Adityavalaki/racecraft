@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from racecraft import config
+from racecraft.api import penalties as penalties_model
 from racecraft.api import timing
 from racecraft.store.db import connect
 
@@ -261,6 +262,9 @@ class SessionData:
     def state(self, t: float) -> dict:
         """Everything the panels need at one instant."""
         classification = timing.classify(self.laps, self.drivers, t, self.session_name)
+        # Race control read up to the same t as the running order, so the PEN
+        # column and the gap beside it can never describe different moments.
+        penalties = penalties_model.state_at(self.race_control, self.drivers, t)
         times = np.array([t], dtype=float)
         cars = {}
         for driver in classification.drivers:
@@ -273,8 +277,12 @@ class SessionData:
                 "x": _round(point["x"][0], 1), "y": _round(point["y"][0], 1),
                 **{name: _round(values[0], 1) for name, values in telemetry.items()},
             }
+        state = classification.as_dict()
+        for row in state["drivers"]:
+            against = penalties.get(int(row["driver_number"]))
+            row["penalties"] = None if against is None else against.as_dict()
         return {
-            **classification.as_dict(),
+            **state,
             "cars": cars,
             "track_status": self.track_status_at(t),
             "weather": self.weather_at(t),
@@ -365,9 +373,15 @@ class SessionData:
             return None
         return {k: (None if pd.isna(v) else v) for k, v in past.iloc[-1].to_dict().items()}
 
-    def messages(self, until: float, limit: int = 30) -> list[dict]:
-        past = self.race_control[self.race_control["t"] <= until].tail(limit)
-        return _records(past)
+    def messages(self, until: float, limit: int = 30,
+                 topic: str | None = None) -> list[dict]:
+        """
+        Race control up to `until`, newest first, with each message read.
+
+        `topic` picks one of `stewards`, `track` or `noise`; None gives all
+        three. The raw columns are kept alongside so nothing is lost to the parse.
+        """
+        return penalties_model.feed(self.race_control, self.drivers, until, limit, topic)
 
 
 _LAP_COLUMNS = ["driver_number", "driver", "lap_number", "lap_start_t", "lap_end_t"]

@@ -32,6 +32,7 @@ import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import duckdb
 import numpy as np
 import pandas as pd
 
@@ -41,6 +42,7 @@ from racecraft.model import compounds as compounds_model
 from racecraft.model import race_inputs as race_inputs_model
 from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
+from racecraft.api import penalties
 from racecraft.api import tyre_sets_view
 from racecraft.store.db import connect
 
@@ -319,7 +321,9 @@ def _degradation_curve(laps: pd.DataFrame, measured: dict[str, float],
         try:
             residuals = pace_model.partial_residuals(clean)
         except (pace_model.Confounded, ValueError) as error:
-            log.info("%s has no separable wear to plot: %s", session_key, error)
+            # This function is not told which session it is drawing, so the
+            # message says what failed rather than naming a race it cannot see.
+            log.info("no separable wear to plot: %s", error)
             residuals = None
         if residuals is not None:
             # Rebased so a new tyre sits at zero, which is where the model's
@@ -488,10 +492,25 @@ def _race_tables() -> dict:
         "sessions": con.sql("""select session_key, location, year, round, date_utc
                                from sessions where session = 'R'""").df(),
         "status": con.sql("select session_key, t, status from track_status").df(),
+        "race_control": _race_control(con),
     }
     with _lock:
         _tables_cache[key] = value
     return value
+
+
+def _race_control(con) -> pd.DataFrame:
+    """
+    Race control, for leaving penalised stops out of pit loss.
+
+    Optional: a lake ingested before race control was stored has no such table,
+    and then every stop is kept, which is what happened before this was read.
+    """
+    try:
+        return con.sql("select session_key, t, message from race_control "
+                       "where message is not null").df()
+    except duckdb.CatalogException:
+        return pd.DataFrame(columns=["session_key", "t", "message"])
 
 
 def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = None,
@@ -524,7 +543,9 @@ def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = No
 
     by_circuit = circuit_model.canonical_circuit(laps["location"]) if not laps.empty else laps["location"]
     value = {
-        "pit_loss": {p.circuit: p.as_dict() for p in circuit_model.pit_loss(laps)} if not laps.empty else {},
+        "pit_loss": ({p.circuit: p.as_dict() for p in circuit_model.pit_loss(
+                         laps, penalties.penalised_stops(laps, tables["race_control"]))}
+                     if not laps.empty else {}),
         # When in a race neutralisations arrive, across the sport: a rate alone
         # would put as many on lap three as on lap forty.
         "neutralisation_profile": (circuit_model.neutralisation_profile(status, laps)

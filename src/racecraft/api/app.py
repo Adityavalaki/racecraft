@@ -33,6 +33,7 @@ from racecraft.api import live_store
 from racecraft.api import places_view
 from racecraft.api import session as session_store
 from racecraft.api import tyre_sets_view
+from racecraft.api import penalties
 from racecraft.store.db import connect
 
 log = logging.getLogger(__name__)
@@ -112,8 +113,14 @@ def session_laps(session_key: str) -> dict:
 
 
 @app.get("/api/sessions/{session_key}/messages")
-def session_messages(session_key: str, until: float, limit: int = Query(30, ge=1, le=200)) -> list[dict]:
-    return _load(session_key).messages(until, limit)
+def session_messages(session_key: str, until: float,
+                     limit: int = Query(30, ge=1, le=200),
+                     topic: str | None = Query(
+                         None, description="stewards, track or noise; omitted for all three")
+                     ) -> list[dict]:
+    if topic is not None and topic not in penalties.TOPICS:
+        raise HTTPException(status_code=400, detail=f"topic must be one of {penalties.TOPICS}")
+    return _load(session_key).messages(until, limit, topic)
 
 
 @app.get("/api/sessions/{session_key}/insight")

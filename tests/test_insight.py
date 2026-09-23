@@ -464,3 +464,24 @@ def test_the_strategy_tab_and_the_simulator_use_the_same_safety_car_timing(lake_
     assert "neutralisation_profile" in constants
     out = insight.for_session(f"{YEAR}_02_R")
     assert out["plans_with_risk"], "nothing costed with safety cars"
+
+
+def test_a_race_with_no_separable_wear_draws_no_curve_instead_of_failing(monkeypatch):
+    """
+    The fallback when the regression cannot separate wear from everything else
+    used to name a variable this function never had, so the one path meant to
+    degrade quietly raised NameError and took `/insight` down with it.
+    """
+    from racecraft.model import pace as pace_model
+
+    laps = pd.DataFrame({"compound": ["SOFT"] * 3, "tyre_life": [1, 2, 3],
+                         "lap_time_s": [90.0, 90.1, 90.2]})
+    monkeypatch.setattr(pace_model, "clean_race_laps", lambda frame: frame)
+
+    def confounded(frame):
+        raise pace_model.Confounded("wear and fuel move together here")
+
+    monkeypatch.setattr(pace_model, "partial_residuals", confounded)
+    curve = insight._degradation_curve(laps, {"SOFT": 0.05}, 1.5, observed=True)
+    assert isinstance(curve, list)
+    assert all(point.get("observed_s") is None for point in curve)

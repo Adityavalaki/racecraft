@@ -220,15 +220,123 @@ as lapped when the leader had completed more laps *at the moment that car last
 crossed the line*; comparing current lap counts would label the whole field
 "+1 LAP" for most of every lap.
 
+### Race control
+
+The feed carries 9,947 race and sprint messages and, until now, the interface
+read none of them. They are the only place it says *why* something happened, so
+`api/penalties.py` reads them into per-car state: seconds still to serve, stop/go
+and drive-through penalties outstanding, open investigations, deleted lap times.
+The tower's **PEN** column shows the most consequential thing outstanding against
+each car and the whole standing in its tooltip. The **Stewards** panel, beside the
+track map, holds the verdicts themselves — it is watched rather than consulted, and
+news behind a tab is news nobody sees. It takes width the map was not using, so
+the tower keeps its floor and the charts below keep their height; below 1360px it
+drops under the map rather than squeezing three columns.
+
+Kept deliberately plain. Two lines per verdict — who and what, then the offence —
+because four columns in a narrow panel crush all four. No controls of its own: the
+tower's selection is the only filter, which is how every other panel here narrows
+already. Emphasis carries the hierarchy, a penalty loud and anything settled grey.
+
+Two stacked lists, verdicts above and **Track** below, with no switch between
+them: both visible, nothing hidden behind a control, nothing to discover.
+
+The track list is short because the feed's churn is left out. `Event.topic`
+splits race control three ways rather than two: a blue flag is shown to one
+lapped car as it is passed and a sector flag repeats every time a sector changes
+state, and together those are **4,771 noise messages** against 3,257 from the
+stewards and 1,919 genuine track events. What is left — the safety car, the race
+flags, the pit exit, DRS, a slippery patch, a recovery vehicle, a resumption
+order — is a median of **18 events a race**, which is short enough to read. The
+line is drawn on the flag words rather than on the phrase "IN TRACK SECTOR",
+because `TRACK SURFACE SLIPPERY IN TRACK SECTOR 11` is a condition worth reading
+and 176 of those were swept up by the looser rule.
+
+Deleted lap times are left out of the verdicts list too, and they are **47% of
+every steward message** (1,533 of 3,257): in a race a deletion is a track-limits
+tick, and what matters is how many a car has collected, which is exactly what the
+PEN column counts. Nothing is lost — every message is still served by the API
+(`?topic=track`, `?topic=noise`) and still counted against the driver.
+
+The **PEN** column answers one question, *does this car still owe something?*, and
+shows four marks rather than a vocabulary: `DSQ` out of the race, `+5s` for time
+still to serve, `STOP` for a stop/go or drive-through, `•` while the stewards are
+looking, `–` for nothing. An earlier version answered five questions with eight
+marks, which had to be learned before the column meant anything; everything
+settled — a served penalty, a deleted lap, a black-and-white flag — is in the
+tooltip and the panel instead, because it changes no decision.
+
+What counts as the stewards' is whether the message carries a verdict, not
+whether it says `FIA STEWARDS:`. Only 971 of the 3,257 do, so filtering on the
+prefix would drop **70%** of them — no lap deletion carries it and most incident
+notices do not either. Nothing with the prefix lacks a verdict, so the verdict is
+the stronger test. The filter is applied server-side before the limit, so asking
+for the stewards' last sixty returns sixty of theirs rather than sixty of
+everything of which twenty happen to be theirs.
+
+It is a pure function of the message table and a time, like `timing.classify`
+beside it. That is what makes scrubbing correct: an accumulator would be wrong
+the moment the clock went backwards, and the scrubber, the -30s button and live
+"following" all move it freely. At lap 12 the column shows what was known at lap
+12 however the clock got there, and it is computed at the same `t` as the gap
+next to it, so the two cannot describe different moments.
+
+Parsed rather than judged, because the FIA's text is machine-generated and its
+grammar is rigid. Three measurements over every race and sprint in the lake set
+the shape of it, and each corrected an assumption:
+
+* **Anchoring on the word CAR is wrong.** `CARS 31 (OCO), 77 (BOT) AND 20 (MAG)`
+  writes it once for three cars, and requiring it found only the first on
+  **1,514 messages** — every multi-car incident silently lost all but one car.
+  The three-letter code is the anchor instead, and the number in front of it is
+  the car. That code is also what makes extraction safe: a message is full of
+  other numbers — `1:40.956`, `TURN 9`, `LAP 10`, `14:23:43` — and none of them
+  is followed by one. 3,229 of 3,256 car-concerning messages match; the 27 that
+  do not name no car, or name a team, which is resolved to that team's cars.
+* **Two things match that are not cars, and one of them is dangerous.** A
+  deletion ending `... 16:12:10 (PIT)` offers `10 (PIT)`, and 10 is a real
+  driver — so a message about car 23 charges a deleted lap to car 10. `CAR 26
+  (BED)` is the other kind: a real car in another championship sharing the feed.
+  **337** phantom matches are rejected across the lake, **200** of them carrying
+  a number that belongs to an actual driver. Timestamps are stripped before
+  scanning and every number is checked against this session's driver list.
+* **An incident is reported four times, not once.** Noted, then under
+  investigation, then a penalty or no further action — so counting messages
+  counts one incident four times. They are tied together instead: 15.8% carry a
+  trailing `(15:03:08)` that is the incident's own identity, and the rest match
+  on the offence plus an overlapping car, which links **88.1%** of noted
+  incidents to a later verdict. Matching on the offence alone was wrong and the
+  test that proves it is a real race: at 2026 Spain, SAI was in a TURN 8
+  collision with COL and another with HUL twenty seconds later, both `CAUSING A
+  COLLISION`. The second merged into the first and was cleared by the first's
+  verdict. A closing verdict may now only attach to an open incident whose cars
+  its own are a subset of.
+
+The verdicts are a closed set and `_classify` leaves nothing unread across all
+3,256. `tests/test_penalties.py` guards that against a new season's wording —
+it is what caught `STOP-AND-GO` as a second spelling of `STOP/GO`, and the one
+`BLACK FLAG` in the lake, a disqualification that had been folded in with the
+black-and-white warning flag.
+
+What no rule reaches is whether an awarded time penalty was **served at a stop
+or added to race time at the flag**. `PENALTY SERVED` settles 48 of 235; the
+rest are left pending rather than guessed at. That matters beyond the display:
+235 in-race penalty messages stand against 1,958 measured green-flag stops, and
+a penalty served at a stop inflates that stop's cost *inside* the 5–60 s window
+`model/circuit.py` keeps — so pit loss quietly absorbs it. Deciding it is a
+question about a sequence rather than a string, which is the one place in this
+feature a judgment would earn its keep.
+
 ### API
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/sessions` | every session in the lake |
 | `GET /api/sessions/{key}` | drivers, track outline, session bounds |
-| `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry |
+| `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry, penalties |
 | `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
 | `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
+| `GET /api/sessions/{key}/messages?until=&limit=&topic=` | race control up to `until`, newest first, each message read; `topic` is `stewards`, `track` or `noise` |
 | `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
 | `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
 | `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
@@ -1153,6 +1261,25 @@ more correct.
 model. Knowing where a plan rejoins requires a field to rejoin *into*, which the
 seconds-based model does not have and `model/race.py` does. Joining them is the
 remaining work, and it is a simulation problem rather than a measurement one.
+
+## TypeSafe: where a model judgment would and would not help
+
+Every rule-based part of the project was audited with one question: is this a
+known rule applied to structured data, which code does better — exact, free,
+instant, the same answer twice — or a semantic judgment that only looks like
+parsing? Each verdict below was measured on the lake rather than assumed.
+
+| Candidate | Verdict | Evidence |
+|---|---|---|
+| Reading race control (`api/penalties.py`) | **Code.** | Machine-written, closed grammar: 3,257 of 3,257 steward messages classified, every car extracted, no residue for a model. |
+| Which stop a penalty was served at | **Code.** | The rule is in the regulations. Tested against the 40 penalties the feed marks `PENALTY SERVED`, it is never contradicted; the six not served at the very next stop are explained by timing and track status. |
+| Penalised stops in pit loss | **Code, and a real bug.** | `model/circuit.pit_loss` averaged in stops that served a penalty, 8.4 s dearer each. Now excluded: 1,954 stops fall to 1,884, Montréal moves 0.65 s. |
+| Circuit renames (`CIRCUIT_ALIASES`) | **Judgment, not built.** | Correct today — the only event at two circuits is the Spanish GP, which really moved. A rename would split a circuit's history silently, so `test_no_event_is_split_across_two_names_for_one_circuit` now fails loudly instead. Deciding rename-or-move is where an entity-alignment Score would fit, but a few names a season is a person's job. |
+| Pirelli compounds by race name | **Not a live path.** | Every caller joins by round; the name match never runs. |
+| Explaining ingest warnings | **Judgment, not built.** | Whether a `WARN` in `ingest/quality.py` is explained by the race (a red flag, rain, a stand-in) is a real semantic question over race control, and the one worth building first if a model is added. |
+
+Nothing here calls a model, and none of it is blocked on one. The TypeSafe SDK is
+not a dependency; adding it is a decision for when a judgment above earns it.
 
 ## What is left
 

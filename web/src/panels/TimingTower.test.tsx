@@ -9,7 +9,7 @@ function driver(overrides: Partial<DriverTiming>): DriverTiming {
     position: 1, status: "racing", laps_completed: 10, gap_to_leader_s: null, gap_text: "",
     interval_s: null, interval_text: "", laps_down: 0, last_lap_s: 92.608, best_lap_s: 92.608,
     is_session_best: true, is_personal_best: true, compound: "HARD", tyre_life: 12,
-    laps_in_stint: 8, stops: 1,
+    laps_in_stint: 8, stops: 1, penalties: null,
     sectors: [
       { sector: 1, seconds: 29.741, state: "session_best" },
       { sector: 2, seconds: 39.916, state: "personal_best" },

@@ -75,7 +75,9 @@ def dry_races(con, seasons: dict) -> list[dict]:
     all_laps = con.sql("""select l.*, s.location, s.year from laps l join sessions s using (session_key)
                           where s."session" = 'R'""").df()
     all_laps = all_laps.assign(circuit=circuit_model.canonical_circuit(all_laps["location"]))
-    losses = {p.circuit: p.seconds for p in circuit_model.pit_loss(all_laps)}
+    from racecraft.api import penalties
+    losses = {p.circuit: p.seconds for p in circuit_model.pit_loss(
+        all_laps, penalties.penalised_stops_in(con, all_laps))}
 
     cases = []
     for session_key, laps in all_laps.groupby("session_key"):

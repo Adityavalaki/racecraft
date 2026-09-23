@@ -50,6 +50,7 @@ function timing(number: number, position: number): DriverTiming {
     status: "racing", laps_completed: 0, gap_to_leader_s: null, gap_text: "", interval_s: null,
     interval_text: "", laps_down: 0, last_lap_s: null, best_lap_s: null, is_session_best: false,
     is_personal_best: false, compound: null, tyre_life: null, laps_in_stint: null, stops: 0, sectors: [],
+    penalties: null,
   };
 }
 
