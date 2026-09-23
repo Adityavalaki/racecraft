@@ -109,3 +109,32 @@ def test_safety_cars_that_cluster_early_come_back_as_weights():
     profile = circuit.neutralisation_profile(pd.DataFrame(rows), pd.DataFrame(laps))
     assert profile[0] == pytest.approx(10.0)      # all of them in the first tenth
     assert sum(profile) / len(profile) == pytest.approx(1.0)
+
+
+# Events that genuinely moved to another circuit, checked by hand: the Spanish
+# Grand Prix left Barcelona for Madrid in 2026. Anything else that shows up here
+# is FastF1 renaming a location, which splits that circuit's history.
+MOVED_EVENTS = {"Spanish Grand Prix"}
+
+
+@pytest.mark.realdata
+def test_no_event_is_split_across_two_names_for_one_circuit():
+    """
+    The failure `CIRCUIT_ALIASES` guards against is silent: when FastF1 renames a
+    location, as it did Monaco to "Monte Carlo" and Miami to "Miami Gardens", a
+    circuit's pit loss and safety-car history quietly splits in two. This makes
+    the next rename fail here instead, naming the event, so a person decides
+    whether it is a rename (add an alias) or a real move (add it above).
+    """
+    from racecraft.store.db import connect
+
+    try:
+        sessions = connect().sql("select distinct event_name, location from sessions").df()
+    except Exception:
+        pytest.skip("no lake")
+    if sessions.empty:
+        pytest.skip("no sessions in the lake")
+    sessions["circuit"] = circuit.canonical_circuit(sessions["location"])
+    spread = sessions.groupby("event_name")["circuit"].nunique()
+    split = sorted(set(spread[spread > 1].index) - MOVED_EVENTS)
+    assert not split, f"held at more than one circuit name: {split}"

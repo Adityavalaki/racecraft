@@ -117,6 +117,12 @@ def _pace_by_lap_effects(args, con) -> int:
     return 0
 
 
+def _penalised(con, laps):
+    """Stops that served a penalty, which pit loss must not average in."""
+    from racecraft.api import penalties
+    return penalties.penalised_stops_in(con, laps)
+
+
 def cmd_strategy(args) -> int:
     """Cheapest plans for one circuit, from measured degradation and pit loss."""
     import numpy as np
@@ -125,7 +131,8 @@ def cmd_strategy(args) -> int:
     con = connect()
     name = circuit_model.canonical_circuit(args.circuit)
     laps_all = _race_laps(con)
-    loss = next((p for p in circuit_model.pit_loss(laps_all) if p.circuit == name), None)
+    loss = next((p for p in circuit_model.pit_loss(laps_all, _penalised(con, laps_all))
+                 if p.circuit == name), None)
     if loss is None:
         print(f"no pit loss known for '{args.circuit}': not enough green-flag stops in the lake")
         return 1
@@ -430,7 +437,7 @@ def cmd_circuits(args) -> int:
     sessions = con.sql("select session_key, location from sessions where session='R'").df()
     track_status = con.sql("select session_key, t, status from track_status").df()
 
-    losses = {p.circuit: p for p in circuit_model.pit_loss(laps)}
+    losses = {p.circuit: p for p in circuit_model.pit_loss(laps, _penalised(con, laps))}
     risks = {r.circuit: r for r in circuit_model.safety_car_risk(track_status, sessions, laps)}
 
     print(f"{'circuit':<20} {'pit loss':>9} {'stops':>6}   {'races':>6} {'SC/VSC':>7} {'shrunk':>7} {'laps lost':>10}")
@@ -458,7 +465,7 @@ def cmd_circuit(args) -> int:
 
     sessions = con.sql("select session_key, location from sessions where session='R'").df()
     track_status = con.sql("select session_key, t, status from track_status").df()
-    loss = next((p for p in circuit_model.pit_loss(laps) if p.circuit == name), None)
+    loss = next((p for p in circuit_model.pit_loss(laps, _penalised(con, laps)) if p.circuit == name), None)
     risk = next((r for r in circuit_model.safety_car_risk(track_status, sessions, laps) if r.circuit == name), None)
 
     print(f"{name}\n")

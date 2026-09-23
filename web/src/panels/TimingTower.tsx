@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { COMPOUND_COLORS, formatLapTime, formatSector, type DriverTiming } from "../api";
+import { PenaltyChip } from "./PenaltyChip";
 
 interface Props {
   drivers: DriverTiming[];
@@ -14,6 +15,10 @@ interface Props {
  * Colour carries meaning and nothing else: purple is the session's fastest
  * lap, green a driver's own best, and the tyre chip uses Pirelli's compound
  * colours. Team colour is a bar, never text, so it never fights the numbers.
+ *
+ * PEN is what race control has said about the car as of the clock's current
+ * time, which is the same `t` the gap beside it was computed at — so the two can
+ * never describe different moments, however the clock got here.
  */
 export const TimingTower = memo(function TimingTower({ drivers, selected, onSelect, sessionBest }: Props) {
   return (
@@ -30,6 +35,7 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
         <span>S3</span>
         <span>TYRE</span>
         <span>PIT</span>
+        <span title="what race control has said about this car">PEN</span>
       </div>
       <div className="tower-rows">
         {drivers.map((driver) => {
@@ -80,6 +86,7 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
                 )}
               </span>
               <span className="num stops">{driver.stops}</span>
+              <PenaltyChip against={driver.penalties} />
             </button>
           );
         })}

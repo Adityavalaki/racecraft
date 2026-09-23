@@ -64,7 +64,6 @@ def main(argv: list[str] | None = None) -> int:
             if not own.ranking or not fresh.ranking:
                 skipped.append(f"{name} P{grid}: no plans to race")
                 continue
-            by_plan = {str(e.plan): e for e in fresh.ranking}
             best_own, best_fresh = str(own.ranking[0].plan), str(fresh.ranking[0].plan)
             # The new-tyre pick, raced on the tyres the car actually had.
             as_raced = next((e for e in own.ranking if str(e.plan) == best_fresh), None)

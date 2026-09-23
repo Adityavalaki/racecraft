@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LIVE_KEY, api, type Insight, type LapSeries, type SessionInfo, type SessionState, type SessionSummary } from "./api";
+import { LIVE_KEY, api, type Insight, type LapSeries, type RaceControlEvent, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
+import { Stewards, filterLabel } from "./panels/Stewards";
 import { RaceTrace } from "./panels/RaceTrace";
 import { StrategyBoard } from "./panels/StrategyBoard";
 import { TimingTower } from "./panels/TimingTower";
@@ -41,6 +42,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("trace");
   const [insight, setInsight] = useState<Insight | null>(null);
+  const [stewards, setStewards] = useState<RaceControlEvent[]>([]);
+  const [trackLog, setTrackLog] = useState<RaceControlEvent[]>([]);
   const [insightError, setInsightError] = useState<string | null>(null);
   // A live session grows while it is being watched. Following means the clock
   // rides the newest lap; scrubbing back stops following, because someone
@@ -70,6 +73,8 @@ export default function App() {
     setState(null);
     setLaps([]);
     setCrossings(null);
+    setStewards([]);
+    setTrackLog([]);
     setSelected([]);
     setError(null);
     setInsight(null);
@@ -161,6 +166,46 @@ export default function App() {
     };
   }, [sessionKey, info]);
 
+  // The stewards' panel is always on screen, so it is always polled — but half
+  // as often as the tower, because a verdict arrives a few times a race and the
+  // rows are a few dozen. Asked for with `stewards=true` so the limit applies
+  // after the filter: sixty of theirs, not sixty of everything of which twenty
+  // are theirs. The tower's PEN column does not depend on this — it arrives with
+  // the state above, at the same `t`.
+  useEffect(() => {
+    if (!sessionKey || !info) return;
+    let active = true;
+    let inFlight = false;
+    const pull = () => {
+      if (inFlight || !active) return;
+      const { key, t } = latest.current;
+      if (!key) return;
+      inFlight = true;
+      // Two requests, because the limit applies after the filter: each list gets
+      // its own newest rather than sharing one budget.
+      Promise.all([
+        api.messages(key, t, 60, "stewards"),
+        api.messages(key, t, 25, "track"),
+      ])
+        // An error body is JSON too, so the shape is checked rather than assumed.
+        .then(([verdicts, log]) => {
+          if (!active) return;
+          setStewards(Array.isArray(verdicts) ? verdicts : []);
+          setTrackLog(Array.isArray(log) ? log : []);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    pull();
+    const timer = setInterval(pull, STATE_INTERVAL_MS * 2);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [sessionKey, info]);
+
   // Ride the leading edge while following. Reading clock.t here would make this
   // fire on every tick, so it watches only where the session now ends.
   const seekRef = useRef(clock.seek);
@@ -175,6 +220,13 @@ export default function App() {
     const counts = laps.map((d) => d.pit_in.filter(Boolean).length);
     return counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : null;
   }, [laps]);
+  const driverCodes = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const driver of info?.drivers ?? []) {
+      if (driver.abbreviation) out[driver.driver_number] = driver.abbreviation;
+    }
+    return out;
+  }, [info]);
   const sessionBest = useMemo(() => {
     const times = laps.flatMap((d) => d.lap_time_s.filter((v): v is number => v !== null));
     return times.length ? Math.min(...times) : null;
@@ -272,6 +324,21 @@ export default function App() {
           <section className="panel panel-map">
             <h2>Track map</h2>
             <TrackMap info={info} cars={cars} drivers={info.drivers} selected={selected} />
+          </section>
+
+          <section className="panel panel-stewards">
+            <h2>
+              Stewards
+              {filterLabel(selected, driverCodes) && <small> {filterLabel(selected, driverCodes)}</small>}
+            </h2>
+            <Stewards
+              events={stewards}
+              track={trackLog}
+              start={info.t_start}
+              codes={driverCodes}
+              selected={selected}
+              onSelect={toggleDriver}
+            />
           </section>
 
           <section className="panel panel-trace">

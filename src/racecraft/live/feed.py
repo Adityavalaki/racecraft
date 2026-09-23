@@ -24,6 +24,7 @@ stays historic-only until this is proven on a real weekend.
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import threading
@@ -124,10 +125,10 @@ def recording_t0(path: Path) -> pd.Timestamp | None:
                 line = line.strip()
                 if not line.startswith("["):
                     continue
-                try:
-                    _category, _message, stamp = json.loads(_as_json(line))
-                except (ValueError, TypeError):
+                parsed = _parse_line(line)
+                if parsed is None:
                     continue
+                _category, _message, stamp = parsed
                 if not stamp:
                     continue
                 moment = pd.Timestamp(stamp)
@@ -137,8 +138,31 @@ def recording_t0(path: Path) -> pd.Timestamp | None:
     return None
 
 
+def _parse_line(line: str) -> tuple | None:
+    """
+    One recording line — `[category, message, timestamp]` — or None if unreadable.
+
+    The recording is Python reprs, so Python reads it exactly. Swapping every
+    `'` for `"` to make JSON of it, as this used to, breaks on any string with an
+    apostrophe in it, which Python writes in double quotes: the line was skipped
+    and the *next* line's timestamp became session zero, shifting every time in
+    the session. The swap is kept only as a fallback for a line that is not a
+    Python literal at all.
+    """
+    try:
+        value = ast.literal_eval(line)
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        try:
+            value = json.loads(_as_json(line))
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    return tuple(value)
+
+
 def _as_json(line: str) -> str:
-    """The recording is Python reprs; FastF1 fixes them the same way."""
+    """The fallback: FastF1's own repair of a repr into JSON."""
     return line.replace("'", '"').replace("True", "true").replace("False", "false")
 
 

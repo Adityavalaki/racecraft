@@ -200,7 +200,9 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
     here = laps[circuit_model.canonical_circuit(laps["location"]) == name]
 
     # ---- the circuit: pit lane, safety cars, overtaking, pace, distance
-    loss = next((p for p in circuit_model.pit_loss(laps) if p.circuit == name), None)
+    from racecraft.api import penalties     # race control, read the same way the interface reads it
+    loss = next((p for p in circuit_model.pit_loss(laps, penalties.penalised_stops_in(con, laps))
+                 if p.circuit == name), None)
     if loss is None:
         raise NotEnoughData(
             f"no earlier race at {name} to measure its pit lane from"

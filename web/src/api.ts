@@ -33,6 +33,65 @@ export interface SessionInfo {
   has_position_data: boolean;
 }
 
+/** The three kinds of race control message. */
+export type Topic = "stewards" | "track" | "noise";
+
+/** How far along one thing the stewards are looking at has got. */
+export interface Incident {
+  stage: "noted" | "investigating" | "cleared" | "penalised";
+  reason: string | null;
+  cars: number[];
+  opened_t: number;
+  updated_t: number;
+}
+
+/** One race control message, read rather than raw. */
+export interface RaceControlEvent {
+  t: number;
+  lap: number | null;
+  kind: string;
+  seconds: number | null;
+  reason: string | null;
+  cars: number[];
+  incident: string | null;
+  /** True when the message carries a verdict, which is what makes it the stewards'. */
+  stewards: boolean;
+  /** Which list it belongs in. See `api/penalties.Event.topic`. */
+  topic: Topic;
+  message: string;
+  category?: string | null;
+  flag?: string | null;
+  scope?: string | null;
+}
+
+/**
+ * What race control has said about one car, as of the clock's current time.
+ *
+ * `pending_s` is time the car still has to serve and `served_s` time it has;
+ * `awarded_s` is the two together. Everything here is recomputed at each `t`,
+ * so scrubbing back shows what was known then.
+ */
+export interface DriverPenalties {
+  driver_number: number;
+  pending_s: number;
+  served_s: number;
+  awarded_s: number;
+  stop_go: number;
+  drive_through: number;
+  penalties: number;
+  laps_deleted: number;
+  black_and_white: number;
+  reprimands: number;
+  warnings: number;
+  disqualified: boolean;
+  under_investigation: number;
+  noted: number;
+  cleared: number;
+  outstanding: boolean;
+  incidents: Incident[];
+  events: RaceControlEvent[];
+}
+
 export interface DriverTiming {
   driver_number: number;
   abbreviation: string | null;
@@ -55,6 +114,8 @@ export interface DriverTiming {
   laps_in_stint: number | null;
   stops: number;
   sectors: SectorTime[];
+  /** null when race control has said nothing about this car yet. */
+  penalties: DriverPenalties | null;
 }
 
 export interface SectorTime {
@@ -441,6 +502,20 @@ export const api = {
   /** Slow the first time a season is asked for — the server fits it — then cached. */
   insight: (key: string, signal?: AbortSignal) =>
     get<Insight>(`/api/sessions/${key}/insight`, signal),
+  /**
+   * Race control up to `t`, newest first. Follows the clock like everything else.
+   *
+   * `topic` picks one of "stewards" (verdicts), "track" (safety car, flags, pit
+   * exit, DRS, conditions) or "noise" (blue and sector flags); omit it for all
+   * three. Filtering server-side matters — the limit is applied after it, so
+   * asking for the stewards' last twenty gets twenty of theirs.
+   */
+  messages: (key: string, t: number, limit = 40, topic?: Topic, signal?: AbortSignal) =>
+    get<RaceControlEvent[]>(
+      `/api/sessions/${key}/messages?until=${t.toFixed(2)}&limit=${limit}` +
+        (topic === undefined ? "" : `&topic=${topic}`),
+      signal,
+    ),
   liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
   /** Slow the first time for a race and grid slot — a few thousand races — then cached. */
   places: (key: string, grid: number, tyres: "car" | "new" = "car", signal?: AbortSignal) =>

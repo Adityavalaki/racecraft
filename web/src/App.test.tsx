@@ -75,8 +75,15 @@ function mockApi() {
     degradation_curve: [], plans: [], plans_with_risk: [], plans_unavailable: "no plans in this fixture", stints: [],
   };
 
+  const messages = [
+    { t: 1100, lap: 12, kind: "time_penalty", seconds: 5, reason: "TRACK LIMITS",
+      cars: [11], incident: null, stewards: true, topic: "stewards",
+      message: "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 11 (PER) - TRACK LIMITS" },
+  ];
+
   const fetchMock = vi.fn(async (url: string) => {
     const body = url.includes("/insight") ? insight
+      : url.includes("/messages") ? messages
       : url.includes("/state") ? state
       : url.includes("/frames") ? frames
       : url.includes("/laps") ? laps
