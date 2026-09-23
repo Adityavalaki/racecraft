@@ -329,22 +329,70 @@ def test_no_zero_is_returned_rather_than_guessed(live_dir):
     assert feed_module.recording_t0(live_dir / "missing.txt") is None
 
 
-def test_t0_is_not_moved_by_an_apostrophe_in_the_first_message(tmp_path):
-    """
-    Python writes a string containing an apostrophe in double quotes. Turning
-    every `'` into `"` to read it as JSON broke that line, it was skipped, and
-    the next line's timestamp became session zero.
-    """
-    path = tmp_path / "recording.txt"
-    path.write_text(
-        "['RaceControlMessages', {'Message': \"DRIVER'S BRIEFING AT 11:00\"}, '2026-09-26T13:00:00.000Z']\n"
-        "['TrackStatus', {'Status': '1', 'Message': 'AllClear'}, '2026-09-26T13:05:00.000Z']\n",
-        encoding="utf-8")
-    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:00:00.000")
+# --------------------------------------------- one clock for laps and race control
+
+STARTED_AFTER_RECORDER = (
+    "['Heartbeat', {'Utc': '2026-09-24T08:10:00.000Z'}, '2026-09-24T08:10:00.100Z']\n"
+    "['SessionData', {'StatusSeries': {'1': {'Utc': '2026-09-24T08:30:00.000Z', "
+    "'SessionStatus': 'Started'}}}, '2026-09-24T08:30:00.200Z']\n"
+    "['TrackStatus', {'Status': '1', 'Message': 'AllClear'}, '2026-09-24T08:31:00.000Z']\n"
+)
+NOT_STARTED_YET = (
+    "['Heartbeat', {'Utc': '2026-09-24T08:10:00.000Z'}, '2026-09-24T08:10:00.100Z']\n"
+    "['TrackStatus', {'Status': '1', 'Message': 'AllClear'}, '2026-09-24T08:11:00.000Z']\n"
+)
+APOSTROPHE_FIRST = (
+    "['RaceControlMessages', {'Message': \"DRIVER'S BRIEFING\"}, '2026-09-24T08:10:00.000Z']\n"
+    "['TrackStatus', {'Status': '1', 'Message': 'AllClear'}, '2026-09-24T08:12:00.000Z']\n"
+)
 
 
-def test_a_line_that_is_not_a_record_is_skipped(tmp_path):
+def _fastf1_zero(path):
+    from fastf1.livetiming.data import LiveTimingData
+
+    data = LiveTimingData(str(path))
+    data.load()
+    return data, pd.Timestamp(data._start_date)
+
+
+@pytest.mark.parametrize("recording", [STARTED_AFTER_RECORDER, NOT_STARTED_YET, APOSTROPHE_FIRST],
+                         ids=["started-after-recorder", "not-started-yet", "apostrophe-first"])
+def test_race_control_uses_the_zero_fastf1_measured_laps_from(tmp_path, recording):
+    """
+    Laps are timed by FastF1's parse of the recording; race control must be on
+    the same clock or every penalty sits beside the wrong lap in the tower.
+    """
     path = tmp_path / "recording.txt"
-    path.write_text("[not a record\n['TrackStatus', {'Status': '1'}, '2026-09-26T13:05:00.000Z']\n",
-                    encoding="utf-8")
-    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:05:00.000")
+    path.write_text(recording, encoding="utf-8")
+    data, zero = _fastf1_zero(path)
+    assert feed_module.live_t0(data, path) == zero
+
+
+def test_a_recorder_started_early_is_not_the_zero(tmp_path):
+    """
+    The case the runbook creates: the recorder on at 08:10 for an 08:30 session.
+    Using its first message as zero put race control twenty minutes off the laps.
+    """
+    path = tmp_path / "recording.txt"
+    path.write_text(STARTED_AFTER_RECORDER, encoding="utf-8")
+    data, _ = _fastf1_zero(path)
+    assert feed_module.live_t0(data, path) == pd.Timestamp("2026-09-24T08:30:00")
+    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-24T08:10:00.100")
+
+
+def test_the_fallback_reads_the_file_the_way_fastf1_does(tmp_path):
+    """A line FastF1 cannot parse does not count for its zero, so not for ours either."""
+    path = tmp_path / "recording.txt"
+    path.write_text(APOSTROPHE_FIRST, encoding="utf-8")
+    _, zero = _fastf1_zero(path)
+    assert feed_module.recording_t0(path) == zero == pd.Timestamp("2026-09-24T08:12:00")
+
+
+def test_no_start_date_from_fastf1_falls_back_to_the_file(tmp_path):
+    path = tmp_path / "recording.txt"
+    path.write_text(NOT_STARTED_YET, encoding="utf-8")
+
+    class Unparsed:
+        _start_date = None
+
+    assert feed_module.live_t0(Unparsed(), path) == pd.Timestamp("2026-09-24T08:10:00.100")
