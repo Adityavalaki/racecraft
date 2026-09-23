@@ -26,7 +26,7 @@ import pandas as pd
 from racecraft import config
 from racecraft.api import penalties as penalties_model
 from racecraft.api import timing
-from racecraft.store.db import connect
+from racecraft.store.db import connect, partition
 
 log = logging.getLogger(__name__)
 
@@ -158,8 +158,12 @@ class SessionData:
     # ------------------------------------------------------------- loading
 
     def _load_channels(self, con, table: str, columns: list[str]) -> dict[int, Channel]:
+        # The partition columns in the filter let DuckDB open only this session's
+        # file. Without them it opens all 420 to check each one, and repeated
+        # many-file scans crash DuckDB outright; see `store/db.py`.
         df = con.sql(f"""select driver_number, t, {', '.join(columns)}
-                         from {table} where session_key = '{self.session_key}' order by driver_number, t""").df()
+                         from {table} where session_key = '{self.session_key}'{partition(self.session_key)}
+                         order by driver_number, t""").df()
         out: dict[int, Channel] = {}
         if df.empty:
             return out

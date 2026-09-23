@@ -327,3 +327,24 @@ def test_no_zero_is_returned_rather_than_guessed(live_dir):
     empty.write_text("", encoding="utf-8")
     assert feed_module.recording_t0(empty) is None
     assert feed_module.recording_t0(live_dir / "missing.txt") is None
+
+
+def test_t0_is_not_moved_by_an_apostrophe_in_the_first_message(tmp_path):
+    """
+    Python writes a string containing an apostrophe in double quotes. Turning
+    every `'` into `"` to read it as JSON broke that line, it was skipped, and
+    the next line's timestamp became session zero.
+    """
+    path = tmp_path / "recording.txt"
+    path.write_text(
+        "['RaceControlMessages', {'Message': \"DRIVER'S BRIEFING AT 11:00\"}, '2026-09-26T13:00:00.000Z']\n"
+        "['TrackStatus', {'Status': '1', 'Message': 'AllClear'}, '2026-09-26T13:05:00.000Z']\n",
+        encoding="utf-8")
+    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:00:00.000")
+
+
+def test_a_line_that_is_not_a_record_is_skipped(tmp_path):
+    path = tmp_path / "recording.txt"
+    path.write_text("[not a record\n['TrackStatus', {'Status': '1'}, '2026-09-26T13:05:00.000Z']\n",
+                    encoding="utf-8")
+    assert feed_module.recording_t0(path) == pd.Timestamp("2026-09-26T13:05:00.000")

@@ -25,6 +25,23 @@ from racecraft.store.schema import TABLES
 FILE_NAME = "data.parquet"
 
 
+# Bumped by every write and delete in this process, so `store/db.connect` knows
+# to reload without walking the lake to find out. Writes from another process —
+# the ingest command while the server runs — are found by its periodic walk.
+_generation = 0
+
+
+def generation() -> int:
+    """How many times this process has changed a lake."""
+    return _generation
+
+
+def touch() -> None:
+    """Record a change made to the lake outside `write_session` and `delete_session`."""
+    global _generation
+    _generation += 1
+
+
 def partition_dir(table: str, year: int, round_number: int, session: str, lake: Path | None = None) -> Path:
     lake = lake or config.LAKE_DIR
     return lake / table / f"year={year}" / f"round={round_number:02d}" / f"session={session}"
@@ -71,6 +88,7 @@ def write_session(tables: dict[str, pd.DataFrame], year: int, round_number: int,
         pq.write_table(arrow_tables[name], tmp, compression="zstd", compression_level=6)
         os.replace(tmp, target)
         report[name] = {"rows": arrow_tables[name].num_rows, "bytes": target.stat().st_size}
+    touch()
     return report
 
 
@@ -79,6 +97,7 @@ def delete_session(year: int, round_number: int, session: str, lake: Path | None
         d = partition_dir(table, year, round_number, session, lake)
         if d.exists():
             shutil.rmtree(d)
+    touch()
 
 
 def lake_size_bytes(lake: Path | None = None) -> int:

@@ -75,6 +75,7 @@ def test_files_written_before_a_column_existed_still_read(tables, tmp_path):
     lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
     old_file = lake.partition_dir("results", 2024, 1, "R", tmp_path) / lake.FILE_NAME
     pq.write_table(pq.read_table(old_file).drop(["q1_s", "q2_s", "q3_s"]), old_file)
+    lake.touch()      # written behind the lake's back, as an older ingest would have
 
     quali = {name: df.copy() for name, df in tables.items()}
     for df in quali.values():
@@ -84,3 +85,66 @@ def test_files_written_before_a_column_existed_still_read(tables, tmp_path):
 
     rows = connect(tmp_path).sql("select session, q1_s from results order by session, q1_s").fetchall()
     assert rows == [("Q", 90.1), ("Q", 90.4), ("R", None), ("R", None)]
+
+
+# ---------------------------------------------------------------- the database
+
+def test_a_session_ingested_later_is_seen_at_once(tables, tmp_path):
+    """The small tables are held in memory now; a write must still show up."""
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    assert connect(tmp_path).sql("select count(distinct session_key) from laps").fetchone()[0] == 1
+    second = {name: frame.assign(session_key="2024_02_R") for name, frame in tables.items()}
+    lake.write_session(second, 2024, 2, "R", lake=tmp_path)
+    assert connect(tmp_path).sql("select count(distinct session_key) from laps").fetchone()[0] == 2
+
+
+def test_a_deleted_session_is_gone_at_once(tables, tmp_path):
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    assert connect(tmp_path).sql("select count(*) from sessions").fetchone()[0] == 1
+    lake.delete_session(2024, 1, "R", lake=tmp_path)
+    names = {r[0] for r in connect(tmp_path).sql("show tables").fetchall()}
+    assert "sessions" not in names
+
+
+def test_another_process_writing_is_found_by_the_recheck(tables, tmp_path, monkeypatch):
+    """No counter bump — as when the ingest command runs beside the server."""
+    from racecraft.store import db
+
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    connect(tmp_path)
+    second = {name: frame.assign(session_key="2024_02_R") for name, frame in tables.items()}
+    monkeypatch.setattr(lake, "touch", lambda: None)
+    lake.write_session(second, 2024, 2, "R", lake=tmp_path)
+    monkeypatch.setattr(db, "RECHECK_S", 0.0)
+    assert connect(tmp_path).sql("select count(distinct session_key) from laps").fetchone()[0] == 2
+
+
+def test_every_cursor_reads_in_utc(tables, tmp_path):
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    for _ in range(3):
+        assert connect(tmp_path).sql("select current_setting('TimeZone')").fetchone()[0] == "UTC"
+
+
+def test_many_connections_share_one_database(tables, tmp_path):
+    """
+    A fresh in-memory database per `connect()` crashed the process after a few
+    hundred; now every call is a cursor on the same one.
+    """
+    from racecraft.store import db
+
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    for _ in range(300):
+        connect(tmp_path).sql("select count(*) from laps").fetchone()
+    assert sum(1 for key in db._databases if key == str(tmp_path.resolve())) == 1
+
+
+@pytest.mark.parametrize("key, clause", [
+    ("2024_01_R", " and year = 2024 and round = 1 and session = 'R'"),
+    ("2023_05_SQ", " and year = 2023 and round = 5 and session = 'SQ'"),
+    ("live", ""),
+    ("2024_01_R'; drop table laps; --", ""),
+])
+def test_partition_filter(key, clause):
+    from racecraft.store.db import partition
+
+    assert partition(key) == clause

@@ -342,6 +342,8 @@ feature a judgment would earn its keep.
 | `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
 | `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
+**The server no longer crashes on long sessions.** DuckDB kills the process with a native fault after roughly 1,000–3,000 repeated scans of a table spread over many Parquet files (reproduced on 1.4.5, 1.5.4 and 1.5.5), and the API used to scan on ordinary requests. Now one database per lake is built once, the small tables are held in memory and reloaded only after an ingest, and telemetry is read one partition at a time; `store/db.py` has the measurements. A smoke test that crashed the process twice now serves all 420 sessions, 4,200 requests, without a failure. The first request after start-up pays about 10 s to load the small tables.
+
 A session is read into memory once (about 1.6 s), after which a state costs
 ~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
 server-side; the browser never sees raw samples.
