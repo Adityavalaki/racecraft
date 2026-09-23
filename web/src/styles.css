@@ -125,12 +125,11 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .grid {
   display: grid;
   /*
-    Three columns: the tower, the map, and the stewards beside it. The map is a
-    shape — it reads at any size, and once the circuit is recognisable neither
-    more height nor more width adds anything — so the stewards' panel takes room
-    the map was not using rather than room the tower or the charts need. The
-    tower keeps its floor and the lower panel spans both right-hand columns, so
-    nothing that was readable before is narrower now.
+    Three columns: the tower; the map above the tabbed charts; and race control,
+    split in two — the stewards beside the map, the track log beside the charts.
+    The map is a shape and reads at any size, so the right-hand column takes
+    width the map was not using. Each message panel gets a whole row's height
+    rather than half of one, so neither is a letterbox.
   */
   grid-template-columns: minmax(470px, 1.2fr) minmax(0, 1.5fr) minmax(300px, 0.66fr);
   /*
@@ -142,20 +141,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   gap: 6px;
   padding: 6px;
   min-height: 0;
-}
-/*
-  Below this there is not width for three, and squeezing them is worse than
-  stacking: the stewards drop under the map and the lower panel keeps its own
-  row, so every panel stays as wide as it needs.
-*/
-@media (max-width: 1360px) {
-  .grid {
-    grid-template-columns: minmax(430px, 1fr) minmax(0, 1.4fr);
-    grid-template-rows: minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.1fr);
-  }
-  .panel-tower { grid-row: 1 / 4; }
-  .panel-stewards { grid-column: 2; grid-row: 2; }
-  .panel-trace { grid-column: 2; grid-row: 3; }
 }
 .grid.loading {
   place-items: center;
@@ -182,10 +167,29 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--rule);
 }
 .panel h2 small { text-transform: none; letter-spacing: 0.04em; color: var(--rule-strong); }
-.panel-tower { grid-row: 1 / 3; }
+.panel-tower { grid-column: 1; grid-row: 1 / 3; }
 .panel-map { grid-column: 2; grid-row: 1; }
 .panel-stewards { grid-column: 3; grid-row: 1; }
-.panel-trace { grid-column: 2 / 4; grid-row: 2; }
+.panel-trace { grid-column: 2; grid-row: 2; }
+.panel-track { grid-column: 3; grid-row: 2; }
+/*
+  Below this there is not width for three, and squeezing them is worse than
+  stacking: the map and the charts take the full right-hand width, and the two
+  message panels sit side by side between them. These come after the rules
+  above on purpose — the same selectors, so whichever is later wins, and an
+  earlier version of this block lost to them and never took effect.
+*/
+@media (max-width: 1360px) {
+  .grid {
+    grid-template-columns: minmax(430px, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
+    grid-template-rows: minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.1fr);
+  }
+  .panel-tower { grid-column: 1; grid-row: 1 / 4; }
+  .panel-map { grid-column: 2 / 4; grid-row: 1; }
+  .panel-stewards { grid-column: 2; grid-row: 2; }
+  .panel-track { grid-column: 3; grid-row: 2; }
+  .panel-trace { grid-column: 2 / 4; grid-row: 3; }
+}
 
 /* ---------- timing tower ---------- */
 
@@ -216,7 +220,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
     minmax(3.2rem, 0.95fr)   /* sector 3 */
     minmax(3.3rem, 0.95fr)   /* tyre */
     minmax(1.8rem, 0.6fr)    /* stops */
-    minmax(2.9rem, 0.85fr);  /* penalties */
+    minmax(2.4rem, 0.7fr);   /* penalties: DSQ, +10s, STOP, a dot */
   align-items: center;
   gap: 0.3rem;
   padding: 0 0.5rem;
@@ -782,14 +786,20 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
-  .panel-tower, .panel-map, .panel-trace { grid-column: 1; grid-row: auto; }
+  .panel-tower, .panel-map, .panel-trace, .panel-stewards, .panel-track { grid-column: 1; grid-row: auto; }
+  .panel-stewards, .panel-track { height: 280px; }
   body { overflow: auto; }
   .app { height: auto; }
 }
 
 /* ---------------------------------------------------------------- tyre sets */
 
-.sets { display: flex; flex-direction: column; }
+/*
+  The tab body clips (overflow: hidden) so each tab scrolls itself, as the
+  strategy board and the tyre model do. This one did not, so every car below
+  the panel's height was cut off with no way to reach it.
+*/
+.sets { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
 .sets-rules {
   margin: 0.5rem 0.7rem;
   font-size: 0.74rem;
@@ -816,6 +826,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding-block: 0.35rem;
 }
 .sets-row { border-bottom: 1px solid var(--rule); cursor: pointer; }
+/* Now that the list scrolls, the compound headings stay put above it. */
+.sets-table .sets-head { position: sticky; top: 0; z-index: 1; background: var(--panel); }
 .sets-row:hover { background: var(--panel-2); }
 .sets-row.is-focused { background: rgba(255, 122, 51, 0.08); }
 .sets-driver {
@@ -921,9 +933,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   settled is grey. Two lines per verdict rather than four columns, because four
   columns in a panel this narrow crush all four.
 */
-.stw { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-
-.stw-rows { list-style: none; margin: 0; padding: 0; }
+.stw-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
 .stw-row {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr);
@@ -956,29 +966,30 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The track list is the feed's own sentence and needs no second colour. */
-.stw-reason.is-plain { color: var(--ink-mid); }
 
 .stw-row.is-loud { background: rgba(240, 101, 106, 0.06); }
 .stw-row.is-loud .stw-verdict { color: var(--red); }
 .stw-row.is-mid .stw-verdict { color: #f2c53d; }
 
-/* The divider between the two lists: a label, not a control. */
-.stw-sub {
-  position: sticky;
-  top: 0;
-  margin: 0;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-  background: var(--panel-2);
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
+/* ---------- track log ---------- */
+
+/* The feed's own sentence, one per line, and nothing to click. */
+.log-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
+.log-row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid #1b222a;
+  align-items: baseline;
 }
-.stw-rows.is-track .stw-row { grid-template-columns: 2.5rem minmax(0, 1fr); }
+.log-when {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.log-text { font-size: 0.74rem; line-height: 1.35; color: var(--ink-mid); }
 
 /* A driver code in a message, clickable like a tower row. */
 .rc-car {

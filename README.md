@@ -238,8 +238,10 @@ because four columns in a narrow panel crush all four. No controls of its own: t
 tower's selection is the only filter, which is how every other panel here narrows
 already. Emphasis carries the hierarchy, a penalty loud and anything settled grey.
 
-Two stacked lists, verdicts above and **Track** below, with no switch between
-them: both visible, nothing hidden behind a control, nothing to discover.
+Race control is two separate panels in the right-hand column: **Stewards**
+beside the map and **Track** beside the charts below it, each a full row high
+and each scrolling on its own. Both are always visible, with nothing hidden
+behind a control.
 
 The track list is short because the feed's churn is left out. `Event.topic`
 splits race control three ways rather than two: a blue flag is shown to one

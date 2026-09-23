@@ -4,8 +4,6 @@ import { formatClock, type RaceControlEvent } from "../api";
 interface Props {
   /** Verdicts only: what the server returns for `topic=stewards`. */
   events: RaceControlEvent[];
-  /** Track events — safety car, flags, pit exit, DRS, conditions. About 18 a race. */
-  track: RaceControlEvent[];
   start: number;
   /** Driver codes by car number, so a message names who rather than what number. */
   codes: Record<number, string>;
@@ -34,21 +32,9 @@ const HIDDEN = new Set(["lap_deleted"]);
  * Its own panel beside the map rather than a tab, because it is watched rather
  * than consulted: a penalty is news, and news behind a tab is news nobody sees.
  *
- * Two lists, stacked, with no switch between them: verdicts above, what happened
- * to the track below. Stacking rather than tabbing is the simpler thing to
- * understand — both are visible, nothing is hidden behind a control, and there is
- * nothing to discover.
- *
- * The track list is short because the feed's churn is left out of it. A blue flag
- * is shown to one lapped car as it is passed and a sector flag repeats every time
- * a sector changes state; together they are 4,771 messages saying nothing a pit
- * wall acts on. What is left — the safety car, the race flags, the pit exit, DRS,
- * a slippery patch, a recovery vehicle — is a median of **18 events a race**,
- * which is short enough to read. `api/penalties.Event.topic` draws that line, and
- * the noise stays on the API (`?topic=noise`) for anyone who wants it.
- *
- * The verdicts side is scanned for a car, so it follows the tower's selection.
- * Neither list has a control of its own.
+ * Only the stewards: what happened to the track is its own panel, `TrackLog`,
+ * below this one, because the two are read differently. This one is scanned for
+ * a car, so it follows the tower's selection, and it has no control of its own.
  *
  * What counts as the stewards' is decided server-side by whether the message
  * carries a verdict, not by its `FIA STEWARDS:` prefix — only 971 of the 3,257
@@ -56,7 +42,6 @@ const HIDDEN = new Set(["lap_deleted"]);
  */
 export const Stewards = memo(function Stewards({
   events,
-  track,
   start,
   codes,
   selected,
@@ -73,68 +58,47 @@ export const Stewards = memo(function Stewards({
   const shown = selected.length
     ? all.filter((event) => event.cars.some((car) => selected.includes(car)))
     : all;
-  // The track list is not about cars, so a selection never narrows it.
-  const trackShown = Array.isArray(track) ? track.filter((event) => event && event.message) : [];
 
+  if (shown.length === 0) {
+    return (
+      <p className="empty">
+        {selected.length ? "Nothing about these cars yet." : "The stewards have said nothing yet."}
+      </p>
+    );
+  }
   return (
-    <div className="stw">
-      {shown.length === 0 ? (
-        <p className="empty">
-          {selected.length
-            ? "Nothing about these cars yet."
-            : "The stewards have said nothing yet."}
-        </p>
-      ) : (
-        <ol className="stw-rows">
-          {shown.map((event, index) => (
-            <li key={`${event.t}-${index}`} className={`stw-row is-${weight(event.kind)}`}>
-              <span className="stw-when">{when(event, start)}</span>
-              <span className="stw-body">
-                <span className="stw-line">
-                  {event.cars.length === 0 ? (
-                    <span className="stw-nocar" title="no car named">–</span>
-                  ) : (
-                    event.cars.map((car) => (
-                      <button
-                        key={car}
-                        className={`rc-car${selected.includes(car) ? " is-selected" : ""}`}
-                        onClick={() => onSelect(car)}
-                        aria-pressed={selected.includes(car)}
-                        aria-label={`Select ${codes[car] ?? car}`}
-                      >
-                        {codes[car] ?? car}
-                      </button>
-                    ))
-                  )}
-                  <span className="stw-verdict">{verdictLabel(event)}</span>
-                </span>
-                {event.reason && (
-                  <span className="stw-reason" title={event.message}>
-                    {event.reason}
-                  </span>
-                )}
+    <ol className="stw-rows">
+      {shown.map((event, index) => (
+        <li key={`${event.t}-${index}`} className={`stw-row is-${weight(event.kind)}`}>
+          <span className="stw-when">{when(event, start)}</span>
+          <span className="stw-body">
+            <span className="stw-line">
+              {event.cars.length === 0 ? (
+                <span className="stw-nocar" title="no car named">–</span>
+              ) : (
+                event.cars.map((car) => (
+                  <button
+                    key={car}
+                    className={`rc-car${selected.includes(car) ? " is-selected" : ""}`}
+                    onClick={() => onSelect(car)}
+                    aria-pressed={selected.includes(car)}
+                    aria-label={`Select ${codes[car] ?? car}`}
+                  >
+                    {codes[car] ?? car}
+                  </button>
+                ))
+              )}
+              <span className="stw-verdict">{verdictLabel(event)}</span>
+            </span>
+            {event.reason && (
+              <span className="stw-reason" title={event.message}>
+                {event.reason}
               </span>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      <h3 className="stw-sub">Track</h3>
-      {trackShown.length === 0 ? (
-        <p className="empty">Nothing yet.</p>
-      ) : (
-        <ol className="stw-rows is-track">
-          {trackShown.map((event, index) => (
-            <li key={`${event.t}-${index}`} className="stw-row">
-              <span className="stw-when">{when(event, start)}</span>
-              <span className="stw-body">
-                <span className="stw-reason is-plain">{event.message}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+            )}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 });
 
