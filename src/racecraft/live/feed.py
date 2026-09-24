@@ -174,6 +174,7 @@ def tables_from_recording(path: Path, session: LiveSession,
                           telemetry: bool = False) -> dict[str, pd.DataFrame]:
     """Parse a recording into the lake's table shapes."""
     import fastf1
+    from fastf1.exceptions import DataNotLoadedError
     from fastf1.livetiming.data import LiveTimingData
 
     _use_project_cache()
@@ -185,9 +186,16 @@ def tables_from_recording(path: Path, session: LiveSession,
     livedata.load()
 
     ses = fastf1.get_session(session.year, session.round_number, session.session_name)
-    ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
-    return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
-                                 t0=live_t0(livedata, path))
+    try:
+        ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
+        return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
+                                     t0=live_t0(livedata, path))
+    except DataNotLoadedError as error:
+        # The recorder is connected and the feed is arriving, but nobody has
+        # completed a timed lap yet, so FastF1 has nothing to hand over. That is
+        # the first ten minutes of every session, not a fault.
+        raise NotRecording("no timed lap in the recording yet; the session has "
+                           f"not produced one ({error})") from None
 
 
 @dataclass
