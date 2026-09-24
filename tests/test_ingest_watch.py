@@ -138,3 +138,44 @@ def test_a_lock_left_behind_by_a_killed_watcher_is_taken_over(tmp_path, monkeypa
     os.utime(lock, (stale, stale))
     assert cli.take_lock(lock) is True
     assert lock.read_text() == str(os.getpid())
+
+
+def test_an_empty_parse_in_the_cache_is_thrown_away_and_the_session_asked_for_again(monkeypatch):
+    """
+    Baku 2026 practice sat unfetched for two hours behind an empty parse cached
+    during the session. The first failure clears the cache; the second attempt
+    starts from nothing and gets the real data.
+    """
+    from fastf1.exceptions import DataNotLoadedError
+
+    attempts, cleared = [], []
+
+    def ingest(season, rnd, ident, name, **kwargs):
+        attempts.append(ident)
+        if len(attempts) == 1:
+            raise DataNotLoadedError("stale")
+        return "written"
+
+    monkeypatch.setattr(cli, "ingest_one", ingest)
+    monkeypatch.setattr(cli, "wait_for_api_budget", lambda key: None)
+    monkeypatch.setattr(cli.lake, "is_ingested", lambda *a: False)
+    monkeypatch.setattr(cli, "forget_session", lambda *a: cleared.append(a) or 3)
+
+    assert cli.ingest_with_limits(2026, 15, "FP1", "Practice 1", force=False,
+                                  telemetry=False, prune=False) == "written"
+    assert len(attempts) == 2 and len(cleared) == 1
+
+
+def test_a_session_still_empty_after_a_fresh_start_really_is_not_published(monkeypatch):
+    from fastf1.exceptions import NoLapDataError
+
+    def always_empty(*a, **k):
+        raise NoLapDataError()
+
+    monkeypatch.setattr(cli, "ingest_one", always_empty)
+    monkeypatch.setattr(cli, "wait_for_api_budget", lambda key: None)
+    monkeypatch.setattr(cli.lake, "is_ingested", lambda *a: False)
+    monkeypatch.setattr(cli, "forget_session", lambda *a: 0)
+    with pytest.raises(NoLapDataError):
+        cli.ingest_with_limits(2026, 15, "FP2", "Practice 2", force=False,
+                               telemetry=False, prune=False)

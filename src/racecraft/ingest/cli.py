@@ -25,7 +25,7 @@ from pathlib import Path
 
 import fastf1
 import pandas as pd
-from fastf1.exceptions import RateLimitExceededError
+from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config
 from racecraft.ingest import api_budget, fastf1_source, quality
@@ -174,14 +174,48 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
     return "written"
 
 
+def forget_session(season: int, session_name: str, rnd: int) -> int:
+    """
+    Throw away everything FastF1 has cached for one session, parsed and raw.
+
+    A session read too early — mid-session, or before its data was published —
+    leaves an empty parse in the cache, and FastF1 serves that forever after
+    rather than asking again. Baku 2026 practice sat unfetched for two hours
+    behind one. Returns the number of cached files and responses removed.
+    """
+    ses = fastf1.get_session(season, rnd, session_name)
+    removed = purge_http_cache({ses.api_path})
+    folder = config.FASTF1_CACHE_DIR / ses.api_path.strip("/").removeprefix("static/")
+    if folder.is_dir():
+        removed += sum(1 for _ in folder.rglob("*") if _.is_file())
+        shutil.rmtree(folder, ignore_errors=True)
+    return removed
+
+
+# The errors a stale empty parse produces. The data exists on the server; what
+# is in the cache is an answer from before it did.
+STALE_CACHE_ERRORS = (DataNotLoadedError, NoLapDataError)
+
+
 def ingest_with_limits(season: int, rnd: int, ident: str, session_name: str, **kwargs) -> str:
-    """ingest_one, pausing for FastF1's rate limit instead of failing the session."""
+    """
+    ingest_one, pausing for FastF1's rate limit instead of failing the session,
+    and starting again from nothing if the cache has an empty parse in it.
+    """
     key = fastf1_source.make_session_key(season, rnd, ident)
+    cleared = False
     for attempt in range(1, 5):
         if kwargs["force"] or not lake.is_ingested(season, rnd, ident):
             wait_for_api_budget(key)
         try:
             return ingest_one(season, rnd, ident, session_name, **kwargs)
+        except STALE_CACHE_ERRORS as e:
+            if cleared:
+                raise                      # asked again from nothing; the data really is not there
+            removed = forget_session(season, session_name, rnd)
+            log.warning("%s: %s — cleared %d cached items and trying once more from nothing",
+                        key, type(e).__name__, removed)
+            cleared = True
         except RateLimitExceededError as e:
             # Only reachable if the budget estimate was short or the limiter
             # can't be inspected. Responses already fetched are cached, so the
