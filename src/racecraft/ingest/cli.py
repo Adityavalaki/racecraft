@@ -32,6 +32,10 @@ from racecraft.store import lake
 
 log = logging.getLogger("racecraft.ingest")
 
+# How long after a session starts its timing data can be expected. The session
+# itself is at most two hours of that; the rest is the feed being published.
+PUBLISH_DELAY = pd.Timedelta(hours=4)
+
 
 def completed_sessions(season: int, rounds: list[int] | None,
                        sessions: tuple[str, ...]) -> list[tuple[int, str, str, str]]:
@@ -50,10 +54,39 @@ def completed_sessions(season: int, rounds: list[int] | None,
             if ident not in sessions or pd.isna(date):
                 continue
             # Timing data is published a little after the session ends.
-            if pd.Timestamp(date).tz_localize("UTC") + pd.Timedelta(hours=4) > now:
+            if pd.Timestamp(date).tz_localize("UTC") + PUBLISH_DELAY > now:
                 continue
             out.append((rnd, ident, ev["EventName"], name))
     return out
+
+
+def waiting_for(season: int, rounds: list[int] | None,
+                sessions: tuple[str, ...]) -> list[tuple[str, "pd.Timestamp"]]:
+    """
+    Sessions that have run or will run today but are not ingestable yet, and
+    when they will be.
+
+    Only so the watcher can say what it is waiting for rather than sitting
+    silent: a session becomes ingestable `PUBLISH_DELAY` after it starts,
+    because the timing data is published a little after it ends.
+    """
+    schedule = fastf1.get_event_schedule(season, include_testing=False)
+    now = datetime.now(timezone.utc)
+    out = []
+    for _, ev in schedule.iterrows():
+        rnd = int(ev["RoundNumber"])
+        if rounds and rnd not in rounds:
+            continue
+        for i in range(1, 6):
+            name = ev.get(f"Session{i}")
+            date = ev.get(f"Session{i}DateUtc")
+            ident = config.SESSION_CODES.get(name)
+            if ident not in sessions or pd.isna(date):
+                continue
+            ready = pd.Timestamp(date).tz_localize("UTC") + PUBLISH_DELAY
+            if ready > now and ready - now < pd.Timedelta(days=2):
+                out.append((f"{ev['EventName']} {name}", ready))
+    return sorted(out, key=lambda pair: pair[1])
 
 
 def prune_cache(ses) -> tuple[int, int]:
@@ -192,23 +225,8 @@ def setup_logging() -> Path:
     return log_file
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--season", type=int, nargs="+", default=list(config.DEFAULT_SEASONS))
-    ap.add_argument("--rounds", type=int, nargs="+", help="round numbers; default is every completed round")
-    ap.add_argument("--sessions", nargs="+", default=list(config.ALL_SESSIONS), choices=config.ALL_SESSIONS,
-                    help="session codes to ingest; default is all of them")
-    ap.add_argument("--no-telemetry", action="store_true", help="skip car and position data (much faster)")
-    ap.add_argument("--force", action="store_true", help="re-ingest sessions already in the lake")
-    ap.add_argument("--prune-cache", action="store_true", help="delete each session's FastF1 cache after writing")
-    ap.add_argument("--verbose", action="store_true", help="print full tracebacks for failed sessions")
-    args = ap.parse_args(argv)
-
-    log_file = setup_logging()
-
-    config.FASTF1_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
-
+def run_once(args) -> dict[str, int]:
+    """One pass: ingest every completed session that is not in the lake yet."""
     plan = []
     for season in args.season:
         todo = completed_sessions(season, args.rounds, tuple(args.sessions))
@@ -235,14 +253,104 @@ def main(argv: list[str] | None = None) -> int:
                       type(e).__name__, e, exc_info=args.verbose)
             status = "failed"
         counts[status] += 1
+        if status == "written" and ident == "R" and not args.no_brief:
+            brief(season, rnd, event)
 
     if args.prune_cache:
         log.info("compacted HTTP cache, %.0f MB freed", compact_http_cache())
+    return counts
+
+
+def brief(season: int, rnd: int, event: str) -> None:
+    """
+    What the models make of a race, logged the moment it lands.
+
+    The point of ingesting straight after a session is to have the answer
+    waiting rather than to have the data waiting, so this fits the race's own
+    inputs — held out, as ever — and says what it found. It also warms the
+    caches the interface reads, so the page opens on an answer.
+    """
+    from racecraft.model import race_inputs
+    from racecraft.store.db import connect
+
+    try:
+        con = connect()
+        key = fastf1_source.make_session_key(season, rnd, "R")
+        rows = con.sql(f"select location from sessions where session_key = '{key}'").df()
+        if rows.empty:
+            return
+        inputs = race_inputs.build(con, str(rows.iloc[0]["location"]), season, session_key=key)
+        log.info("%s: %d laps, pit lane %.1fs, %.2f safety cars a race, tyres from %d races",
+                 event, inputs.total_laps, inputs.pit_loss_s, inputs.periods_per_race,
+                 len(inputs.fitted_on))
+        log.info("%s: wear %s s/lap", event,
+                 ", ".join(f"{c.lower()} {v:.3f}" for c, v in inputs.degradation.items()))
+        for note in inputs.notes:
+            log.info("%s: note: %s", event, note)
+    except Exception as error:                      # a brief is a bonus, not the job
+        log.info("%s: no brief (%s: %s)", event, type(error).__name__, error)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--season", type=int, nargs="+", default=list(config.DEFAULT_SEASONS))
+    ap.add_argument("--rounds", type=int, nargs="+", help="round numbers; default is every completed round")
+    ap.add_argument("--sessions", nargs="+", default=list(config.ALL_SESSIONS), choices=config.ALL_SESSIONS,
+                    help="session codes to ingest; default is all of them")
+    ap.add_argument("--no-telemetry", action="store_true", help="skip car and position data (much faster)")
+    ap.add_argument("--force", action="store_true", help="re-ingest sessions already in the lake")
+    ap.add_argument("--prune-cache", action="store_true", help="delete each session's FastF1 cache after writing")
+    ap.add_argument("--verbose", action="store_true", help="print full tracebacks for failed sessions")
+    ap.add_argument("--watch", action="store_true",
+                    help="keep running and ingest each session as it becomes available")
+    ap.add_argument("--every", type=int, default=15, metavar="MINUTES",
+                    help="how often to look, in watch mode (default 15)")
+    ap.add_argument("--no-brief", action="store_true",
+                    help="skip the summary logged after a race is ingested")
+    args = ap.parse_args(argv)
+
+    log_file = setup_logging()
+
+    config.FASTF1_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+
+    if args.watch:
+        return watch(args, log_file)
+
+    counts = run_once(args)
     hint = " (re-run with --verbose for tracebacks)" if counts["failed"] and not args.verbose else ""
     log.info("done: %d written, %d skipped, %d failed%s", counts["written"], counts["skipped"], counts["failed"], hint)
     log.info("lake size: %.1f MB at %s", lake.lake_size_bytes() / 1e6, config.LAKE_DIR)
     log.info("full log, including FastF1 feed warnings: %s", log_file)
     return 1 if counts["failed"] else 0
+
+
+def watch(args, log_file) -> int:
+    """
+    Keep the lake up to date by itself: look every few minutes, ingest whatever
+    has become available, say what it is waiting for, and sleep again.
+
+    A session becomes available a few hours after it starts, because the timing
+    data is published after it ends, so there is nothing to gain from looking
+    often and nothing to lose from looking at all — a pass with nothing to do
+    costs one schedule request.
+    """
+    log.info("watching %s every %d minutes; Ctrl+C to stop",
+             ", ".join(str(season) for season in args.season), args.every)
+    try:
+        while True:
+            counts = run_once(args)
+            if counts["written"] or counts["failed"]:
+                log.info("this pass: %d written, %d failed. Lake %.1f MB",
+                         counts["written"], counts["failed"], lake.lake_size_bytes() / 1e6)
+            for season in args.season:
+                for name, ready in waiting_for(season, args.rounds, tuple(args.sessions))[:3]:
+                    log.info("waiting for %s, ready %s UTC", name, ready.strftime("%a %d %b %H:%M"))
+            time.sleep(args.every * 60)
+    except KeyboardInterrupt:
+        log.info("stopped watching; the lake is at %.1f MB", lake.lake_size_bytes() / 1e6)
+        log.info("full log: %s", log_file)
+        return 0
 
 
 if __name__ == "__main__":
