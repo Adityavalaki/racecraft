@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fastf1
@@ -325,6 +326,26 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if counts["failed"] else 0
 
 
+# A watcher writes into the lake, and two of them ingesting the same session
+# would race each other over the same Parquet files. The lock is a file whose
+# timestamp is refreshed each pass, so a watcher killed without cleaning up
+# hands over after a few quiet minutes rather than blocking the next one for
+# good.
+LOCK_STALE_AFTER = timedelta(minutes=90)
+
+
+def take_lock(path: Path) -> bool:
+    """True if this process may watch; False if another one already is."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
+        if age < LOCK_STALE_AFTER.total_seconds():
+            return False
+        log.info("taking over a lock left behind %.0f minutes ago", age / 60)
+    path.write_text(str(os.getpid()), encoding="utf-8")
+    return True
+
+
 def watch(args, log_file) -> int:
     """
     Keep the lake up to date by itself: look every few minutes, ingest whatever
@@ -335,10 +356,17 @@ def watch(args, log_file) -> int:
     often and nothing to lose from looking at all — a pass with nothing to do
     costs one schedule request.
     """
+    lock = config.LOG_DIR / "watch.lock" if hasattr(config, "LOG_DIR") else \
+        config.LAKE_DIR.parent / "logs" / "watch.lock"
+    if not take_lock(lock):
+        log.info("another watcher is already running (%s); nothing to do here", lock)
+        return 0
+
     log.info("watching %s every %d minutes; Ctrl+C to stop",
              ", ".join(str(season) for season in args.season), args.every)
     try:
         while True:
+            lock.write_text(str(os.getpid()), encoding="utf-8")   # still alive
             counts = run_once(args)
             if counts["written"] or counts["failed"]:
                 log.info("this pass: %d written, %d failed. Lake %.1f MB",
@@ -351,6 +379,8 @@ def watch(args, log_file) -> int:
         log.info("stopped watching; the lake is at %.1f MB", lake.lake_size_bytes() / 1e6)
         log.info("full log: %s", log_file)
         return 0
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

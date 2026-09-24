@@ -120,3 +120,21 @@ def _args():
         verbose = False
         no_brief = False
     return Args()
+
+
+def test_two_watchers_do_not_ingest_over_each_other(tmp_path):
+    """Both writing the same Parquet files is the one way this breaks the lake."""
+    lock = tmp_path / "watch.lock"
+    assert cli.take_lock(lock) is True
+    assert cli.take_lock(lock) is False, "a second watcher started anyway"
+
+
+def test_a_lock_left_behind_by_a_killed_watcher_is_taken_over(tmp_path, monkeypatch):
+    import os, time
+
+    lock = tmp_path / "watch.lock"
+    lock.write_text("999999")
+    stale = time.time() - cli.LOCK_STALE_AFTER.total_seconds() - 60
+    os.utime(lock, (stale, stale))
+    assert cli.take_lock(lock) is True
+    assert lock.read_text() == str(os.getpid())

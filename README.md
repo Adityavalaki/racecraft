@@ -484,6 +484,30 @@ appends rather than starting a second file, a half-written recording reads as
 "not ready" rather than crashing, and the reader caches instead of re-parsing on
 every request. The connection waits for a real session.
 
+### Keeping the lake current
+
+A session's timing data is published a few hours after it runs, and the lake is
+only useful once it is in. `--watch` does that by itself:
+
+```powershell
+racecraft-ingest --season 2026 --watch
+```
+
+It looks every fifteen minutes, ingests anything whose data has appeared —
+four hours after a session starts, which is the session plus the feed's own
+delay — skips what it already has, and logs what it is waiting for next. One
+broken session does not stop the others. A race that lands is followed by a
+brief in the log: distance, pit loss, safety-car rate, the wear fitted for it,
+and any caveat its inputs carry, all from races before it.
+
+Only one watcher runs at a time; a second finds the lock and stands down,
+because two of them writing the same Parquet files is the one way this breaks.
+A watcher killed without cleaning up hands over after ninety quiet minutes.
+
+To have it start at logon, `scripts/watch_ingest.cmd` is the wrapper to point
+at — a shortcut to it in the Startup folder is enough, and Task Scheduler works
+if you would rather have it run before anyone logs in.
+
 ## Analysis commands
 
 ```sh
