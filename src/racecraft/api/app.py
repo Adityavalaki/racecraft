@@ -32,6 +32,7 @@ from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import places_view
 from racecraft.api import session as session_store
+from racecraft.api import sync_view
 from racecraft.api import tyre_sets_view
 from racecraft.api import penalties
 from racecraft.store.db import connect
@@ -70,7 +71,7 @@ def list_sessions(year: int | None = None, session: str | None = None, limit: in
     # Live goes at the top when a recording exists, so the interface can offer
     # it in the same list as everything else rather than as a separate mode.
     status = live_store.store.status()
-    if status.get("recording"):
+    if status.get("recording") and _recording_now(status["recording"]):
         session = status.get("session") or {}
         out.insert(0, {
             "session_key": live_store.SESSION_KEY,
@@ -193,6 +194,23 @@ def session_tyre_sets(session_key: str) -> dict:
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 
+@app.get("/api/sync")
+def sync_status() -> dict:
+    """How the last sync of recent race weekends went, or how the running one is going."""
+    return sync_view.status()
+
+
+@app.post("/api/sync")
+def sync_start(weekends: int = Query(5, ge=1, le=10, description="latest race weekends to bring in"),
+               telemetry: bool = Query(True, description="include car and position data")) -> dict:
+    """
+    Bring the latest race weekends into the lake: every session whose data has
+    been published and is not already there. Runs in the background — poll
+    GET /api/sync — and a second request while one is running reports that one.
+    """
+    return sync_view.start(weekends=weekends, telemetry=telemetry)
+
+
 @app.get("/api/live")
 def live_status() -> dict:
     """Whether live is attached to a recording, and what it has read from it."""
@@ -232,6 +250,22 @@ def live_detach() -> dict:
 def list_circuits() -> list[dict]:
     """Measured pit loss and neutralisation risk, every circuit in the lake."""
     return insight.circuits()
+
+
+# A recording counts as live while it is still being written. The feed sends a
+# heartbeat every few seconds even when no car is running, so a file untouched
+# for this long belongs to a session that has ended — and opening the interface
+# on it lands on "not attached" instead of on the race that has since arrived.
+LIVE_FRESH_S = 15 * 60
+
+
+def _recording_now(recording: str) -> bool:
+    import time
+
+    try:
+        return time.time() - Path(recording).stat().st_mtime < LIVE_FRESH_S
+    except OSError:
+        return False
 
 
 def _load(session_key: str):

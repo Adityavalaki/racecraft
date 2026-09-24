@@ -1025,3 +1025,39 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .rc-car:hover { border-color: var(--rule-strong); color: var(--ink); }
 .rc-car.is-selected { border-color: var(--signal); color: var(--signal); }
+
+/* ---------------------------------------------------------------- sync */
+
+.sync {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+  min-width: 0;
+}
+.sync-button {
+  background: var(--panel-2);
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-mid);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.65rem;
+  white-space: nowrap;
+}
+.sync-button:hover:not(:disabled) { color: var(--signal); border-color: var(--signal); }
+.sync-button:disabled { opacity: 0.55; cursor: default; }
+.sync-button:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.sync-status {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34ch;
+}
+@media (max-width: 640px) {
+  .sync-status { display: none; }
+}

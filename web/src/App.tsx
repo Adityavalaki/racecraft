@@ -8,6 +8,7 @@ import { Stewards, filterLabel } from "./panels/Stewards";
 import { TrackLog } from "./panels/TrackLog";
 import { RaceTrace } from "./panels/RaceTrace";
 import { StrategyBoard } from "./panels/StrategyBoard";
+import { SyncButton } from "./panels/SyncButton";
 import { TimingTower } from "./panels/TimingTower";
 import { TrackMap } from "./panels/TrackMap";
 import { TyreModel } from "./panels/TyreModel";
@@ -51,6 +52,12 @@ export default function App() {
   // looking at lap 12 does not want to be yanked to lap 40 a second later.
   const [following, setFollowing] = useState(true);
   const isLive = sessionKey === LIVE_KEY;
+
+  // After a sync writes new sessions, the list is read again so they appear in
+  // the picker. The session being viewed is left alone.
+  const reloadSessions = useCallback(() => {
+    api.sessions().then(setSessions).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     api.sessions()
@@ -302,6 +309,7 @@ export default function App() {
             {!info.has_position_data && <span className="warn"> · no position data</span>}
           </div>
         )}
+        <SyncButton onSynced={reloadSessions} />
         {error && <div className="error">{error}</div>}
       </header>
 

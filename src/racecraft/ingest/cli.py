@@ -143,12 +143,53 @@ def wait_for_api_budget(key: str) -> None:
     time.sleep(wait)
 
 
+# One session is written by one process at a time. The watcher and the
+# interface's sync button can both reach for the same session, and two writers
+# on the same Parquet files is the one way the lake gets corrupted. A lock older
+# than this belongs to a process that died mid-write and is taken over.
+SESSION_LOCK_STALE = timedelta(minutes=30)
+
+
+def session_lock(key: str) -> Path | None:
+    """The lock for one session, or None if another process is writing it."""
+    path = config.DATA_DIR / "logs" / "locks" / f"{key}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(2):
+        try:
+            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            age = time.time() - path.stat().st_mtime
+            if age < SESSION_LOCK_STALE.total_seconds():
+                return None
+            path.unlink(missing_ok=True)       # left by a writer that died; take it over
+            continue
+        os.write(handle, str(os.getpid()).encode())
+        os.close(handle)
+        return path
+    return None
+
+
 def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
                telemetry: bool, force: bool, prune: bool) -> str:
     key = fastf1_source.make_session_key(season, rnd, ident)
     if lake.is_ingested(season, rnd, ident) and not force:
         return "skipped"
+    lock = session_lock(key)
+    if lock is None:
+        log.info("%s: another process is writing it; leaving it alone", key)
+        return "skipped"
+    try:
+        # Checked again under the lock: the other writer may have just finished.
+        if lake.is_ingested(season, rnd, ident) and not force:
+            return "skipped"
+        return _ingest_locked(season, rnd, ident, session_name, key,
+                              telemetry=telemetry, force=force, prune=prune)
+    finally:
+        lock.unlink(missing_ok=True)
 
+
+def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
+                   telemetry: bool, force: bool, prune: bool) -> str:
     t, calls_before = time.time(), api_budget.calls_recorded()
     ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
     tables = fastf1_source.extract(ses, key, telemetry=telemetry)

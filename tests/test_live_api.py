@@ -319,3 +319,25 @@ def test_an_empty_recording_is_not_offered_as_a_session(client, store, monkeypat
     monkeypatch.setattr(feed_module, "current_session",
                         lambda *_a, **_k: feed_module.LiveSession(2026, 17, "Race"))
     assert client.get("/api/sessions").json()[0]["session_key"] == "live"
+
+
+def test_a_recording_nobody_is_writing_any_more_is_not_offered_as_live(monkeypatch, tmp_path):
+    """
+    This morning's practice recording is still on disk this evening. Opening the
+    interface on it lands on "not attached" instead of on the sessions since.
+    """
+    import os
+    import time
+
+    from racecraft.api import app as app_module
+
+    stale = tmp_path / "baku-2026-fp1.txt"
+    stale.write_text("['Heartbeat', '{}', '']\n")
+    hours_ago = time.time() - 6 * 3600
+    os.utime(stale, (hours_ago, hours_ago))
+    assert app_module._recording_now(str(stale)) is False
+
+    fresh = tmp_path / "baku-2026-fp2.txt"
+    fresh.write_text("['Heartbeat', '{}', '']\n")
+    assert app_module._recording_now(str(fresh)) is True
+    assert app_module._recording_now(str(tmp_path / "missing.txt")) is False

@@ -435,6 +435,34 @@ export interface LiveStatus {
   error?: string | null;
 }
 
+/** One session a sync looked at. */
+export interface SyncItem {
+  key: string;
+  season: number;
+  round: number;
+  ident: string;
+  event: string;
+  name: string;
+  /** pending, ingesting, written, present (already in the lake), failed */
+  state: string;
+  detail: string;
+}
+
+/** Bringing the latest race weekends into the lake, from the interface. */
+export interface SyncStatus {
+  state: "idle" | "planning" | "running" | "done" | "failed";
+  weekends: string[];
+  items: SyncItem[];
+  counts: Record<string, number>;
+  /** Sessions that were not in the lake when the sync looked. */
+  to_fetch: number;
+  /** The session being ingested now, if any. */
+  current: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
 /** The one session key that is not in the lake. */
 export const LIVE_KEY = "live";
 
@@ -523,6 +551,9 @@ export const api = {
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
   liveAttach: () => post<LiveStatus>("/api/live/attach"),
+  /** Starts a sync of the latest race weekends, or reports the one running. */
+  sync: () => post<SyncStatus>("/api/sync"),
+  syncStatus: (signal?: AbortSignal) => get<SyncStatus>("/api/sync", signal),
 };
 
 /** 92.608 -> "1:32.608", the way lap times are always written. */

@@ -11,6 +11,20 @@ def td(seconds):
     return pd.to_timedelta(seconds, unit="s")
 
 
+@pytest.fixture(autouse=True)
+def no_real_recordings(tmp_path_factory, monkeypatch):
+    """
+    Keep the machine's own live recordings out of every test.
+
+    A recording on disk puts a LIVE row at the top of the session list, so a
+    test that passed all week failed the afternoon someone recorded Baku
+    practice. Tests about live mode point it at their own recordings.
+    """
+    from racecraft.live import recorder
+
+    monkeypatch.setattr(recorder, "LIVE_DIR", tmp_path_factory.mktemp("no-live"))
+
+
 @pytest.fixture
 def fastf1_laps():
     """

@@ -341,6 +341,7 @@ feature a judgment would earn its keep.
 | `GET /api/sessions/{key}/messages?until=&limit=&topic=` | race control up to `until`, newest first, each message read; `topic` is `stewards`, `track` or `noise` |
 | `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
 | `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
+| `GET /api/sync`, `POST /api/sync?weekends=5` | bring the latest race weekends into the lake, and its progress |
 | `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
 | `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
@@ -485,6 +486,21 @@ appends rather than starting a second file, a half-written recording reads as
 every request. The connection waits for a real session.
 
 ### Keeping the lake current
+
+**From the interface:** the **Sync latest 5** button in the top bar brings the
+five most recent race weekends into the lake — every session whose data has
+been published, a weekend in progress included. It checks what is already there
+and fetches only the rest, in the background, naming the session in hand while
+it works; nothing to fetch takes a second, a missing weekend with telemetry a
+few minutes. When it has written anything, every cached model fit is dropped,
+so the strategy views and the simulator use the new races straight away, and
+the session list is read again so they appear in the picker.
+
+It and the watcher below can run at once. Each session is written by one
+process at a time: a second writer finds the session's lock and leaves it, and
+a lock older than half an hour, from a writer that died, is taken over.
+
+**On its own:**
 
 A session's timing data is published a few hours after it runs, and the lake is
 only useful once it is in. `--watch` does that by itself:
@@ -1067,6 +1083,8 @@ src/racecraft/
   api/timing.py            running order and gaps at any instant
   api/session.py           one session held in memory, ready to replay
   api/places_view.py       the places ranking for one session, cached
+  api/sync_view.py         the sync button, and the caches it clears
+  ingest/sync.py           the latest race weekends, fetched on request
   api/tyre_sets_view.py    tyre sets for one session, and plans per car
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation

@@ -82,7 +82,9 @@ function mockApi() {
   ];
 
   const fetchMock = vi.fn(async (url: string) => {
-    const body = url.includes("/insight") ? insight
+    const body = url.includes("/api/sync") ? { state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
+                                  started_at: null, finished_at: null, error: null }
+      : url.includes("/insight") ? insight
       : url.includes("/messages") ? messages
       : url.includes("/state") ? state
       : url.includes("/frames") ? frames
@@ -113,7 +115,9 @@ function mockLiveApi() {
     outline: [], bounds: {}, has_position_data: false,
   });
   const fetchMock = vi.fn(async (url: string) => {
-    const body = url.includes("/insight") ? { detail: "not ready" }
+    const body = url.includes("/api/sync") ? { state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
+                                  started_at: null, finished_at: null, error: null }
+      : url.includes("/insight") ? { detail: "not ready" }
       : url.includes("/state") ? { t: state.edge, leader_lap: 12, best_sectors: [], ideal_lap_s: null,
                                    drivers: [], cars: {}, track_status: null, weather: null }
       : url.includes("/laps") ? { drivers: [], leader_crossings: { laps: [], t: [] } }
