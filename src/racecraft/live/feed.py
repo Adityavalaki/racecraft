@@ -187,7 +187,14 @@ def tables_from_recording(path: Path, session: LiveSession,
 
     ses = fastf1.get_session(session.year, session.round_number, session.session_name)
     try:
-        ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
+        # Not cached, and this is the whole reason live works at all. FastF1
+        # caches a parse by the session's API path, so the first read of a
+        # recording — taken minutes into a session, before anyone has completed
+        # a lap — is served back for every later read no matter how much the
+        # recording has grown. The session would sit at zero laps all afternoon.
+        with fastf1.Cache.disabled():
+            ses.load(laps=True, telemetry=telemetry, weather=True, messages=True,
+                     livedata=livedata)
         return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
                                      t0=live_t0(livedata, path))
     except DataNotLoadedError as error:
