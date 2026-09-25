@@ -18,6 +18,40 @@ python -m venv .venv
 # .venv/bin/python -m pip install -e ".[dev]"       # macOS / Linux
 ```
 
+## The app
+
+Racecraft runs as a desktop application: an icon that opens it in its own
+window, with no terminal, no port to remember and nothing to leave running.
+
+```powershell
+.venv\Scripts\python -m pip install -e ".[app]"    # adds pywebview
+cd web; npm install; npm run build; cd ..          # the interface, once
+.venv\Scripts\racecraft --install-shortcuts        # Desktop + Start menu
+```
+
+Then double-click **Racecraft** on the Desktop. One process does everything:
+
+- **Its own window.** pywebview on the Edge engine (WebView2, which Windows 11
+  ships), 1440×900. Links out (the Pirelli sources) open in the default browser.
+- **Its own port.** The API is served on `127.0.0.1` at a port the system picks,
+  so nothing else on the machine can be in its way; 8000 is never touched.
+- **Syncs while open.** Ten seconds after launch, then every fifteen minutes, it
+  does what the **Sync latest 5** button does, and the button shows its progress.
+  New sessions appear in the picker without a reload. Closing the window stops
+  it; a session half-fetched at that moment is fetched again next time, because
+  the lake writes a session's row last.
+- **One at a time.** A second double-click brings the open window forward
+  instead of starting a second server and a second sync on the same lake.
+
+Closing the window ends the process within a second or two. Nothing runs when
+Racecraft is closed; `--install-shortcuts` also removes the logon watcher that
+earlier versions started, and stops it if it is running. The app logs to
+`data/logs/app-YYYYMMDD.log`, and anything that stops it starting says so in a
+message box. `racecraft --uninstall-shortcuts` removes the icons.
+
+The terminal commands below are all still there for development and for
+backfills.
+
 ## Ingest
 
 ```sh
@@ -63,6 +97,8 @@ power settings if you need that too.
 Add `--verbose` to see full tracebacks for failed sessions.
 
 ## Replay interface
+
+Open the app, or serve it in a browser while developing:
 
 ```powershell
 cd web; npm install; npm run build; cd ..     # once
@@ -496,11 +532,16 @@ few minutes. When it has written anything, every cached model fit is dropped,
 so the strategy views and the simulator use the new races straight away, and
 the session list is read again so they appear in the picker.
 
+**While the app is open** it presses that button itself, ten seconds after
+launch and every fifteen minutes after (see **The app**). That is the intended
+way to stay current: open Racecraft after a session and its data comes in.
+
 It and the watcher below can run at once. Each session is written by one
 process at a time: a second writer finds the session's lock and leaves it, and
-a lock older than half an hour, from a writer that died, is taken over.
+a lock whose writer is no longer running, or has sat for half an hour, is
+taken over.
 
-**On its own:**
+**From a terminal, without the app:**
 
 A session's timing data is published a few hours after it runs, and the lake is
 only useful once it is in. `--watch` does that by itself:
@@ -518,11 +559,12 @@ and any caveat its inputs carry, all from races before it.
 
 Only one watcher runs at a time; a second finds the lock and stands down,
 because two of them writing the same Parquet files is the one way this breaks.
-A watcher killed without cleaning up hands over after ninety quiet minutes.
+A watcher killed without cleaning up hands over at once to the next one; a
+lock nobody has touched for ninety minutes is taken over whoever holds it.
 
-To have it start at logon, `scripts/watch_ingest.cmd` is the wrapper to point
-at — a shortcut to it in the Startup folder is enough, and Task Scheduler works
-if you would rather have it run before anyone logs in.
+It used to be started at logon from the Startup folder. The app replaced that,
+because syncing only while Racecraft is open is what was wanted, and a hidden
+watcher killed by a closed console window is what went wrong twice.
 
 ## Analysis commands
 
@@ -1003,7 +1045,7 @@ The race simulator uses the same sets; see **The tyres the car has** below.
 
 Five minutes, in this order, each step answering a question the last one raises.
 
-**1. A race, replayed.** `racecraft-serve`, open the page, pick a race. The
+**1. A race, replayed.** Open Racecraft, pick a race. The
 timing tower, the trace and the track map all run off one clock, and the tower
 agrees with what the tyre panels say a car is on — that is the check that the
 data underneath is one thing rather than three.
@@ -1098,6 +1140,11 @@ src/racecraft/
   model/tyre_sets.py       every set through a weekend, Article 30 as data
   model/compounds.py       Pirelli's nominations, from pirelli_compounds.csv
   model/cli.py             racecraft-analyse
+  app/main.py              racecraft: the desktop app, its window and shutdown
+  app/server.py            the API on a port the system picks
+  app/instance.py          one app at a time; a second launch focuses the first
+  app/autosync.py          the sync button pressed every fifteen minutes
+  app/shortcuts.py         Desktop and Start menu icons
 tests/                     offline tests, no network
 web/                       React + Vite interface (npm test, npm run build)
 ```

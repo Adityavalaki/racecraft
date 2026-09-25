@@ -55,7 +55,8 @@ describe("SyncButton", () => {
     const fetchMock = serve([
       status(),
       status({ state: "running", weekends: WEEKENDS, to_fetch: 2, current: "Azerbaijan Grand Prix Practice 2" }),
-      status({ state: "done", weekends: WEEKENDS, to_fetch: 2, counts: { written: 2 } }),
+      status({ state: "done", weekends: WEEKENDS, to_fetch: 2, counts: { written: 2 },
+               finished_at: "2026-09-25T10:00:00+00:00" }),
     ]);
     const onSynced = vi.fn();
     render(<SyncButton onSynced={onSynced} pollMs={10} />);
@@ -103,5 +104,33 @@ describe("SyncButton, when another process has a session", () => {
     render(<SyncButton onSynced={() => undefined} />);
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("1 still being fetched elsewhere"));
     expect(screen.getByRole("status").getAttribute("title")).toContain("another process is fetching it");
+  });
+});
+
+describe("SyncButton, beside the desktop app's own syncs", () => {
+  it("notices a sync it did not start and reads the list again when that one writes", async () => {
+    serve([
+      status({ state: "done", weekends: WEEKENDS, counts: { present: 21 },
+               finished_at: "2026-09-25T09:00:00+00:00" }),         // history, not news
+      status({ state: "running", weekends: WEEKENDS, to_fetch: 1,
+               current: "Azerbaijan Grand Prix Qualifying" }),
+      status({ state: "done", weekends: WEEKENDS, to_fetch: 1, counts: { written: 1 },
+               finished_at: "2026-09-25T16:05:00+00:00" }),
+    ]);
+    const onSynced = vi.fn();
+    render(<SyncButton onSynced={onSynced} pollMs={10} idlePollMs={10} />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("added 1 session"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onSynced).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not treat the last sync before the page opened as news", async () => {
+    serve([status({ state: "done", weekends: WEEKENDS, counts: { written: 3 },
+                    finished_at: "2026-09-25T09:00:00+00:00" })]);
+    const onSynced = vi.fn();
+    render(<SyncButton onSynced={onSynced} pollMs={10} idlePollMs={10} />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("added 3 sessions"));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(onSynced).not.toHaveBeenCalled();
   });
 });

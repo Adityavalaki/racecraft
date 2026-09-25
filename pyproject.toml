@@ -21,6 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27"]
+# The desktop app: its own window on WebView2. Not needed by the CLI or tests.
+app = ["pywebview>=5"]
 
 [project.scripts]
 racecraft-ingest = "racecraft.ingest.cli:main"
@@ -28,12 +30,18 @@ racecraft-serve = "racecraft.api.serve:main"
 racecraft-analyse = "racecraft.model.cli:main"
 racecraft-live = "racecraft.live.cli:main"
 
+[project.gui-scripts]
+# A GUI-subsystem launcher: double-clicking it opens no console window.
+racecraft = "racecraft.app.main:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 # Pirelli's compound nominations, read by racecraft.model.compounds.
 "racecraft.model" = ["*.csv"]
+# The app's icon, used by its window and its shortcuts.
+"racecraft.app" = ["*.ico", "*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

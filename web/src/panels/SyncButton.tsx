@@ -6,6 +6,11 @@ interface Props {
   onSynced: () => void;
   /** How often to ask how a running sync is going. */
   pollMs?: number;
+  /**
+   * How often to look when nothing is running. The desktop app syncs by itself
+   * every fifteen minutes, and this is how the button finds out.
+   */
+  idlePollMs?: number;
 }
 
 const RUNNING = new Set(["planning", "running"]);
@@ -21,11 +26,18 @@ const RUNNING = new Set(["planning", "running"]);
  * Ingesting a session takes about a minute, so the label names the session in
  * hand rather than spinning: a long wait that says what it is doing reads as
  * working, not as stuck.
+ *
+ * It also notices syncs it did not start — the desktop app runs one every
+ * fifteen minutes — by looking now and then while idle, and treats a sync as
+ * news when its finish time is one it has not seen, not only when it watched
+ * the sync run. A short automatic sync can start and end between two looks.
  */
-export function SyncButton({ onSynced, pollMs = 2000 }: Props) {
+export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Props) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const wasRunning = useRef(false);
+  // The finish time of the last sync already accounted for. Undefined until the
+  // first read, whose finished sync is history rather than news.
+  const seenFinish = useRef<string | null | undefined>(undefined);
 
   const read = useCallback(async () => {
     try {
@@ -48,19 +60,28 @@ export function SyncButton({ onSynced, pollMs = 2000 }: Props) {
 
   const running = status !== null && RUNNING.has(status.state);
 
-  // Poll while a sync runs; when it ends having written something, say so once.
+  // Often while a sync runs, now and then while idle.
   useEffect(() => {
-    if (!running) {
-      if (wasRunning.current && status?.state === "done" && (status.counts.written ?? 0) > 0) {
-        onSynced();
-      }
-      wasRunning.current = false;
+    const timer = setInterval(() => void read(), running ? pollMs : idlePollMs);
+    return () => clearInterval(timer);
+  }, [running, read, pollMs, idlePollMs]);
+
+  // A sync that finished since the last look and wrote something: say so once.
+  useEffect(() => {
+    if (!status) return;
+    if (status.state !== "done" && status.state !== "failed") {
+      if (seenFinish.current === undefined) seenFinish.current = null;
       return;
     }
-    wasRunning.current = true;
-    const timer = setInterval(() => void read(), pollMs);
-    return () => clearInterval(timer);
-  }, [running, status, read, pollMs, onSynced]);
+    if (seenFinish.current === undefined) {
+      seenFinish.current = status.finished_at;
+      return;
+    }
+    if (status.finished_at !== seenFinish.current) {
+      seenFinish.current = status.finished_at;
+      if ((status.counts.written ?? 0) > 0) onSynced();
+    }
+  }, [status, onSynced]);
 
   const start = async () => {
     try {
