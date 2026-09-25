@@ -1,0 +1,4 @@
+# cmd.exe misreads batch files with Unix line endings: it ran fragments of
+# comments as commands. Keep them CRLF whatever the checkout setting.
+*.cmd text eol=crlf
+*.bat text eol=crlf

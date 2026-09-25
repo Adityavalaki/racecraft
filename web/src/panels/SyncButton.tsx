@@ -99,6 +99,7 @@ function summaryOf(status: SyncStatus | null, error: string | null): string {
 
   const written = status.counts.written ?? 0;
   const failed = status.counts.failed ?? 0;
+  const busy = status.counts.busy ?? 0;
   if (status.state === "running") {
     const done = written + failed;
     return status.current
@@ -108,6 +109,7 @@ function summaryOf(status: SyncStatus | null, error: string | null): string {
   // done
   const parts = [];
   if (written) parts.push(`added ${written} session${written === 1 ? "" : "s"}`);
+  if (busy) parts.push(`${busy} still being fetched elsewhere`);
   if (failed) parts.push(`${failed} failed`);
   return parts.length ? parts.join(", ") : `up to date · ${status.weekends.length} weekends`;
 }
@@ -116,7 +118,7 @@ function detailOf(status: SyncStatus | null, error: string | null): string {
   if (error) return error;
   if (!status) return "";
   if (status.error) return status.error;
-  const failed = status.items.filter((item) => item.state === "failed");
+  const failed = status.items.filter((item) => item.state === "failed" || item.state === "busy");
   const lines = [status.weekends.join(", ")];
   for (const item of failed) lines.push(`${item.event} ${item.name}: ${item.detail}`);
   return lines.filter(Boolean).join("\n");

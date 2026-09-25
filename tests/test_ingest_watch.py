@@ -80,7 +80,7 @@ def test_the_watcher_ingests_only_what_is_missing(schedule, monkeypatch):
     counts = cli.run_once(_args())
 
     assert asked == ["FP1", "FP2"]          # both are offered
-    assert counts == {"written": 1, "skipped": 1, "failed": 0}   # one is actually written
+    assert counts == {"written": 1, "skipped": 1, "busy": 0, "failed": 0}   # one is actually written
 
 
 def test_a_race_that_lands_gets_its_brief(schedule, monkeypatch):
@@ -106,7 +106,7 @@ def test_one_broken_session_does_not_stop_the_rest(schedule, monkeypatch):
 
     monkeypatch.setattr(cli, "ingest_with_limits", sometimes)
     counts = cli.run_once(_args())
-    assert counts == {"written": 1, "skipped": 0, "failed": 1}
+    assert counts == {"written": 1, "skipped": 0, "busy": 0, "failed": 1}
 
 
 def _args():

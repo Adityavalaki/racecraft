@@ -205,3 +205,60 @@ def test_new_sessions_make_every_cached_fit_let_go():
     sync_view.forget_models()
     assert not insight._season_cache and not places_view._cache
     assert not race_inputs._race_cache and not tyre_sets._weekend_cache
+
+
+# ------------------------------------------------------------- the FP2 morning
+
+def test_a_lock_whose_owner_has_gone_is_released_at_once(monkeypatch, tmp_path):
+    """
+    Baku FP2: a watcher took the session's lock and was closed. Six minutes
+    later the lock was young, its owner long gone, and the sync stood aside.
+    """
+    monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
+    path = cli.session_lock("2026_15_FP2")
+    path.write_text("4764")                    # a process that no longer exists
+    monkeypatch.setattr(cli, "process_alive", lambda pid: False)
+    assert cli.session_lock("2026_15_FP2") is not None
+
+
+def test_a_lock_whose_owner_is_still_running_is_respected(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
+    cli.session_lock("2026_15_FP2")
+    monkeypatch.setattr(cli, "process_alive", lambda pid: True)
+    assert cli.session_lock("2026_15_FP2") is None
+
+
+def test_this_process_is_alive_and_a_made_up_one_is_not():
+    import os
+
+    assert cli.process_alive(os.getpid()) is True
+    assert cli.process_alive(0) is False
+
+
+def test_a_session_someone_else_is_fetching_is_never_reported_as_present(quiet, monkeypatch):
+    """What hid FP2: 'another process has it' was shown as 'already there'."""
+    monkeypatch.setattr(sync, "plan", _plan((2026, 15, "FP2", "Azerbaijan", "Practice 2")))
+    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: False)
+    monkeypatch.setattr(sync.cli, "ingest_with_limits", lambda *a, **k: "busy")
+    syncer = sync.Syncer()
+    syncer.start()
+    syncer.wait(5)
+    item = syncer.status()["items"][0]
+    assert item["state"] == "busy" and "another process" in item["detail"]
+    assert syncer.status()["counts"]["present"] == 0
+
+
+def test_a_busy_session_that_lands_meanwhile_is_counted_present(quiet, monkeypatch):
+    monkeypatch.setattr(sync, "plan", _plan((2026, 15, "FP2", "Azerbaijan", "Practice 2")))
+    landed = {"yet": False}
+    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: landed["yet"])
+
+    def other_process_finishes(*a, **k):
+        landed["yet"] = True                   # the other writer finishes while we look away
+        return "busy"
+
+    monkeypatch.setattr(sync.cli, "ingest_with_limits", other_process_finishes)
+    syncer = sync.Syncer()
+    syncer.start()
+    syncer.wait(5)
+    assert syncer.status()["items"][0]["state"] == "present"

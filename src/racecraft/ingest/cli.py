@@ -150,8 +150,53 @@ def wait_for_api_budget(key: str) -> None:
 SESSION_LOCK_STALE = timedelta(minutes=30)
 
 
+def process_alive(pid: int) -> bool:
+    """
+    Whether a process is still running. Asked without touching it: on Windows
+    `os.kill(pid, 0)` does not test a process, it terminates it.
+    """
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        query_limited, still_active = 0x1000, 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(query_limited, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) \
+                and code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def lock_owner_gone(path: Path) -> bool:
+    """True when the process named in a lock file is no longer running."""
+    try:
+        return not process_alive(int(path.read_text(encoding="utf-8").strip() or 0))
+    except (OSError, ValueError):
+        return True                            # unreadable: nobody can be relying on it
+
+
 def session_lock(key: str) -> Path | None:
-    """The lock for one session, or None if another process is writing it."""
+    """
+    The lock for one session, or None if another *running* process is writing it.
+
+    A lock is honoured only while its owner is alive. Baku FP2 sat unfetched
+    behind one left by a watcher that had been closed: the sync that came six
+    minutes later saw a young lock and stood aside for a writer that no longer
+    existed. The age limit remains for an owner that is alive but stuck.
+    """
     path = config.DATA_DIR / "logs" / "locks" / f"{key}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     for _ in range(2):
@@ -159,9 +204,9 @@ def session_lock(key: str) -> Path | None:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             age = time.time() - path.stat().st_mtime
-            if age < SESSION_LOCK_STALE.total_seconds():
+            if age < SESSION_LOCK_STALE.total_seconds() and not lock_owner_gone(path):
                 return None
-            path.unlink(missing_ok=True)       # left by a writer that died; take it over
+            path.unlink(missing_ok=True)       # its writer died or stalled; take it over
             continue
         os.write(handle, str(os.getpid()).encode())
         os.close(handle)
@@ -177,7 +222,7 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
     lock = session_lock(key)
     if lock is None:
         log.info("%s: another process is writing it; leaving it alone", key)
-        return "skipped"
+        return "busy"
     try:
         # Checked again under the lock: the other writer may have just finished.
         if lake.is_ingested(season, rnd, ident) and not force:
@@ -284,7 +329,9 @@ def setup_logging() -> Path:
     log_file = log_dir / f"ingest-{datetime.now():%Y%m%d-%H%M%S}.log"
     fmt = logging.Formatter("%(asctime)s %(levelname)-5s %(name)s: %(message)s", datefmt="%H:%M:%S")
 
-    console = logging.StreamHandler()
+    # Run windowless (pythonw, as the Startup launcher does) there is no
+    # console to write to, and the log file is the whole record.
+    console = logging.StreamHandler() if sys.stderr is not None else logging.NullHandler()
     console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(message)s", datefmt="%H:%M:%S"))
     console.addFilter(lambda r: r.name.startswith("racecraft") or r.levelno >= logging.ERROR)
     file = logging.FileHandler(log_file, encoding="utf-8")
@@ -319,7 +366,7 @@ def run_once(args) -> dict[str, int]:
             log.info("clearing cached HTTP responses for %d sessions already in the lake", len(in_lake))
             log.info("removed %d responses", purge_http_cache(in_lake))
 
-    counts = {"written": 0, "skipped": 0, "failed": 0}
+    counts = {"written": 0, "skipped": 0, "busy": 0, "failed": 0}
     for season, rnd, ident, event, name in plan:
         try:
             status = ingest_with_limits(season, rnd, ident, name, telemetry=not args.no_telemetry,
@@ -414,9 +461,10 @@ def take_lock(path: Path) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
-        if age < LOCK_STALE_AFTER.total_seconds():
+        if age < LOCK_STALE_AFTER.total_seconds() and not lock_owner_gone(path):
             return False
-        log.info("taking over a lock left behind %.0f minutes ago", age / 60)
+        log.info("taking over a lock left behind %.0f minutes ago by a watcher "
+                 "that is no longer running", age / 60)
     path.write_text(str(os.getpid()), encoding="utf-8")
     return True
 

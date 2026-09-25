@@ -92,3 +92,16 @@ describe("SyncButton", () => {
     expect(screen.getByRole("status").getAttribute("title")).toContain("not published yet");
   });
 });
+
+describe("SyncButton, when another process has a session", () => {
+  it("says it is being fetched elsewhere rather than calling it done", async () => {
+    serve([status({
+      state: "done", weekends: WEEKENDS, to_fetch: 1, counts: { busy: 1 },
+      items: [{ key: "2026_15_FP2", season: 2026, round: 15, ident: "FP2", event: "Azerbaijan Grand Prix",
+                name: "Practice 2", state: "busy", detail: "another process is fetching it" }],
+    })]);
+    render(<SyncButton onSynced={() => undefined} />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("1 still being fetched elsewhere"));
+    expect(screen.getByRole("status").getAttribute("title")).toContain("another process is fetching it");
+  });
+});

@@ -44,7 +44,9 @@ class Item:
     ident: str                        # FP1, Q, R, ...
     event: str
     name: str                         # FastF1's session name
-    state: str = "pending"            # pending, ingesting, written, present, failed
+    # pending, ingesting, written, present, busy (another process is fetching
+    # it right now), failed
+    state: str = "pending"
     detail: str = ""
 
     @property
@@ -63,7 +65,7 @@ class Job:
 
     def as_dict(self) -> dict:
         counts = {state: sum(1 for item in self.items if item.state == state)
-                  for state in ("pending", "ingesting", "written", "present", "failed")}
+                  for state in ("pending", "ingesting", "written", "present", "busy", "failed")}
         current = next((item for item in self.items if item.state == "ingesting"), None)
         return {
             "state": self.state,
@@ -178,10 +180,24 @@ class Syncer:
                 else:
                     detail = ""
                 with self._lock:
-                    # "skipped" here means another process wrote it meanwhile.
-                    item.state = {"written": "written", "skipped": "present"}.get(result, "failed")
-                    item.detail = detail or ("" if item.state != "failed" else "ingest failed")
+                    # "skipped" means another process finished it meanwhile;
+                    # "busy" means one is fetching it now. Neither is "present"
+                    # until the lake says so — reporting a session that is not
+                    # there as present is what hid Baku FP2.
+                    item.state = {"written": "written", "skipped": "present",
+                                  "busy": "busy"}.get(result, "failed")
+                    item.detail = detail or {
+                        "busy": "another process is fetching it",
+                        "failed": "ingest failed",
+                    }.get(item.state, "")
                 wrote += item.state == "written"
+
+            # Whoever was fetching a busy session may have finished while this
+            # pass did the rest. Look once more, and trust only the lake.
+            for item in items:
+                if item.state == "busy" and lake.is_ingested(item.season, item.round, item.ident):
+                    with self._lock:
+                        item.state, item.detail = "present", ""
 
             with self._lock:
                 self._job.state = "done"
