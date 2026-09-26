@@ -262,7 +262,16 @@ def main(argv: list[str] | None = None) -> int:
         message("Done.\n\n" + ("\n".join(done) or "Nothing to change."))
         return 0
 
-    return run_app()
+    try:
+        return run_app()
+    except Exception as error:
+        # Under the GUI executable an uncaught error goes nowhere: the app just
+        # never appears. A broken source file did exactly that, launch after
+        # launch, and looked like the app had been deleted.
+        log.exception("could not start")
+        message(f"Racecraft could not start.\n\n{type(error).__name__}: {error}\n\n"
+                f"The details are in {config.DATA_DIR / 'logs'}", error=True)
+        return 1
 
 
 if __name__ == "__main__":
