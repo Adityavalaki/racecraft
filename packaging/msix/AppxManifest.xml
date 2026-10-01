@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for a full-trust (Win32) packaged desktop app.
+
+  Publisher below MUST match the subject of the signing certificate exactly.
+  make_cert.ps1 creates a cert with subject "CN=Racecraft Dev"; if you change
+  one, change the other. Version is four-part (a.b.c.d); bump it for each build
+  you want Windows to treat as an update.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity Name="Racecraft"
+            Publisher="CN=Racecraft Dev"
+            Version="0.1.0.0"
+            ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Racecraft</DisplayName>
+    <PublisherDisplayName>Racecraft Dev</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26200.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Racecraft" Executable="Racecraft.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Racecraft"
+        Description="F1 strategy workbench: replay and model race timing."
+        BackgroundColor="#0c1015"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png"
+                         Square71x71Logo="Assets\Square71x71Logo.png"
+                         Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A packaged Win32 app runs outside the AppContainer sandbox. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

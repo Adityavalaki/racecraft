@@ -8,3 +8,12 @@ web/dist/
 # The legacy engine regenerates its own data with run_pipeline.py
 legacy/**/data/
 legacy/**/__pycache__/
+
+# Packaging output: the frozen app, the MSIX, and signing material. The .pfx is
+# a private key and must never be committed; the generated tile assets are built
+# from the icon by make_msix_assets.py.
+dist/
+build/
+packaging/msix/*.pfx
+packaging/msix/*.cer
+packaging/msix/Assets/

@@ -32,7 +32,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from racecraft import config
+from racecraft import config, resources
 from racecraft.app import instance, shortcuts
 from racecraft.app.autosync import AutoSync
 from racecraft.app.server import ServerThread, bound_socket
@@ -40,7 +40,8 @@ from racecraft.app.server import ServerThread, bound_socket
 log = logging.getLogger("racecraft.app")
 
 TITLE = "Racecraft"
-ICON = Path(__file__).with_name("racecraft.ico")
+ICON = (resources.bundle_dir() / "racecraft" / "app" / "racecraft.ico" if resources.frozen()
+        else Path(__file__).with_name("racecraft.ico"))
 READY_TIMEOUT_S = 60
 
 STARTING = """<!doctype html><html><head><meta charset="utf-8"><style>
@@ -263,6 +264,9 @@ def exit_now() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if resources.frozen():
+        import multiprocessing
+        multiprocessing.freeze_support()       # a frozen child must not re-run the app
     ap = argparse.ArgumentParser(prog="racecraft", description="Open Racecraft in its own window.")
     ap.add_argument("--install-shortcuts", action="store_true",
                     help="put Racecraft on the Desktop and in the Start menu, and retire the "

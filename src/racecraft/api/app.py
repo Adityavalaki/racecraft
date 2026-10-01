@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from racecraft import resources
 from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import places_view
@@ -39,7 +40,8 @@ from racecraft.store.db import connect, has_table
 
 log = logging.getLogger(__name__)
 
-WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+WEB_DIST = (resources.bundle_dir() / "web" / "dist" if resources.frozen()
+            else Path(__file__).resolve().parents[3] / "web" / "dist")
 
 app = FastAPI(title="Racecraft", version="0.1.0")
 
