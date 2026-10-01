@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=78.1.1"]   # 78.1.1 fixes the path-traversal/command-injection advisories
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,6 +17,14 @@ dependencies = [
     "requests>=2.31",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    # Transitive, pinned to patched versions for their advisories (both resolve
+    # cleanly under requests and fastf1): urllib3 GHSA-8988/gh4c/vxq7, PyJWT
+    # GHSA-42vr. msgpack (GHSA-6v7p) cannot be floored here — signalrcore pins
+    # it to 1.1.2 — but Racecraft records through fastf1's SignalR client, so
+    # its msgpack path is not on ours. `build.setuptools>=78.1.1` keeps the
+    # build tool patched too.
+    "urllib3>=2.8.0",
+    "PyJWT>=2.15.0",
 ]
 
 [project.optional-dependencies]

@@ -137,6 +137,26 @@ def test_unknown_session_is_a_404(client):
     assert client.get("/api/sessions/1999_01_R").status_code == 404
 
 
+def test_a_session_key_with_sql_in_it_is_refused_not_run(client):
+    """
+    The key goes straight into a DuckDB query, which can read and write files,
+    so anything that is not a plain code must be turned away before it is run.
+    """
+    sessions_before = client.get("/api/sessions").json()
+    attacks = [
+        "nope' or '1'='1",
+        "x'; create table pwned(a int); select * from sessions where '1'='1",
+        "2024_01_R' union select * from sessions --",
+        "../../etc/passwd",
+    ]
+    for key in attacks:
+        for suffix in ("", "/laps", "/state?t=1"):
+            assert client.get(f"/api/sessions/{key}{suffix}").status_code in (400, 404, 422), key
+    # The database is untouched: no table was created, nothing was dropped.
+    assert client.get("/api/sessions").json() == sessions_before
+    assert client.get(f"/api/sessions/{KEY}").status_code == 200
+
+
 def test_positions_are_null_past_the_end_of_the_telemetry(client):
     # Rather than extrapolating a car onto the track where no samples exist.
     body = client.get(f"/api/sessions/{KEY}/state", params={"t": START + 3 * LAP + 60}).json()

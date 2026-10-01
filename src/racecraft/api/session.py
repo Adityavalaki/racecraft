@@ -15,6 +15,7 @@ reloading, and little enough to stay comfortable in memory.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -66,8 +67,16 @@ class Channel:
         return out
 
 
+# A session key is a partition code the lake wrote, like `2024_01_R`. Every
+# query below puts it straight into SQL, so anything that is not a plain code is
+# refused here rather than reaching DuckDB, which can read and write files.
+_KEY = re.compile(r"[A-Za-z0-9_]+")
+
+
 class SessionData:
     def __init__(self, session_key: str, con=None):
+        if not _KEY.fullmatch(session_key):
+            raise KeyError(session_key)
         con = con or connect()
         self.session_key = session_key
         try:

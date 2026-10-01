@@ -286,6 +286,7 @@ def _load(session_key: str):
             # 409 rather than 404: the session is not missing, it is not ready,
             # and the difference decides whether the interface should retry.
             raise HTTPException(status_code=409, detail=str(error)) from None
+    _safe(session_key)                         # a key goes straight into SQL; refuse a bad one here
     try:
         return session_store.load(session_key)
     except KeyError:
