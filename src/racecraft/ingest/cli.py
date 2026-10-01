@@ -20,14 +20,14 @@ import os
 import shutil
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fastf1
 import pandas as pd
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
-from racecraft import config
+from racecraft import config, locking
 from racecraft.ingest import api_budget, fastf1_source, quality
 from racecraft.store import lake
 
@@ -145,9 +145,8 @@ def wait_for_api_budget(key: str) -> None:
 
 # One session is written by one process at a time. The watcher and the
 # interface's sync button can both reach for the same session, and two writers
-# on the same Parquet files is the one way the lake gets corrupted. A lock older
-# than this belongs to a process that died mid-write and is taken over.
-SESSION_LOCK_STALE = timedelta(minutes=30)
+# on the same Parquet files is the one way the lake gets corrupted. The lock is
+# the OS's (`racecraft.locking`), held for the whole write.
 
 
 def process_alive(pid: int) -> bool:
@@ -180,38 +179,16 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def lock_owner_gone(path: Path) -> bool:
-    """True when the process named in a lock file is no longer running."""
-    try:
-        return not process_alive(int(path.read_text(encoding="utf-8").strip() or 0))
-    except (OSError, ValueError):
-        return True                            # unreadable: nobody can be relying on it
-
-
-def session_lock(key: str) -> Path | None:
+def session_lock(key: str) -> locking.FileLock | None:
     """
-    The lock for one session, or None if another *running* process is writing it.
+    The lock for one session, or None if another process is writing it.
 
-    A lock is honoured only while its owner is alive. Baku FP2 sat unfetched
-    behind one left by a watcher that had been closed: the sync that came six
-    minutes later saw a young lock and stood aside for a writer that no longer
-    existed. The age limit remains for an owner that is alive but stuck.
+    Baku FP2 sat unfetched behind a pid-file lock left by a watcher that had
+    been closed. An OS lock cannot be left behind: a closed or killed writer
+    lets go of it at once, and a live one keeps it however slow it is.
     """
     path = config.DATA_DIR / "logs" / "locks" / f"{key}.lock"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(2):
-        try:
-            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            age = time.time() - path.stat().st_mtime
-            if age < SESSION_LOCK_STALE.total_seconds() and not lock_owner_gone(path):
-                return None
-            path.unlink(missing_ok=True)       # its writer died or stalled; take it over
-            continue
-        os.write(handle, str(os.getpid()).encode())
-        os.close(handle)
-        return path
-    return None
+    return locking.acquire(path, str(os.getpid()))   # the pid is for anyone looking
 
 
 def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
@@ -230,7 +207,7 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
         return _ingest_locked(season, rnd, ident, session_name, key,
                               telemetry=telemetry, force=force, prune=prune)
     finally:
-        lock.unlink(missing_ok=True)
+        lock.release()
 
 
 def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
@@ -449,24 +426,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # A watcher writes into the lake, and two of them ingesting the same session
-# would race each other over the same Parquet files. The lock is a file whose
-# timestamp is refreshed each pass, so a watcher killed without cleaning up
-# hands over after a few quiet minutes rather than blocking the next one for
-# good.
-LOCK_STALE_AFTER = timedelta(minutes=90)
+# would race each other over the same Parquet files. The watcher holds an OS
+# lock (`racecraft.locking`) for as long as it runs; one that is killed lets go
+# of it at once.
 
 
-def take_lock(path: Path) -> bool:
-    """True if this process may watch; False if another one already is."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
-        if age < LOCK_STALE_AFTER.total_seconds() and not lock_owner_gone(path):
-            return False
-        log.info("taking over a lock left behind %.0f minutes ago by a watcher "
-                 "that is no longer running", age / 60)
-    path.write_text(str(os.getpid()), encoding="utf-8")
-    return True
+def take_lock(path: Path) -> locking.FileLock | None:
+    """The watcher's lock if this process may watch; None if another one already is."""
+    return locking.acquire(path, str(os.getpid()))   # the pid is for anyone looking
 
 
 def watch(args, log_file) -> int:
@@ -479,17 +446,17 @@ def watch(args, log_file) -> int:
     often and nothing to lose from looking at all — a pass with nothing to do
     costs one schedule request.
     """
-    lock = config.LOG_DIR / "watch.lock" if hasattr(config, "LOG_DIR") else \
+    path = config.LOG_DIR / "watch.lock" if hasattr(config, "LOG_DIR") else \
         config.LAKE_DIR.parent / "logs" / "watch.lock"
-    if not take_lock(lock):
-        log.info("another watcher is already running (%s); nothing to do here", lock)
+    lock = take_lock(path)
+    if lock is None:
+        log.info("another watcher is already running (%s); nothing to do here", path)
         return 0
 
-    log.info("watching %s every %d minutes; Ctrl+C to stop",
-             ", ".join(str(season) for season in args.season), args.every)
     try:
+        log.info("watching %s every %d minutes; Ctrl+C to stop",
+                 ", ".join(str(season) for season in args.season), args.every)
         while True:
-            lock.write_text(str(os.getpid()), encoding="utf-8")   # still alive
             counts = run_once(args)
             if counts["written"] or counts["failed"]:
                 log.info("this pass: %d written, %d failed. Lake %.1f MB",
@@ -503,7 +470,7 @@ def watch(args, log_file) -> int:
         log.info("full log: %s", log_file)
         return 0
     finally:
-        lock.unlink(missing_ok=True)
+        lock.release()
 
 
 if __name__ == "__main__":

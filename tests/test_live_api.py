@@ -156,6 +156,37 @@ def test_the_store_serves_a_session_and_keeps_it_until_it_goes_stale(store, monk
     assert store.session() is not first
 
 
+def test_attaching_again_to_the_same_recording_keeps_what_was_built(store, monkeypatch):
+    """The interface re-attaches while it waits; that must not throw a built session away."""
+    feed = _attach(store, monkeypatch)
+    built = store.session()
+    built_at = store._built_at
+
+    assert store.attach() is feed
+    assert store.session() is built
+    assert store._built_at == built_at
+
+
+def test_attaching_to_a_different_recording_starts_again(store, monkeypatch):
+    _attach(store, monkeypatch)
+    before = store.session()
+    other = recorder.LIVE_DIR / "baku-restart.txt"
+    other.write_text("['Heartbeat', {}, '2026-09-26T12:00:00.000Z']\n", encoding="utf-8")
+
+    feed = store.attach(other)
+    assert feed.path == other
+    assert store._built_at == 0.0
+    assert store.session() is not before
+
+
+def test_attaching_the_same_recording_as_another_session_starts_again(store, monkeypatch):
+    feed = _attach(store, monkeypatch)
+    store.session()
+    again = store.attach(feed.path, feed_module.LiveSession(2026, 17, "Qualifying"))
+    assert again is not feed
+    assert store._built_at == 0.0
+
+
 def test_a_recording_with_nothing_in_it_reads_as_not_ready(store, monkeypatch):
     _attach(store, monkeypatch, error=feed_module.NotRecording("is the recorder running?"))
     with pytest.raises(live_store.NotLive):

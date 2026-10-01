@@ -500,21 +500,34 @@ export interface Insight {
   tyre_sets?: { unavailable: string | null; cars: Record<string, CarPlanChecks> } | null;
 }
 
-async function post<T>(path: string): Promise<T> {
-  const response = await fetch(path, { method: "POST" });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(detail.detail ?? `request failed: ${response.status}`);
+/**
+ * A request the server answered with an error. `status` lets a caller tell
+ * "not ready yet" (409, live waiting for data) from something actually wrong.
+ */
+export class HttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
   }
+}
+
+async function failure(response: Response): Promise<HttpError> {
+  const detail = await response.json().catch(() => ({ detail: response.statusText }));
+  return new HttpError(detail.detail ?? `request failed: ${response.status}`, response.status);
+}
+
+async function post<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { method: "POST", signal });
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(detail.detail ?? `request failed: ${response.status}`);
-  }
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
 }
 
@@ -550,7 +563,8 @@ export const api = {
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
-  liveAttach: () => post<LiveStatus>("/api/live/attach"),
+  /** Points live at the newest recording. Attaching again to the same one changes nothing. */
+  liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
   /** Starts a sync of the latest race weekends, or reports the one running. */
   sync: () => post<SyncStatus>("/api/sync"),
   syncStatus: (signal?: AbortSignal) => get<SyncStatus>("/api/sync", signal),

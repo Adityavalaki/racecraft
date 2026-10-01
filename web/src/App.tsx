@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LIVE_KEY, api, type Insight, type LapSeries, type RaceControlEvent, type SessionInfo, type SessionState, type SessionSummary } from "./api";
+import { HttpError, LIVE_KEY, api, type Insight, type LapSeries, type RaceControlEvent, type SessionInfo, type SessionState, type SessionSummary } from "./api";
 import { useClock } from "./clock";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
@@ -33,8 +33,30 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
+/** Where reading the session list has got. An empty list is an answer, not a failure. */
+type ListState = { status: "loading" } | { status: "loaded" } | { status: "failed"; message: string };
+
+/**
+ * The session to open when none is chosen yet. Live first when there is one: a
+ * recording exists only because someone started it, which is as clear a
+ * statement of intent as the interface is going to get. Otherwise the newest
+ * race (the list is newest first), otherwise whatever there is.
+ */
+function defaultSession(all: SessionSummary[]): string | null {
+  const opening = all.find((s) => s.session_key === LIVE_KEY)
+    ?? all.find((s) => s.session === "R")
+    ?? all[0];
+  return opening?.session_key ?? null;
+}
+
+/** Live answers 409 until it has a recording to read and something in it. */
+function isNotReady(error: unknown): boolean {
+  return error instanceof HttpError && error.status === 409;
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [listState, setListState] = useState<ListState>({ status: "loading" });
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [info, setInfo] = useState<SessionInfo | null>(null);
   const [state, setState] = useState<SessionState | null>(null);
@@ -43,40 +65,91 @@ export default function App() {
   const [selected, setSelected] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("trace");
-  const [insight, setInsight] = useState<Insight | null>(null);
   const [stewards, setStewards] = useState<RaceControlEvent[]>([]);
   const [trackLog, setTrackLog] = useState<RaceControlEvent[]>([]);
-  const [insightError, setInsightError] = useState<string | null>(null);
+  // The models' answer, and why there is none, each kept with the session it
+  // is for: another session's result or failure must not stand in for, or
+  // hold back, this one's.
+  const [insightEntry, setInsightEntry] = useState<{ key: string; insight: Insight } | null>(null);
+  const [insightFailure, setInsightFailure] = useState<{ key: string; message: string } | null>(null);
+  // Bumped when a live session moves on, so a fit asked for before is dropped.
+  const [insightGeneration, setInsightGeneration] = useState(0);
+  const insight = insightEntry?.key === sessionKey ? insightEntry.insight : null;
+  const insightError = insightFailure?.key === sessionKey ? insightFailure.message : null;
   // A live session grows while it is being watched. Following means the clock
   // rides the newest lap; scrubbing back stops following, because someone
   // looking at lap 12 does not want to be yanked to lap 40 a second later.
   const [following, setFollowing] = useState(true);
+  // Live is selected before it has anything to show: the recorder may not have
+  // started, or the server may have restarted and let go of the recording.
+  // Waiting is that state, shown as such rather than as an error.
+  const [waiting, setWaiting] = useState(false);
+  const waitingRef = useRef(false);
+  waitingRef.current = waiting;
   const isLive = sessionKey === LIVE_KEY;
 
-  // After a sync writes new sessions, the list is read again so they appear in
-  // the picker. The session being viewed is left alone.
-  const reloadSessions = useCallback(() => {
-    api.sessions().then(setSessions).catch(() => undefined);
+  // A list that arrives picks a session only if none is open: the first sync
+  // on a new install fills an empty picker, and a later one leaves the session
+  // being viewed alone.
+  const takeSessions = useCallback((all: SessionSummary[]) => {
+    setSessions(all);
+    setListState({ status: "loaded" });
+    setSessionKey((current) => current ?? defaultSession(all));
   }, []);
 
+  // Every read of the list is numbered, and one older than the list already
+  // shown is dropped: a slow first read must not replace the list a later sync
+  // brought, nor pick a session over it.
+  const listRequest = useRef(0);
+  const listShown = useRef(0);
+  const takeNewestSessions = useCallback((request: number, all: SessionSummary[]) => {
+    if (request < listShown.current) return;
+    listShown.current = request;
+    takeSessions(all);
+  }, [takeSessions]);
+
+  // After a sync writes new sessions, the list is read again so they appear in
+  // the picker. A failure here keeps the list already shown.
+  const reloadSessions = useCallback(() => {
+    const request = ++listRequest.current;
+    api.sessions().then((all) => takeNewestSessions(request, all)).catch(() => undefined);
+  }, [takeNewestSessions]);
+
   useEffect(() => {
+    let active = true;
+    const request = ++listRequest.current;
     api.sessions()
       .then((all) => {
-        setSessions(all);
-        // Live first when there is one: a recording exists only because someone
-        // started it, which is as clear a statement of intent as the interface
-        // is going to get. Otherwise the newest race.
-        const opening = all.find((s) => s.session_key === LIVE_KEY)
-          ?? all.find((s) => s.session === "R")
-          ?? all[0];
-        if (opening) setSessionKey(opening.session_key);
+        if (active) takeNewestSessions(request, all);
       })
-      .catch((e) => setError(String(e.message ?? e)));
+      .catch((e) => {
+        if (active && listShown.current === 0) {
+          setListState({ status: "failed", message: String(e.message ?? e) });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [takeNewestSessions]);
+
+  // Info and laps are asked for by the first load and again by every live
+  // refresh. Each request is numbered, and a response older than one already
+  // shown is dropped, so a slow early answer cannot move the live edge back.
+  const infoRequest = useRef(0);
+  const shown = useRef({ info: 0, laps: 0 });
+  const newest = useCallback((kind: "info" | "laps", request: number) => {
+    if (request < shown.current[kind]) return false;
+    shown.current[kind] = request;
+    return true;
   }, []);
 
   useEffect(() => {
     if (!sessionKey) return;
+    // Aborting stops the requests; `active` also stops any answer that arrives
+    // anyway, success or failure, once another session has been picked.
+    let active = true;
     const controller = new AbortController();
+    const current = () => active && !controller.signal.aborted;
     setInfo(null);
     setState(null);
     setLaps([]);
@@ -85,60 +158,134 @@ export default function App() {
     setTrackLog([]);
     setSelected([]);
     setError(null);
-    setInsight(null);
-    setInsightError(null);
+    setInsightEntry(null);
+    setInsightFailure(null);
     setFollowing(true);
-    api.info(sessionKey, controller.signal).then(setInfo).catch(reportUnlessAborted(setError));
-    api
-      .laps(sessionKey, controller.signal)
-      .then((chart) => {
-        setLaps(chart.drivers);
-        setCrossings(chart.leader_crossings);
-      })
-      .catch(reportUnlessAborted(setError));
-    return () => controller.abort();
-  }, [sessionKey]);
+    setWaiting(false);
+    // Not ready yet is waiting, for live; anything else is an error.
+    const report = reportUnlessAborted(setError);
+    const fail = (error: Error) => {
+      if (!current()) return;
+      if (sessionKey === LIVE_KEY && isNotReady(error)) setWaiting(true);
+      else report(error);
+    };
+    const load = () => {
+      const request = ++infoRequest.current;
+      api
+        .info(sessionKey, controller.signal)
+        .then((next) => {
+          if (current() && newest("info", request)) setInfo(next);
+        })
+        .catch(fail);
+      api
+        .laps(sessionKey, controller.signal)
+        .then((chart) => {
+          if (!current() || !newest("laps", request)) return;
+          setLaps(chart.drivers);
+          setCrossings(chart.leader_crossings);
+        })
+        .catch(fail);
+    };
+    // Live is served from whatever recording the server is attached to, and a
+    // server that has just started is attached to none: attach, then read.
+    if (sessionKey === LIVE_KEY) {
+      api
+        .liveAttach(controller.signal)
+        .then(() => {
+          if (current()) load();
+        })
+        .catch(fail);
+    } else {
+      load();
+    }
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [sessionKey, newest]);
 
   // Fitting a season costs seconds, so it is asked for only once a tab that
   // needs it is opened, and then kept for as long as the session is loaded.
   // The sets tab uses it only to check plans against a car's tyres, and shows
   // the sets themselves without waiting for it.
   const wantsInsight = tab === "tyres" || tab === "strategy" || tab === "sets";
+
+  // A failed fit is asked for again when a model tab is opened again, rather
+  // than showing the old failure until another session is picked. A fit that
+  // worked is kept, and shared by every model tab.
+  const wantedInsight = useRef(wantsInsight);
+  useEffect(() => {
+    if (wantsInsight && !wantedInsight.current) setInsightFailure(null);
+    wantedInsight.current = wantsInsight;
+  }, [wantsInsight]);
+
   useEffect(() => {
     if (!sessionKey || !wantsInsight || insight || insightError) return;
+    let active = true;
     const controller = new AbortController();
     api
       .insight(sessionKey, controller.signal)
-      .then(setInsight)
-      .catch(reportUnlessAborted(setInsightError));
-    return () => controller.abort();
-  }, [sessionKey, wantsInsight, insight, insightError]);
+      .then((next) => {
+        if (active) setInsightEntry({ key: sessionKey, insight: next });
+      })
+      .catch((error: Error) => {
+        if (active && error.name !== "AbortError") {
+          setInsightFailure({ key: sessionKey, message: String(error.message ?? error) });
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [sessionKey, wantsInsight, insight, insightError, insightGeneration]);
 
   // A historic session is fetched once. A live one has to be asked again: its
-  // end moves every lap, and the lap chart gains a row.
+  // end moves every lap, and the lap chart gains a row. While waiting it is
+  // attached again first, which is how it recovers once the recording has
+  // something in it, or after the server restarted and let go of it.
   useEffect(() => {
     if (!isLive || !sessionKey) return;
     let active = true;
-    const pull = () => {
-      api.info(sessionKey).then((next) => active && setInfo(next)).catch(() => undefined);
-      api.laps(sessionKey)
-        .then((chart) => {
-          if (!active) return;
-          setLaps(chart.drivers);
-          setCrossings(chart.leader_crossings);
-        })
-        .catch(() => undefined);
+    let inFlight = false;
+    const pull = async () => {
+      if (inFlight || !active) return;
+      inFlight = true;
+      try {
+        if (waitingRef.current) await api.liveAttach();
+        if (!active) return;
+        const request = ++infoRequest.current;
+        const [nextInfo, nextLaps] = await Promise.allSettled([api.info(sessionKey), api.laps(sessionKey)]);
+        if (!active) return;
+        if (nextInfo.status === "fulfilled" && newest("info", request)) setInfo(nextInfo.value);
+        if (nextLaps.status === "fulfilled" && newest("laps", request)) {
+          setLaps(nextLaps.value.drivers);
+          setCrossings(nextLaps.value.leader_crossings);
+        }
+        if (nextInfo.status === "fulfilled" && nextLaps.status === "fulfilled") {
+          setWaiting(false);
+          setError(null);
+        } else if ([nextInfo, nextLaps].some((r) => r.status === "rejected" && isNotReady(r.reason))) {
+          setWaiting(true);
+        }
+      } catch (error) {
+        if (active && isNotReady(error)) setWaiting(true);
+      } finally {
+        inFlight = false;
+      }
+      if (!active) return;
       // Dropping the models makes the open tab refetch them; a closed one pays
-      // nothing, which is why this clears rather than fetches.
-      setInsight(null);
-      setInsightError(null);
+      // nothing, which is why this clears rather than fetches. The generation
+      // also drops a fit still on its way, which was asked for before this.
+      setInsightEntry(null);
+      setInsightFailure(null);
+      setInsightGeneration((g) => g + 1);
     };
     const timer = setInterval(pull, LIVE_INTERVAL_MS);
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [isLive, sessionKey]);
+  }, [isLive, sessionKey, newest]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
@@ -260,9 +407,20 @@ export default function App() {
     },
     [],
   );
+  // The ±30 s buttons are a deliberate move too. Following is dropped first so
+  // the live edge cannot pull the clock back before the nudge lands.
+  const nudgeRef = useRef(clock.nudge);
+  nudgeRef.current = clock.nudge;
+  const stopFollowingAndNudge = useCallback(
+    (seconds: number) => {
+      setFollowing(false);
+      nudgeRef.current(seconds);
+    },
+    [],
+  );
   const handClock = useMemo(
-    () => ({ ...clock, seek: stopFollowingAndSeek }),
-    [clock, stopFollowingAndSeek],
+    () => ({ ...clock, seek: stopFollowingAndSeek, nudge: stopFollowingAndNudge }),
+    [clock, stopFollowingAndSeek, stopFollowingAndNudge],
   );
 
   // Jumping to a lap means the moment that lap began, which is the leader's
@@ -301,6 +459,7 @@ export default function App() {
                 Go live
               </button>
             )}
+            {waiting && info && <span className="live-waiting">waiting for live data</span>}
           </div>
         )}
         {info && (
@@ -408,7 +567,9 @@ export default function App() {
           </section>
         </main>
       ) : (
-        <main className="grid loading">{error ? "" : "Loading session…"}</main>
+        <main className="grid loading">
+          <Placeholder list={listState} empty={sessions.length === 0} waiting={waiting} error={error} />
+        </main>
       )}
 
       {info && (
@@ -425,6 +586,41 @@ export default function App() {
       )}
     </div>
   );
+}
+
+/** What fills the page before a session is on it: each case says what to do next. */
+function Placeholder({ list, empty, waiting, error }: {
+  list: ListState;
+  empty: boolean;
+  waiting: boolean;
+  error: string | null;
+}) {
+  if (list.status === "failed") {
+    return (
+      <div className="placeholder">
+        <p>Could not read the session list.</p>
+        <p className="placeholder-error">{list.message}</p>
+      </div>
+    );
+  }
+  if (list.status === "loading") return <>Loading sessions…</>;
+  if (empty) {
+    return (
+      <div className="placeholder">
+        <p>No sessions yet.</p>
+        <p className="placeholder-hint">Sync downloads the latest race weekends. Use the Sync button above.</p>
+      </div>
+    );
+  }
+  if (waiting) {
+    return (
+      <div className="placeholder">
+        <p>Waiting for live data…</p>
+        <p className="placeholder-hint">The recording has nothing to show yet. This checks again every few seconds.</p>
+      </div>
+    );
+  }
+  return <>{error ? "" : "Loading session…"}</>;
 }
 
 function reportUnlessAborted(setError: (message: string) => void) {

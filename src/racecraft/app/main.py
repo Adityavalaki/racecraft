@@ -162,7 +162,12 @@ def run_app() -> int:
         return 1
 
     sock = bound_socket()
-    if not instance.claim(sock.getsockname()[1]):
+    try:
+        lock = instance.claim_when_free(sock.getsockname()[1])
+    except BaseException:
+        sock.close()
+        raise
+    if lock is None:
         # Another launch won the race a moment ago.
         sock.close()
         held = instance.running()
@@ -170,12 +175,36 @@ def run_app() -> int:
             instance.ask_to_focus(held[1], pid=held[0])
         return 0
 
+    parts: dict = {}
+    try:
+        _open_window(webview, sock, parts, log_file)
+    finally:
+        # The window is closed: stop syncing, stop serving, let the next launch in.
+        # Each step is guarded so a failure in one never keeps the lock held.
+        try:
+            if "sync" in parts:
+                parts["sync"].stop()
+        except Exception:
+            log.exception("could not stop the sync timer")
+        try:
+            if "server" in parts:
+                parts["server"].stop()
+            else:
+                sock.close()
+        except Exception:
+            log.exception("could not stop the server")
+        instance.release(lock)
+        log.info("closed")
+    exit_now()
+
+
+def _open_window(webview, sock, parts: dict, log_file) -> None:
+    """Show the window and serve the app into it; returns when the window closes."""
     set_app_identity()
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     window = webview.create_window(TITLE, html=STARTING, width=1440, height=900,
                                    min_size=(1024, 700), background_color="#0c1015")
     window.events.shown += lambda: set_window_icon(window)
-    parts: dict = {}
 
     def boot() -> None:
         """Runs once the window is up: load the API, serve it, point the window at it."""
@@ -188,34 +217,23 @@ def run_app() -> int:
                 return {"ok": True}
 
             api.add_api_route("/api/app/focus", focus, methods=["POST"])
+            # Recorded before starting, so closing the window stops a partial start.
             server = ServerThread(api, sock)
-            server.start()
             parts["server"] = server
+            server.start()
             if not wait_until_ready(server.url):
                 raise RuntimeError(f"the server did not answer on {server.url}")
             log.info("serving on %s", server.url)
             window.load_url(server.url)
 
             auto = AutoSync(sync_view.start, sync_view.status)
-            auto.start()
             parts["sync"] = auto
+            auto.start()
         except Exception as error:
             log.exception("could not start")
             window.load_html(FAILED.format(reason=f"{type(error).__name__}: {error}", log=log_file))
 
-    try:
-        webview.start(boot)
-    finally:
-        # The window is closed: stop syncing, stop serving, let the next launch in.
-        if "sync" in parts:
-            parts["sync"].stop()
-        if "server" in parts:
-            parts["server"].stop()
-        else:
-            sock.close()
-        instance.release()
-        log.info("closed")
-    exit_now()
+    webview.start(boot)
 
 
 def exit_now() -> None:

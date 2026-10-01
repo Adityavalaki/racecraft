@@ -9,12 +9,14 @@ new landed. And it must not let a second writer at a session another process
 is writing.
 """
 
+import os
 import time
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
 
+from conftest import hold_lock_elsewhere, kill, soon
 from racecraft.ingest import cli, sync
 
 NOW = datetime(2026, 9, 26, 18, 0, tzinfo=timezone.utc)
@@ -154,23 +156,28 @@ def test_a_second_click_while_it_runs_reports_the_running_sync(quiet, monkeypatc
 
 # ------------------------------------------------------------- one writer per session
 
-def test_a_session_being_written_by_another_process_is_left_alone(monkeypatch, tmp_path):
+def _lock_file(data_dir, key):
+    return data_dir / "logs" / "locks" / f"{key}.lock"
+
+
+def test_a_session_being_written_is_left_alone_until_its_writer_lets_go(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
     held = cli.session_lock("2026_15_FP1")
     assert held is not None
     assert cli.session_lock("2026_15_FP1") is None, "two writers on one session"
-    held.unlink()
-    assert cli.session_lock("2026_15_FP1") is not None
+    held.release()
+    again = cli.session_lock("2026_15_FP1")
+    assert again is not None
+    again.release()
 
 
-def test_a_lock_left_by_a_writer_that_died_is_taken_over(monkeypatch, tmp_path):
-    import os
-
+def test_a_session_being_written_by_another_process_is_left_alone(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
-    path = cli.session_lock("2026_15_FP2")
-    stale = time.time() - cli.SESSION_LOCK_STALE.total_seconds() - 60
-    os.utime(path, (stale, stale))
-    assert cli.session_lock("2026_15_FP2") is not None
+    writer = hold_lock_elsewhere(_lock_file(tmp_path, "2026_15_FP1"))
+    try:
+        assert cli.session_lock("2026_15_FP1") is None
+    finally:
+        kill(writer)
 
 
 # ------------------------------------------------------------- over HTTP
@@ -215,17 +222,40 @@ def test_a_lock_whose_owner_has_gone_is_released_at_once(monkeypatch, tmp_path):
     later the lock was young, its owner long gone, and the sync stood aside.
     """
     monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
-    path = cli.session_lock("2026_15_FP2")
-    path.write_text("4764")                    # a process that no longer exists
-    monkeypatch.setattr(cli, "process_alive", lambda pid: False)
-    assert cli.session_lock("2026_15_FP2") is not None
+    writer = hold_lock_elsewhere(_lock_file(tmp_path, "2026_15_FP2"))
+    kill(writer)
+    lock = soon(lambda: cli.session_lock("2026_15_FP2"))
+    assert lock is not None, "a killed writer still blocks the session"
+    lock.release()
 
 
-def test_a_lock_whose_owner_is_still_running_is_respected(monkeypatch, tmp_path):
+def test_a_slow_writer_that_is_still_running_is_respected_however_old(monkeypatch, tmp_path):
+    """No age limit: a long telemetry load is not a dead writer."""
     monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
-    cli.session_lock("2026_15_FP2")
-    monkeypatch.setattr(cli, "process_alive", lambda pid: True)
-    assert cli.session_lock("2026_15_FP2") is None
+    path = _lock_file(tmp_path, "2026_15_FP2")
+    writer = hold_lock_elsewhere(path)
+    try:
+        ancient = time.time() - 24 * 3600
+        os.utime(path, (ancient, ancient))
+        assert cli.session_lock("2026_15_FP2") is None
+        assert path.read_text() == str(writer.holder_pid)
+    finally:
+        kill(writer)
+
+
+def test_a_write_that_fails_lets_go_of_the_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(cli.lake, "is_ingested", lambda *a, **k: False)
+
+    def boom(*a, **k):
+        raise RuntimeError("the feed fell over")
+
+    monkeypatch.setattr(cli, "_ingest_locked", boom)
+    with pytest.raises(RuntimeError):
+        cli.ingest_one(2026, 15, "FP2", "Practice 2", telemetry=False, force=False, prune=False)
+    lock = cli.session_lock(cli.fastf1_source.make_session_key(2026, 15, "FP2"))
+    assert lock is not None, "a failed write kept the session locked"
+    lock.release()
 
 
 def test_this_process_is_alive_and_a_made_up_one_is_not():

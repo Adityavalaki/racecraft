@@ -50,4 +50,5 @@ class AutoSync(threading.Thread):
 
     def stop(self, timeout: float = 2.0) -> None:
         self._halt.set()
-        self.join(timeout)
+        if self.ident is not None:            # started: a thread never started cannot be joined
+            self.join(timeout)

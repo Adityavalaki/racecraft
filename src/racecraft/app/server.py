@@ -49,7 +49,8 @@ class ServerThread(threading.Thread):
 
     def stop(self, timeout: float = 5.0) -> None:
         self.server.should_exit = True
-        self.join(timeout)
+        if self.ident is not None:            # started: a thread never started cannot be joined
+            self.join(timeout)
         try:
             self.sock.close()
         except OSError:

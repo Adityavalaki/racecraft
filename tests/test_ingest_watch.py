@@ -124,20 +124,35 @@ def _args():
 
 def test_two_watchers_do_not_ingest_over_each_other(tmp_path):
     """Both writing the same Parquet files is the one way this breaks the lake."""
-    lock = tmp_path / "watch.lock"
-    assert cli.take_lock(lock) is True
-    assert cli.take_lock(lock) is False, "a second watcher started anyway"
+    path = tmp_path / "watch.lock"
+    first = cli.take_lock(path)
+    assert first is not None
+    try:
+        assert cli.take_lock(path) is None, "a second watcher started anyway"
+    finally:
+        first.release()
+    again = cli.take_lock(path)
+    assert again is not None, "a watcher that stopped still blocks the next"
+    again.release()
 
 
-def test_a_lock_left_behind_by_a_killed_watcher_is_taken_over(tmp_path, monkeypatch):
-    import os, time
+def test_a_lock_left_behind_by_a_killed_watcher_is_taken_over_at_once(tmp_path):
+    import os
 
-    lock = tmp_path / "watch.lock"
-    lock.write_text("999999")
-    stale = time.time() - cli.LOCK_STALE_AFTER.total_seconds() - 60
-    os.utime(lock, (stale, stale))
-    assert cli.take_lock(lock) is True
-    assert lock.read_text() == str(os.getpid())
+    from conftest import hold_lock_elsewhere, kill, soon
+
+    path = tmp_path / "watch.lock"
+    watcher = hold_lock_elsewhere(path)
+    try:
+        assert cli.take_lock(path) is None
+    finally:
+        kill(watcher)
+    lock = soon(lambda: cli.take_lock(path))
+    assert lock is not None
+    try:
+        assert path.read_text() == str(os.getpid())
+    finally:
+        lock.release()
 
 
 def test_an_empty_parse_in_the_cache_is_thrown_away_and_the_session_asked_for_again(monkeypatch):

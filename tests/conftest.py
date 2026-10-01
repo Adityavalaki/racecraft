@@ -1,5 +1,10 @@
 """Small hand-built frames shaped like FastF1's output, so transforms can be tested offline."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -71,3 +76,60 @@ def fastf1_race_control():
         "RacingNumber": [None, None],
         "Lap": [2, 5],
     })
+
+
+# ------------------------------------------------------------- a lock held elsewhere
+
+_HOLDER = """
+import os, sys, time
+from pathlib import Path
+from racecraft import locking
+lock = locking.acquire(Path(sys.argv[1]), sys.argv[2].replace("{pid}", str(os.getpid())))
+print(f"held {os.getpid()}" if lock else "busy", flush=True)
+time.sleep(120)
+"""
+
+
+def hold_lock_elsewhere(path, text="{pid}"):
+    """
+    Another process holding the lock at `path`, with `text` in it ("{pid}"
+    becomes that process's pid, also kept as `.holder_pid`: under a venv
+    launcher on Windows `.pid` is the launcher's). Kill it to see what a crash
+    leaves behind.
+    """
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    env = {**os.environ, "PYTHONPATH": src + os.pathsep + os.environ.get("PYTHONPATH", "")}
+    proc = subprocess.Popen([sys.executable, "-c", _HOLDER, str(path), text],
+                            stdout=subprocess.PIPE, text=True, env=env)
+    first = proc.stdout.readline().split()
+    if first[:1] != ["held"]:
+        proc.kill()
+        proc.wait()
+        raise RuntimeError(f"the other process could not take {path}: {first!r}")
+    proc.holder_pid = int(first[1])
+    return proc
+
+
+def soon(take, within=3.0):
+    """
+    `take()` until it returns something, for up to `within` seconds.
+
+    Windows frees a killed process's locks a moment after it has exited (up to
+    about a second, measured), so the first try right after a kill can still
+    be refused. Recovery within seconds is the point; the pid-file locks this
+    replaced could block for an hour and a half.
+    """
+    import time
+
+    deadline = time.monotonic() + within
+    while True:
+        got = take()
+        if got is not None or time.monotonic() >= deadline:
+            return got
+        time.sleep(0.05)
+
+
+def kill(proc):
+    proc.kill()
+    proc.wait(timeout=10)
+    proc.stdout.close()

@@ -160,6 +160,16 @@ def test_an_empty_lake_is_a_404_not_a_server_error(client, tmp_path, monkeypatch
     assert client.get(f"/api/sessions/{KEY}").status_code == 404
 
 
+def test_a_new_install_lists_no_sessions_rather_than_failing(tmp_path, monkeypatch):
+    """The first page a new user sees asks for this before anything is synced."""
+    empty = tmp_path / "fresh-lake"
+    empty.mkdir()
+    monkeypatch.setattr(config, "LAKE_DIR", empty)
+    response = TestClient(app).get("/api/sessions")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 class TestPositionSmoothing:
     """
     The feed's timestamps jitter while its positions are smooth, so sampling

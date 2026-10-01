@@ -54,7 +54,13 @@ class LiveStore:
 
     def attach(self, path: Path | None = None,
                live_session: feed_module.LiveSession | None = None) -> feed_module.Feed:
-        """Point at a recording. Defaults to the newest one and the session now."""
+        """
+        Point at a recording. Defaults to the newest one and the session now.
+
+        Attaching again to what is already attached changes nothing: the
+        interface re-attaches while it waits for data and after a restart, and
+        each of those must not throw away a session that took seconds to build.
+        """
         path = path or recorder.latest_recording()
         if path is None:
             empty = recorder.recordings()
@@ -67,6 +73,9 @@ class LiveStore:
             raise NotLive("the schedule has no session within four hours, so a recording "
                           "cannot be matched to one. Pass year, round and session.")
         with self._lock:
+            held = self._feed
+            if held is not None and _same_file(held.path, path) and held.session == live_session:
+                return held
             self._feed = feed_module.Feed(path=path, session=live_session)
             self._session = None
             self._built_at = 0.0
@@ -138,6 +147,10 @@ class LiveStore:
             out["drivers"] = len(self._session.drivers)
             out["t_end"] = self._session.t_end
         return out
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    return Path(a).resolve() == Path(b).resolve()
 
 
 store = LiveStore()

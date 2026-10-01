@@ -16,6 +16,7 @@ import time
 
 import pytest
 
+from conftest import hold_lock_elsewhere, kill, soon
 from racecraft.app import autosync, instance, server, shortcuts
 
 
@@ -50,35 +51,104 @@ def test_the_api_is_served_on_that_port_and_stops_when_asked():
     assert not thread.is_alive()
 
 
+def test_a_server_and_sync_that_never_started_can_still_be_stopped():
+    """The window can close while start-up is half done; cleanup must not trip."""
+    from fastapi import FastAPI
+
+    sock = server.bound_socket()
+    unstarted = server.ServerThread(FastAPI(), sock)
+    unstarted.stop()
+    assert sock.fileno() == -1, "the socket was left open"
+    autosync.AutoSync(lambda: {}, lambda: {"state": "idle"}).stop()
+
+
 # ------------------------------------------------------------- one app at a time
 
-def test_a_second_app_is_turned_away_while_the_first_is_running(tmp_path, monkeypatch):
-    lock = tmp_path / "app.lock"
-    monkeypatch.setattr(instance, "process_alive", lambda pid: True)
-    assert instance.claim(51234, lock) is True
-    assert json.loads(lock.read_text()) == {"pid": os.getpid(), "port": 51234}
-    assert instance.claim(51999, lock) is False
-    assert instance.running_port(lock) == 51234
-    # The pid too: the second launch hands the foreground to that process.
-    assert instance.running(lock) == (os.getpid(), 51234)
+def test_a_second_app_is_turned_away_while_the_first_is_running(tmp_path):
+    path = tmp_path / "app.lock"
+    first = instance.claim(51234, path)
+    assert first is not None
+    try:
+        assert json.loads(path.read_text()) == {"pid": os.getpid(), "port": 51234}
+        assert instance.claim(51999, path) is None
+        assert instance.running_port(path) == 51234
+        # The pid too: the second launch hands the foreground to that process.
+        assert instance.running(path) == (os.getpid(), 51234)
+    finally:
+        instance.release(first)
 
 
-def test_an_app_that_crashed_does_not_block_the_next(tmp_path, monkeypatch):
-    lock = tmp_path / "app.lock"
-    lock.write_text(json.dumps({"pid": 4764, "port": 50000}))
-    monkeypatch.setattr(instance, "process_alive", lambda pid: False)
-    assert instance.running_port(lock) is None
-    assert instance.claim(51000, lock) is True
+def test_a_running_app_in_another_process_is_found_and_refused(tmp_path):
+    path = tmp_path / "app.lock"
+    other = hold_lock_elsewhere(path, '{"pid": {pid}, "port": 50000}')
+    try:
+        assert instance.claim(51000, path) is None
+        assert instance.running(path) == (other.holder_pid, 50000)
+    finally:
+        kill(other)
 
 
-def test_the_lock_is_given_up_only_by_its_owner(tmp_path):
-    lock = tmp_path / "app.lock"
-    lock.write_text(json.dumps({"pid": os.getpid() + 1, "port": 50000}))
+def test_an_app_that_crashed_does_not_block_the_next(tmp_path):
+    path = tmp_path / "app.lock"
+    other = hold_lock_elsewhere(path, '{"pid": {pid}, "port": 50000}')
+    kill(other)
+    assert instance.running_port(path) is None, "a crashed app is still reported as running"
+    lock = soon(lambda: instance.claim(51000, path))
+    assert lock is not None
     instance.release(lock)
-    assert lock.exists(), "released a lock that belongs to another app"
-    lock.write_text(json.dumps({"pid": os.getpid(), "port": 50000}))
-    instance.release(lock)
-    assert not lock.exists()
+
+
+def test_a_launch_right_after_a_crash_waits_for_windows_to_free_the_lock(tmp_path):
+    """
+    Windows frees a dead app's lock a moment after the app has exited. In that
+    moment the lock is refused and no app is running; the launch must wait it
+    out rather than exit without opening a window.
+    """
+    path = tmp_path / "app.lock"
+    # Held, but naming no running app: what the lock looks like in that moment.
+    other = hold_lock_elsewhere(path, '{"pid": 0, "port": 50000}')
+    freed = threading.Timer(0.3, kill, args=(other,))
+    freed.start()
+    try:
+        lock = instance.claim_when_free(51000, path, settle_s=5.0)
+        assert lock is not None, "the launch gave up while the lock was being freed"
+        assert instance.running(path) == (os.getpid(), 51000)
+        instance.release(lock)
+    finally:
+        freed.join()
+
+
+def test_a_launch_with_an_app_running_hands_over_without_waiting(tmp_path):
+    path = tmp_path / "app.lock"
+    other = hold_lock_elsewhere(path, '{"pid": {pid}, "port": 50000}')
+    try:
+        started = time.monotonic()
+        assert instance.claim_when_free(51000, path, settle_s=5.0) is None
+        assert time.monotonic() - started < 1.0, "waited although an app is running"
+    finally:
+        kill(other)
+
+
+def test_releasing_gives_the_lock_to_the_next_launch_and_is_safe_twice(tmp_path):
+    path = tmp_path / "app.lock"
+    first = instance.claim(50000, path)
+    instance.release(first)
+    assert instance.running(path) is None
+    second = instance.claim(50001, path)
+    assert second is not None
+    try:
+        instance.release(first)                # again, late: must not free the new owner
+        assert instance.claim(50002, path) is None
+        assert instance.running_port(path) == 50001
+    finally:
+        instance.release(second)
+
+
+@pytest.mark.parametrize("text", ["", '{"pid": 12', "[1, 2]", '{"pid": 1}', "not json"])
+def test_partial_or_unreadable_lock_text_means_nobody_is_known(tmp_path, text):
+    path = tmp_path / "app.lock"
+    path.write_text(text)
+    assert instance.running(path) is None
 
 
 def test_asking_a_running_app_to_come_forward_reaches_its_focus_route():

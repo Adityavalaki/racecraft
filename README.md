@@ -29,6 +29,9 @@ cd web; npm install; npm run build; cd ..          # the interface, once
 .venv\Scripts\racecraft --install-shortcuts        # Desktop + Start menu
 ```
 
+Building the interface needs Node.js 20.19+ or 22.12+ (what Vite 7 and
+Vitest 4 require); `node --version` says which you have.
+
 Then double-click **Racecraft** on the Desktop. One process does everything:
 
 - **Its own window.** pywebview on the Edge engine (WebView2, which Windows 11
@@ -537,9 +540,12 @@ launch and every fifteen minutes after (see **The app**). That is the intended
 way to stay current: open Racecraft after a session and its data comes in.
 
 It and the watcher below can run at once. Each session is written by one
-process at a time: a second writer finds the session's lock and leaves it, and
-a lock whose writer is no longer running, or has sat for half an hour, is
-taken over.
+process at a time: a second writer finds the session's lock held and leaves the
+session to it (the sync reports it as busy). The lock is the operating system's
+(`racecraft.locking`), held for the whole write and released the moment its
+writer exits or is killed. A writer that is still running is never taken over,
+however long its download takes. The lock files stay in `data/logs/locks/`
+after release; that is expected, and they are safe to leave.
 
 **From a terminal, without the app:**
 
@@ -559,8 +565,13 @@ and any caveat its inputs carry, all from races before it.
 
 Only one watcher runs at a time; a second finds the lock and stands down,
 because two of them writing the same Parquet files is the one way this breaks.
-A watcher killed without cleaning up hands over at once to the next one; a
-lock nobody has touched for ninety minutes is taken over whoever holds it.
+The watcher holds an OS lock on `data/logs/watch.lock` while it runs, so one
+killed without cleaning up hands over at once to the next. The desktop app
+does the same with `data/logs/app.lock`, which also names its process and port
+so a second launch can bring the first to the front. One known limit: if the
+app crashes and Windows gives its process id to another program, the next
+launch can take that program for a running Racecraft and exit, until that
+program closes.
 
 It used to be started at logon from the Startup folder. The app replaced that,
 because syncing only while Racecraft is open is what was wanted, and a hidden

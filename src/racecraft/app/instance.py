@@ -3,12 +3,14 @@ One Racecraft at a time.
 
 A second double-click on the icon must not start a second server and a second
 sync — two syncs are the one way the lake gets two writers. So the first app
-writes a lock naming its process and its port; a later launch finds it, asks the
-running app to bring its window to the front, and exits.
+holds an OS lock (`racecraft.locking`) for as long as it runs, with its process
+and port written in the lock file; a later launch fails to take the lock, reads
+the port, asks the running app to bring its window to the front, and exits.
 
-A lock counts only while the process named in it is alive, checked the same way
-the ingest locks are (`ingest.cli.process_alive`). An app that crashed does not
-stand in the way of the next one.
+The lock is the OS's, so it goes when the app does, even one that crashed. The
+text in the file is only for finding the running app: it counts while the
+process named in it is alive (`ingest.cli.process_alive`), and taking the lock
+is what decides who runs.
 """
 
 from __future__ import annotations
@@ -16,10 +18,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.request
 from pathlib import Path
 
-from racecraft import config
+from racecraft import config, locking
 from racecraft.ingest.cli import process_alive
 
 log = logging.getLogger(__name__)
@@ -29,20 +32,21 @@ def lock_path() -> Path:
     return config.DATA_DIR / "logs" / "app.lock"
 
 
-def _read(path: Path) -> dict | None:
+def _read(path: Path) -> tuple[int, int] | None:
+    """(pid, port) from the lock file, or None if it is empty, partial or unreadable."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        held = json.loads(path.read_text(encoding="utf-8"))
+        return int(held["pid"]), int(held["port"])
+    except (OSError, ValueError, TypeError, KeyError):
         return None
 
 
 def running(path: Path | None = None) -> tuple[int, int] | None:
     """(pid, port) of a Racecraft that is running now, or None."""
     held = _read(path or lock_path())
-    if not held or not process_alive(int(held.get("pid", 0))):
+    if not held or not held[1] or not process_alive(held[0]):
         return None
-    port = int(held.get("port", 0))
-    return (int(held["pid"]), port) if port else None
+    return held
 
 
 def running_port(path: Path | None = None) -> int | None:
@@ -51,36 +55,44 @@ def running_port(path: Path | None = None) -> int | None:
     return held[1] if held else None
 
 
-def claim(port: int, path: Path | None = None) -> bool:
+def claim(port: int, path: Path | None = None) -> locking.FileLock | None:
     """
-    Take the lock for this process, or return False if a live app holds it.
+    Take the lock for this process, or return None if another app holds it.
 
-    Created exclusively, so two launches at the same instant cannot both win.
+    The OS decides, so two launches at the same instant cannot both win. The
+    returned lock is held until `release`.
+    """
+    body = json.dumps({"pid": os.getpid(), "port": port})
+    return locking.acquire(path or lock_path(), body)
+
+
+# Windows frees a dead process's lock a moment after the process has exited:
+# up to about a second, measured. A lock that is refused while nobody is
+# running is that moment after a crash, not another app.
+SETTLE_S = 2.0
+
+
+def claim_when_free(port: int, path: Path | None = None,
+                    settle_s: float = SETTLE_S) -> locking.FileLock | None:
+    """
+    `claim`, but give a crashed app's lock the moment Windows takes to free it.
+
+    Retries only while the lock is refused and no running app is found, so a
+    launch with Racecraft already open still hands over at once.
     """
     path = path or lock_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = json.dumps({"pid": os.getpid(), "port": port}).encode()
-    for _ in range(2):
-        try:
-            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            held = _read(path)
-            if held and process_alive(int(held.get("pid", 0))):
-                return False
-            path.unlink(missing_ok=True)       # left by an app that is no longer running
-            continue
-        os.write(handle, body)
-        os.close(handle)
-        return True
-    return False
+    lock = claim(port, path)
+    deadline = time.monotonic() + settle_s
+    while lock is None and running(path) is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+        lock = claim(port, path)
+    return lock
 
 
-def release(path: Path | None = None) -> None:
-    """Give the lock up, if it is still this process's."""
-    path = path or lock_path()
-    held = _read(path)
-    if held and int(held.get("pid", 0)) == os.getpid():
-        path.unlink(missing_ok=True)
+def release(lock: locking.FileLock | None) -> None:
+    """Give the lock up. Safe to call more than once."""
+    if lock is not None:
+        lock.release()
 
 
 def allow_focus(pid: int) -> None:

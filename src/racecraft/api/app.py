@@ -35,7 +35,7 @@ from racecraft.api import session as session_store
 from racecraft.api import sync_view
 from racecraft.api import tyre_sets_view
 from racecraft.api import penalties
-from racecraft.store.db import connect
+from racecraft.store.db import connect, has_table
 
 log = logging.getLogger(__name__)
 
@@ -60,13 +60,17 @@ def list_sessions(year: int | None = None, session: str | None = None, limit: in
         where.append(f"year = {int(year)}")
     if session:
         where.append(f"session = '{_safe(session)}'")
-    rows = connect().sql(f"""
-        select session_key, year, round, session, event_name, location, country,
-               session_name, date_utc, total_laps
-        from sessions where {' and '.join(where)}
-        order by year desc, round desc, session limit {int(limit)}""").df()
-    rows["date_utc"] = rows["date_utc"].astype(str)
-    out = rows.to_dict("records")
+    con = connect()
+    if has_table(con, "sessions"):
+        rows = con.sql(f"""
+            select session_key, year, round, session, event_name, location, country,
+                   session_name, date_utc, total_laps
+            from sessions where {' and '.join(where)}
+            order by year desc, round desc, session limit {int(limit)}""").df()
+        rows["date_utc"] = rows["date_utc"].astype(str)
+        out = rows.to_dict("records")
+    else:
+        out = []                               # a new lake: nothing ingested yet
 
     # Live goes at the top when a recording exists, so the interface can offer
     # it in the same list as everything else rather than as a separate mode.

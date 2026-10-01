@@ -97,9 +97,13 @@ function mockApi() {
   return fetchMock;
 }
 
-/** The same API, but live: a "live" row in the list and a session that grows. */
+/**
+ * The same API, but live: a "live" row in the list and a session that grows.
+ * Until `ready`, live answers 409 the way a server does before its recording
+ * has anything in it. `calls` is every request, in order, as "METHOD url".
+ */
 function mockLiveApi() {
-  const state = { edge: 1200 };
+  const state = { edge: 1200, ready: true, calls: [] as string[] };
   const sessions = [
     { session_key: "live", year: 2026, round: 17, session: "LIVE", event_name: "Live timing",
       location: "", country: "", session_name: "Race", date_utc: "", total_laps: null },
@@ -114,19 +118,33 @@ function mockLiveApi() {
                 classified_position: "1", status: "Finished" }],
     outline: [], bounds: {}, has_position_data: false,
   });
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    state.calls.push(`${init?.method ?? "GET"} ${url}`);
+    const liveData = url.includes("/api/sessions/live");
+    if (liveData && !state.ready) {
+      return { ok: false, status: 409, statusText: "Conflict",
+               json: async () => ({ detail: "the recording has nothing in it yet" }) } as Response;
+    }
     const body = url.includes("/api/sync") ? { state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
                                   started_at: null, finished_at: null, error: null }
+      : url.includes("/api/live/attach") ? { attached: true, recording: "baku.txt" }
       : url.includes("/insight") ? { detail: "not ready" }
       : url.includes("/state") ? { t: state.edge, leader_lap: 12, best_sectors: [], ideal_lap_s: null,
                                    drivers: [], cars: {}, track_status: null, weather: null }
       : url.includes("/laps") ? { drivers: [], leader_crossings: { laps: [], t: [] } }
       : url.match(/sessions\/[^/?]+$/) ? info()
       : sessions;
-    return { ok: true, json: async () => body } as Response;
+    return { ok: true, status: 200, json: async () => body } as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
   return state;
+}
+
+/** Lets pending promises settle inside act, for tests on fake timers. */
+async function flush() {
+  await act(async () => {
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -206,12 +224,6 @@ describe("App", () => {
     // before the render that schedules it — switching afterwards leaves the
     // real interval in place and nothing ever fires. Real timers would make
     // this test take longer than the rest of the suite put together.
-    const flush = async () => {
-      await act(async () => {
-        for (let i = 0; i < 20; i += 1) await Promise.resolve();
-      });
-    };
-
     vi.useFakeTimers();
     try {
       const state = mockLiveApi();
@@ -283,5 +295,409 @@ describe("App", () => {
     expect(strip.getByText("29.741")).toBeDefined();     // fastest S1, held by VER
     expect(strip.getByText("IDEAL")).toBeDefined();
     expect(strip.getByText("1:32.608")).toBeDefined();   // the three best sectors added up
+  });
+});
+
+describe("App on a new install", () => {
+  /** An empty lake, whose first sync writes one race. */
+  function mockEmptyLake() {
+    const race = {
+      session_key: "2024_01_R", year: 2024, round: 1, session: "R", event_name: "Bahrain Grand Prix",
+      location: "Sakhir", session_name: "Race", date_utc: "2024-03-02 15:00:00+00:00", total_laps: 57,
+    };
+    const lake = { sessions: [] as (typeof race)[], calls: [] as string[] };
+    const idle = { state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
+                   started_at: null, finished_at: null, error: null };
+    const synced = { ...idle, state: "done", weekends: ["Bahrain"], counts: { written: 1 },
+                     started_at: "2026-09-30T10:00:00Z", finished_at: "2026-09-30T10:01:00Z" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      lake.calls.push(`${method} ${url}`);
+      let body: unknown;
+      if (url.includes("/api/sync")) {
+        if (method === "POST") lake.sessions = [race];    // the sync writes it
+        body = method === "POST" ? synced : idle;
+      } else if (url.includes("/laps")) {
+        body = { drivers: [], leader_crossings: { laps: [], t: [] } };
+      } else if (url.includes("/state")) {
+        body = { t: 1000, leader_lap: 0, best_sectors: [], ideal_lap_s: null, drivers: [], cars: {},
+                 track_status: null, weather: null };
+      } else if (/sessions\/[^/?]+$/.test(url)) {
+        body = { session: { event_name: "Bahrain Grand Prix", session_name: "Race", location: "Sakhir" },
+                 t_start: 1000, t_end: 1600, total_laps: 57, drivers: [], outline: [], bounds: {},
+                 has_position_data: false };
+      } else if (url.includes("/api/sessions?") || url.endsWith("/api/sessions")) {
+        body = lake.sessions;
+      } else {
+        body = [];
+      }
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+    return lake;
+  }
+
+  it("says there are no sessions yet and how to get some", async () => {
+    mockEmptyLake();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("No sessions yet.")).toBeDefined());
+    expect(screen.getByText(/Sync downloads the latest race weekends/)).toBeDefined();
+    expect(screen.queryByText(/Loading/)).toBeNull();
+    const sync = screen.getByRole("button", { name: /sync latest/i }) as HTMLButtonElement;
+    expect(sync.disabled).toBe(false);
+  });
+
+  it("opens the first session a sync brings in", async () => {
+    const lake = mockEmptyLake();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("No sessions yet.")).toBeDefined());
+
+    screen.getByRole("button", { name: /sync latest/i }).click();
+
+    await waitFor(() => expect(lake.calls).toContain("GET /api/sessions/2024_01_R"));
+    expect(lake.calls).toContain("GET /api/sessions/2024_01_R/laps");
+    await waitFor(() => expect(screen.getByText(/Sakhir · 0 cars/)).toBeDefined());
+    expect(screen.queryByText("No sessions yet.")).toBeNull();
+    const picker = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(picker.value).toBe("2024_01_R");
+  });
+
+  it("shows why the list could not be read instead of loading forever", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false, status: 500, statusText: "Internal Server Error", json: async () => ({ detail: "disk unreadable" }),
+    } as Response)));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("disk unreadable")).toBeDefined());
+    expect(screen.getByText("Could not read the session list.")).toBeDefined();
+    expect(screen.queryByText(/Loading/)).toBeNull();
+  });
+});
+
+describe("App attaching live", () => {
+  const indexOf = (calls: string[], call: string) => calls.findIndex((c) => c === call);
+
+  it("attaches live before asking for its info and laps", async () => {
+    const live = mockLiveApi();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("LIVE")).toBeDefined());
+    await waitFor(() => expect(indexOf(live.calls, "GET /api/sessions/live/laps")).toBeGreaterThan(-1));
+
+    const attach = indexOf(live.calls, "POST /api/live/attach");
+    expect(attach).toBeGreaterThan(-1);
+    expect(attach).toBeLessThan(indexOf(live.calls, "GET /api/sessions/live"));
+    expect(attach).toBeLessThan(indexOf(live.calls, "GET /api/sessions/live/laps"));
+  });
+
+  it("waits while live has nothing yet, and recovers on the next poll", async () => {
+    vi.useFakeTimers();
+    try {
+      const live = mockLiveApi();
+      live.ready = false;
+      render(<App />);
+      await flush();
+
+      expect(screen.getByText("Waiting for live data…")).toBeDefined();
+      expect(screen.queryByText("the recording has nothing in it yet")).toBeNull();
+      const attaches = () => live.calls.filter((c) => c === "POST /api/live/attach").length;
+      expect(attaches()).toBe(1);
+
+      live.ready = true;
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await flush();
+
+      expect(attaches()).toBe(2);                // attached again while waiting
+      expect(screen.queryByText("Waiting for live data…")).toBeNull();
+      const slider = screen.getByRole("slider", { name: /session time/i }) as HTMLInputElement;
+      expect(Number(slider.value)).toBe(1200);
+
+      // Once it has data it is not attached again on every poll.
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await flush();
+      expect(attaches()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never attaches for a session from the lake", async () => {
+    const fetchMock = mockApi();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/api/live/attach"))).toBe(false);
+  });
+});
+
+describe("App nudging a live clock", () => {
+  it("−30s stops following, and a later lap does not pull the clock forward", async () => {
+    vi.useFakeTimers();
+    try {
+      const live = mockLiveApi();
+      render(<App />);
+      await flush();
+
+      const slider = () => screen.getByRole("slider", { name: /session time/i }) as HTMLInputElement;
+      expect(Number(slider().value)).toBe(1200);
+      expect(screen.getByText("LIVE")).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: "Back 30 seconds" }));
+      await flush();
+
+      expect(Number(slider().value)).toBe(1170);
+      expect(screen.getByText("PAUSED")).toBeDefined();
+      expect(screen.getByRole("button", { name: /go live/i })).toBeDefined();
+
+      live.edge = 1300;                          // a lap goes by
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await flush();
+
+      expect(Number(slider().value)).toBe(1170);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ------------------------------------------------------------- answers that arrive late
+
+/** Returned by a route to hold a request until the test answers it. */
+const HOLD = Symbol("hold");
+
+interface Held {
+  url: string;
+  aborted: boolean;
+  /** Answer now; ignored once aborted, as a real fetch would be. */
+  answer: (body: unknown, status?: number) => void;
+}
+
+function respond(body: unknown, status = 200): Response {
+  return { ok: status < 400, status, statusText: status < 400 ? "OK" : "Error", json: async () => body } as Response;
+}
+
+/**
+ * A server the test answers by hand. `route` returns the body to answer at
+ * once, or HOLD to keep the request open. Held requests honour their abort
+ * signal like the stub in positions.test.ts: aborting rejects with AbortError
+ * and a later answer is dropped.
+ */
+function deferredFetch(route: (url: string, method: string) => unknown) {
+  const held: Held[] = [];
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    calls.push(`${method} ${url}`);
+    const body = route(url, method);
+    if (body !== HOLD) return Promise.resolve(respond(body));
+    return new Promise<Response>((resolve, reject) => {
+      const entry: Held = {
+        url,
+        aborted: false,
+        answer: (answer, status = 200) => {
+          if (!entry.aborted) resolve(respond(answer, status));
+        },
+      };
+      init?.signal?.addEventListener("abort", () => {
+        entry.aborted = true;
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        reject(error);
+      });
+      held.push(entry);
+    });
+  }));
+  /** The oldest request still held for exactly this URL. */
+  const take = (url: string) => {
+    const index = held.findIndex((h) => h.url === url);
+    if (index === -1) throw new Error(`nothing held for ${url}; held: ${held.map((h) => h.url).join(", ")}`);
+    return held.splice(index, 1)[0]!;
+  };
+  const waitsFor = (url: string) => held.some((h) => h.url === url);
+  return { calls, take, waitsFor };
+}
+
+const IDLE_SYNC = { state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
+                    started_at: null, finished_at: null, error: null };
+
+function summary(key: string, round: number, session: string, event: string) {
+  return { session_key: key, year: 2024, round, session, event_name: event, location: "",
+           session_name: session === "R" ? "Race" : "Qualifying", date_utc: "", total_laps: 57 };
+}
+
+const BAHRAIN = summary("2024_01_R", 1, "R", "Bahrain Grand Prix");
+const BAHRAIN_Q = summary("2024_01_Q", 1, "Q", "Bahrain Grand Prix");
+const JEDDAH = summary("2024_02_R", 2, "R", "Saudi Arabian Grand Prix");
+
+function infoAt(location: string, tEnd = 1600) {
+  return { session: { event_name: location, session_name: "Race", location }, t_start: 1000, t_end: tEnd,
+           total_laps: 57, drivers: [], outline: [], bounds: {}, has_position_data: false };
+}
+
+function insightWith(pitLoss: number) {
+  return {
+    session_key: "x", circuit: "x", event_name: "x", year: 2024, is_race: true, total_laps: 57,
+    pit_loss: { circuit: "x", seconds: pitLoss, spread_s: 0.8, stops: 60, seasons: 3 },
+    safety_car: null, scale: 1, degradation_measured: {}, degradation_used: {}, compound_offset_s: {},
+    fuel_s_per_lap: 0.05, fitted_on: [], fitted_on_count: 0, held_out: true, caveats: [],
+    degradation_curve: [], plans: [], plans_with_risk: [], plans_unavailable: "none here", stints: [],
+  };
+}
+
+/** Everything a session page asks for, answered at once, unless `hold` or `overrides` say otherwise. */
+function answers(sessions: unknown[], hold: (url: string, method: string) => boolean = () => false,
+                 overrides: (url: string, method: string) => unknown = () => undefined) {
+  return (url: string, method: string) => {
+    if (hold(url, method)) return HOLD;
+    const special = overrides(url, method);
+    if (special !== undefined) return special;
+    if (url.includes("/api/sync")) return IDLE_SYNC;
+    if (url.includes("/api/live/attach")) return { attached: true, recording: "baku.txt" };
+    if (url.includes("/insight")) return insightWith(22.4);
+    if (url.includes("/messages")) return [];
+    if (url.includes("/state")) {
+      return { t: 1000, leader_lap: 0, best_sectors: [], ideal_lap_s: null, drivers: [], cars: {},
+               track_status: null, weather: null };
+    }
+    if (url.includes("/laps")) return { drivers: [], leader_crossings: { laps: [], t: [] } };
+    if (url.includes("2024_02_R")) return infoAt("Jeddah");
+    if (url.includes("2024_01_Q")) return infoAt("Sakhir Q");
+    if (/sessions\/[^/?]+$/.test(url)) return infoAt("Sakhir");
+    return sessions;
+  };
+}
+
+describe("App with answers that arrive late", () => {
+  const picker = () => screen.getByRole("combobox") as HTMLSelectElement;
+
+  it("a slow first session list does not undo what a sync brought, or the pick made since", async () => {
+    const before = [BAHRAIN];
+    const after = [JEDDAH, BAHRAIN, BAHRAIN_Q];
+    const server = deferredFetch(answers(before, (url) => url === "/api/sessions",
+      (url, method) => (url === "/api/sync" && method === "POST"
+        ? { ...IDLE_SYNC, state: "done", counts: { written: 2 }, finished_at: "2026-09-30T10:00:00Z" }
+        : undefined)));
+    render(<App />);
+    await waitFor(() => expect(server.waitsFor("/api/sessions")).toBe(true));
+    const first = server.take("/api/sessions");
+
+    screen.getByRole("button", { name: /sync latest/i }).click();
+    await waitFor(() => expect(server.waitsFor("/api/sessions")).toBe(true));
+    await act(async () => server.take("/api/sessions").answer(after));
+    await waitFor(() => expect(picker().value).toBe("2024_02_R"));
+
+    fireEvent.change(picker(), { target: { value: "2024_01_Q" } });
+    await waitFor(() => expect(screen.getByText(/Sakhir Q · 0 cars/)).toBeDefined());
+
+    await act(async () => first.answer(before));        // the list from before the sync, late
+    await flush();
+    expect(picker().value).toBe("2024_01_Q");
+    expect(Array.from(picker().options).map((o) => o.value)).toContain("2024_02_R");
+  });
+
+  it("a late answer for the previous session does not replace the one now open", async () => {
+    const server = deferredFetch(answers([BAHRAIN, JEDDAH],
+      (url) => url === "/api/sessions/2024_01_R" || url === "/api/sessions/2024_01_R/laps"));
+    render(<App />);
+    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R")).toBe(true));
+    const oldInfo = server.take("/api/sessions/2024_01_R");
+    const oldLaps = server.take("/api/sessions/2024_01_R/laps");
+
+    fireEvent.change(picker(), { target: { value: "2024_02_R" } });
+    await waitFor(() => expect(screen.getByText(/Jeddah · 0 cars/)).toBeDefined());
+
+    await act(async () => {
+      oldInfo.answer(infoAt("Sakhir"));
+      oldLaps.answer({ drivers: [], leader_crossings: { laps: [1], t: [1090] } });
+    });
+    await flush();
+    expect(screen.getByText(/Jeddah · 0 cars/)).toBeDefined();
+    expect(screen.queryByText(/Sakhir/)).toBeNull();
+  });
+
+  it("a late failure for the previous session is not shown on the one now open", async () => {
+    const server = deferredFetch(answers([BAHRAIN, JEDDAH], (url) => url === "/api/sessions/2024_01_R"));
+    render(<App />);
+    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R")).toBe(true));
+    const oldInfo = server.take("/api/sessions/2024_01_R");
+
+    fireEvent.change(picker(), { target: { value: "2024_02_R" } });
+    await waitFor(() => expect(screen.getByText(/Jeddah · 0 cars/)).toBeDefined());
+
+    await act(async () => oldInfo.answer({ detail: "Bahrain could not be read" }, 500));
+    await flush();
+    expect(screen.queryByText("Bahrain could not be read")).toBeNull();
+  });
+
+  it("a late model fit for the previous session does not replace this session's", async () => {
+    const server = deferredFetch(answers([BAHRAIN, JEDDAH], (url) => url.includes("/insight")));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Sakhir · 0 cars/)).toBeDefined());
+
+    screen.getByRole("tab", { name: "Strategy" }).click();
+    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R/insight")).toBe(true));
+    const oldFit = server.take("/api/sessions/2024_01_R/insight");
+
+    fireEvent.change(picker(), { target: { value: "2024_02_R" } });
+    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_02_R/insight")).toBe(true));
+    await act(async () => server.take("/api/sessions/2024_02_R/insight").answer(insightWith(22.4)));
+    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
+
+    await act(async () => oldFit.answer(insightWith(30.1)));
+    await flush();
+    expect(screen.getByText("22.4s")).toBeDefined();
+    expect(screen.queryByText("30.1s")).toBeNull();
+  });
+
+  it("a failed model fit is asked for again when its tab is opened again", async () => {
+    let fits = 0;
+    const server = deferredFetch(answers([BAHRAIN], () => false, (url) => {
+      if (!url.includes("/insight")) return undefined;
+      fits += 1;
+      return fits === 1 ? HOLD : insightWith(22.4);
+    }));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Sakhir · 0 cars/)).toBeDefined());
+
+    screen.getByRole("tab", { name: "Strategy" }).click();
+    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R/insight")).toBe(true));
+    await act(async () => server.take("/api/sessions/2024_01_R/insight").answer({ detail: "the fit fell over" }, 500));
+    await waitFor(() => expect(screen.getByText("the fit fell over")).toBeDefined());
+
+    screen.getByRole("tab", { name: "Race trace" }).click();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Race trace" }).getAttribute("aria-selected")).toBe("true"));
+    screen.getByRole("tab", { name: "Strategy" }).click();
+    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
+    expect(fits).toBe(2);
+    expect(screen.queryByText("the fit fell over")).toBeNull();
+  });
+
+  it("an earlier live answer arriving after a later one does not move the live edge back", async () => {
+    vi.useFakeTimers();
+    try {
+      const live = summary("live", 17, "LIVE", "Live timing");
+      const server = deferredFetch(answers([live], (url) => url === "/api/sessions/live"));
+      render(<App />);
+      await flush();
+      const first = server.take("/api/sessions/live");     // the opening read, slow
+
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);                  // the first live refresh
+      });
+      await flush();
+      await act(async () => server.take("/api/sessions/live").answer(infoAt("Baku", 1300)));
+      await flush();
+      const slider = () => screen.getByRole("slider", { name: /session time/i }) as HTMLInputElement;
+      expect(Number(slider().value)).toBe(1300);
+
+      await act(async () => first.answer(infoAt("Baku", 1200)));   // older, and late
+      await flush();
+      expect(Number(slider().value)).toBe(1300);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -166,6 +166,16 @@ def connect(lake: Path | None = None) -> duckdb.DuckDBPyConnection:
     return cursor
 
 
+def has_table(cursor: duckdb.DuckDBPyConnection, name: str) -> bool:
+    """
+    Whether a table or view of this name exists. A table exists only once it
+    has files, so a new lake has none: ask before querying one that may not.
+    """
+    found = cursor.execute("select count(*) from information_schema.tables where table_name = ?",
+                           [name]).fetchone()
+    return bool(found and found[0])
+
+
 def partition(session_key: str) -> str:
     """
     The partition filter for one session, so a telemetry read opens one file.
