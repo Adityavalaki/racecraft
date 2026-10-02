@@ -34,6 +34,17 @@ describe("TimingTower", () => {
     expect(screen.getByText("1:32.608")).toBeDefined();
   });
 
+  it("calls only P1 the leader when no gaps exist yet, as on the grid before the start", () => {
+    const grid = [1, 2, 3].map((position) =>
+      driver({ driver_number: position, abbreviation: `D${position}`, position, status: "not_started",
+               gap_text: "", last_lap_s: null }));
+    const { container } = render(
+      <TimingTower drivers={grid} selected={[]} onSelect={vi.fn()} sessionBest={null} />,
+    );
+    const gaps = Array.from(container.querySelectorAll(".tower-row .gap")).map((cell) => cell.textContent);
+    expect(gaps).toEqual(["LEADER", "—", "—"]);
+  });
+
   it("marks the session's fastest lap in purple and a personal best in green", () => {
     const { container } = render(
       <TimingTower

@@ -54,7 +54,9 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
               <span className="pos">{driver.position}</span>
               <span className="team-bar" style={{ background: `#${driver.team_color ?? "555"}` }} />
               <span className="code">{driver.abbreviation ?? driver.driver_number}</span>
-              <span className="num gap">{driver.status === "out" ? "OUT" : driver.gap_text || "LEADER"}</span>
+              <span className="num gap">
+                {driver.status === "out" ? "OUT" : driver.gap_text || (driver.position === 1 ? "LEADER" : "—")}
+              </span>
               <span className="num int">{driver.interval_text}</span>
               <span
                 className={`num last${lastIsSessionBest ? " is-session-best" : driver.is_personal_best ? " is-personal-best" : ""}`}
