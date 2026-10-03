@@ -6,21 +6,26 @@ interface Props {
   drivers: DriverTiming[];
   selected: number[];
   onSelect: (driverNumber: number) => void;
-  sessionBest: number | null;
 }
 
 /**
- * The timing tower. Order, gap, interval, last lap, tyre.
+ * The timing tower. Order, gap, interval, best lap, last lap, sectors, tyre.
  *
  * Colour carries meaning and nothing else: purple is the session's fastest
- * lap, green a driver's own best, and the tyre chip uses Pirelli's compound
+ * lap, shown in BEST against the car that holds it; green in LAST is a lap that
+ * was the driver's own best when it was set. LAST is never purple, so the
+ * fastest lap is read in one place. The tyre chip uses Pirelli's compound
  * colours. Team colour is a bar, never text, so it never fights the numbers.
+ *
+ * "Fastest" means fastest as of the clock's time: BEST takes the server's
+ * `is_session_best`, which is worked out at `t`, so scrubbing back never shows
+ * a lap set later in the session as the one to beat.
  *
  * PEN is what race control has said about the car as of the clock's current
  * time, which is the same `t` the gap beside it was computed at — so the two can
  * never describe different moments, however the clock got here.
  */
-export const TimingTower = memo(function TimingTower({ drivers, selected, onSelect, sessionBest }: Props) {
+export const TimingTower = memo(function TimingTower({ drivers, selected, onSelect }: Props) {
   return (
     <div className="tower">
       <div className="tower-head">
@@ -29,6 +34,7 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
         <span>DRIVER</span>
         <span>GAP</span>
         <span>INT</span>
+        <span title="the car's fastest lap so far; purple if it is the session's fastest">BEST</span>
         <span>LAST</span>
         <span>S1</span>
         <span>S2</span>
@@ -40,8 +46,6 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
       <div className="tower-rows">
         {drivers.map((driver) => {
           const isSelected = selected.includes(driver.driver_number);
-          const lastIsSessionBest =
-            driver.last_lap_s !== null && sessionBest !== null && driver.last_lap_s <= sessionBest;
           return (
             <button
               key={driver.driver_number}
@@ -58,9 +62,10 @@ export const TimingTower = memo(function TimingTower({ drivers, selected, onSele
                 {driver.status === "out" ? "OUT" : driver.gap_text || (driver.position === 1 ? "LEADER" : "—")}
               </span>
               <span className="num int">{driver.interval_text}</span>
-              <span
-                className={`num last${lastIsSessionBest ? " is-session-best" : driver.is_personal_best ? " is-personal-best" : ""}`}
-              >
+              <span className={`num best${driver.is_session_best ? " is-session-best" : ""}`}>
+                {formatLapTime(driver.best_lap_s)}
+              </span>
+              <span className={`num last${driver.is_personal_best ? " is-personal-best" : ""}`}>
                 {formatLapTime(driver.last_lap_s)}
               </span>
               {[1, 2, 3].map((number) => {

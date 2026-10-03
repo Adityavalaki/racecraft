@@ -26,12 +26,12 @@ describe("TimingTower", () => {
         drivers={[driver({}), driver({ driver_number: 11, abbreviation: "PER", position: 2, gap_text: "+6.213", last_lap_s: 93.104, is_session_best: false })]}
         selected={[]}
         onSelect={vi.fn()}
-        sessionBest={92.608}
       />,
     );
     expect(screen.getByText("LEADER")).toBeDefined();
     expect(screen.getByText("+6.213")).toBeDefined();
-    expect(screen.getByText("1:32.608")).toBeDefined();
+    const last = Array.from(document.querySelectorAll(".tower-row .last")).map((cell) => cell.textContent);
+    expect(last).toEqual(["1:32.608", "1:33.104"]);
   });
 
   it("calls only P1 the leader when no gaps exist yet, as on the grid before the start", () => {
@@ -39,28 +39,47 @@ describe("TimingTower", () => {
       driver({ driver_number: position, abbreviation: `D${position}`, position, status: "not_started",
                gap_text: "", last_lap_s: null }));
     const { container } = render(
-      <TimingTower drivers={grid} selected={[]} onSelect={vi.fn()} sessionBest={null} />,
+      <TimingTower drivers={grid} selected={[]} onSelect={vi.fn()} />,
     );
     const gaps = Array.from(container.querySelectorAll(".tower-row .gap")).map((cell) => cell.textContent);
     expect(gaps).toEqual(["LEADER", "—", "—"]);
   });
 
-  it("marks the session's fastest lap in purple and a personal best in green", () => {
+  it("shows the fastest lap in purple in BEST, never in LAST, and a personal best in green in LAST", () => {
     const { container } = render(
       <TimingTower
-        drivers={[driver({}), driver({ driver_number: 11, position: 2, last_lap_s: 93.1, is_personal_best: true })]}
+        drivers={[
+          // Holds the session's fastest lap, and set it on the lap just completed.
+          driver({ last_lap_s: 92.608, best_lap_s: 92.608, is_session_best: true, is_personal_best: true }),
+          driver({ driver_number: 11, position: 2, last_lap_s: 93.1, best_lap_s: 93.0,
+                   is_session_best: false, is_personal_best: false }),
+        ]}
         selected={[]}
         onSelect={vi.fn()}
-        sessionBest={92.608}
       />,
     );
-    expect(container.querySelectorAll(".last.is-session-best")).toHaveLength(1);
+    const best = container.querySelectorAll(".tower-row .best");
+    expect(Array.from(best).map((cell) => cell.textContent)).toEqual(["1:32.608", "1:33.000"]);
+    expect(container.querySelectorAll(".best.is-session-best")).toHaveLength(1);
+    expect(best[0]!.classList.contains("is-session-best")).toBe(true);
+    // LAST is never purple, even on the lap that set the session's fastest.
+    expect(container.querySelectorAll(".last.is-session-best")).toHaveLength(0);
     expect(container.querySelectorAll(".last.is-personal-best")).toHaveLength(1);
+  });
+
+  it("puts BEST immediately before LAST", () => {
+    const { container } = render(<TimingTower drivers={[driver({})]} selected={[]} onSelect={vi.fn()} />);
+    const heads = Array.from(container.querySelectorAll(".tower-head span")).map((s) => s.textContent);
+    expect(heads.indexOf("LAST") - heads.indexOf("BEST")).toBe(1);
+    const cells = Array.from(container.querySelector(".tower-row")!.children).map((c) => c.className);
+    expect(cells.findIndex((c) => c.includes("last")) - cells.findIndex((c) => c.includes("best"))).toBe(1);
+    // A heading for every cell, so nothing slides under the wrong title.
+    expect(heads).toHaveLength(cells.length);
   });
 
   it("dims a retired car and shows OUT instead of a gap", () => {
     const { container } = render(
-      <TimingTower drivers={[driver({ status: "out", gap_text: "+1 LAP" })]} selected={[]} onSelect={vi.fn()} sessionBest={null} />,
+      <TimingTower drivers={[driver({ status: "out", gap_text: "+1 LAP" })]} selected={[]} onSelect={vi.fn()} />,
     );
     expect(screen.getByText("OUT")).toBeDefined();
     expect(container.querySelectorAll(".tower-row.is-out")).toHaveLength(1);
@@ -68,14 +87,14 @@ describe("TimingTower", () => {
 
   it("reports which driver was clicked", () => {
     const onSelect = vi.fn();
-    render(<TimingTower drivers={[driver({ driver_number: 44 })]} selected={[44]} onSelect={onSelect} sessionBest={null} />);
+    render(<TimingTower drivers={[driver({ driver_number: 44 })]} selected={[44]} onSelect={onSelect} />);
     screen.getByRole("button", { pressed: true }).click();
     expect(onSelect).toHaveBeenCalledWith(44);
   });
 
   it("shows each sector separately, coloured by how it stands", () => {
     const { container } = render(
-      <TimingTower drivers={[driver({})]} selected={[]} onSelect={vi.fn()} sessionBest={92.608} />,
+      <TimingTower drivers={[driver({})]} selected={[]} onSelect={vi.fn()} />,
     );
     expect(screen.getByText("29.741")).toBeDefined();
     expect(screen.getByText("39.916")).toBeDefined();
@@ -88,7 +107,7 @@ describe("TimingTower", () => {
     render(
       <TimingTower
         drivers={[driver({ sectors: [{ sector: 1, seconds: null, state: "none" }] })]}
-        selected={[]} onSelect={vi.fn()} sessionBest={null}
+        selected={[]} onSelect={vi.fn()}
       />,
     );
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);

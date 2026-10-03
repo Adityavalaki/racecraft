@@ -480,7 +480,6 @@ export default function App() {
               drivers={state?.drivers ?? []}
               selected={selected}
               onSelect={toggleDriver}
-              sessionBest={sessionBest}
             />
             <BestSectors
               sectors={state?.best_sectors ?? []}

@@ -17,7 +17,7 @@
   --green: #45c77f;
   --red: #f0656a;
   /* The narrowest the timing tower may be and still show every column. */
-  --tower-min: 39rem;
+  --tower-min: 44rem;
   color-scheme: dark;
 }
 
@@ -134,7 +134,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
     rather than half of one, so neither is a letterbox.
   */
   /*
-    The tower's floor is what its table needs: twelve columns at their own
+    The tower's floor is what its table needs: thirteen columns at their own
     floors, the gaps, and a scrollbar's width (see .tower-head below). Any
     narrower and the right-hand columns (PEN first) were pushed out of the panel.
   */
@@ -237,7 +237,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
     minmax(2.7rem, 1fr)      /* driver code */
     minmax(3.8rem, 1.1fr)    /* gap */
     minmax(3.8rem, 1.1fr)    /* interval */
-    minmax(4.6rem, 1.25fr)   /* last lap */
+    minmax(4.3rem, 1.2fr)    /* best lap: 1:32.608 */
+    minmax(4.3rem, 1.2fr)    /* last lap */
     minmax(3.2rem, 0.95fr)   /* sector 1 */
     minmax(3.2rem, 0.95fr)   /* sector 2 */
     minmax(3.2rem, 0.95fr)   /* sector 3 */
@@ -348,7 +349,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .gap { color: var(--ink); }
 .int { color: var(--ink-soft); }
-.last.is-session-best { color: var(--purple); }
+.best { color: var(--ink-mid); }
+.best.is-session-best { color: var(--purple); }
 .last.is-personal-best { color: var(--green); }
 .stops { color: var(--ink-soft); }
 .tyre { display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
