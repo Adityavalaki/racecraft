@@ -19,11 +19,13 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+from racecraft import config
 from racecraft.api import live_store
 from racecraft.api import session as session_store
 from racecraft.api.app import app
 from racecraft.live import feed as feed_module
 from racecraft.live import recorder
+from racecraft.store import lake
 
 LAP = 92.0
 START = 100.0
@@ -209,16 +211,34 @@ def test_status_never_raises_even_when_nothing_works(store):
 # --------------------------------------------------------------- the API
 
 @pytest.fixture
-def client(store):
+def client(store, tmp_path, monkeypatch):
+    """
+    The API over an empty lake of its own. These tests are about live, and
+    used to read the machine's real lake for the rest of the list: one failed
+    in a full run while the desktop app had that lake open, and passed alone.
+    An empty lake lists nothing, so only live can be at the top.
+    """
+    empty = tmp_path / "lake"
+    empty.mkdir()
+    monkeypatch.setattr(config, "LAKE_DIR", empty)
     return TestClient(app)
 
 
 def test_live_is_offered_in_the_session_list_once_something_is_recorded(client, store, monkeypatch):
-    assert all(s["session_key"] != "live" for s in client.get("/api/sessions").json())
+    # A race already in the lake, from this year: live must still come first.
+    lake.write_session({"sessions": pd.DataFrame({
+        "session_key": ["2026_15_R"], "event_name": ["Azerbaijan Grand Prix"], "country": ["Azerbaijan"],
+        "location": ["Baku"], "session_name": ["Race"],
+        "date_utc": [pd.Timestamp("2026-09-27 11:00", tz="UTC")],
+        "t0_utc": [pd.Timestamp("2026-09-27 10:03", tz="UTC")], "start_t": [0.0],
+        "total_laps": [51], "circuit_rotation_deg": [0.0], "fastf1_version": ["test"],
+        "ingested_at": [pd.Timestamp.now(tz="UTC")]})}, 2026, 15, "R", lake=config.LAKE_DIR)
+    before = client.get("/api/sessions").json()
+    assert [s["session_key"] for s in before] == ["2026_15_R"]
 
     _attach(store, monkeypatch)
     listed = client.get("/api/sessions").json()
-    assert listed[0]["session_key"] == "live", "live belongs at the top, not buried by date"
+    assert [s["session_key"] for s in listed] == ["live", "2026_15_R"], "live belongs at the top, not buried by date"
     assert listed[0]["session"] == "LIVE"
 
 
