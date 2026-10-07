@@ -138,3 +138,42 @@ def test_a_safety_car_stop_is_taken_only_after_a_stint_worth_ending():
     assert not race.stops_now(lap=2, total_laps=LAPS, due_lap=25, neutral=True, stint_laps=2)
     # Nor with the flag out near the end, where the stop cannot be paid back.
     assert not race.stops_now(lap=LAPS - 2, total_laps=LAPS, due_lap=LAPS, neutral=True, stint_laps=30)
+
+
+# ---- what a prediction adds: unsure pace, and cars that do not finish
+
+def test_the_prediction_settings_change_nothing_when_left_off():
+    plain = run(field(), seed=11)
+    explicit = race.simulate(field(), LAPS, DEG, 22.0, QUIET, 0.1, runs=60, rng=np.random.default_rng(11),
+                             pace_sd=None, retire_rate=0.0)
+    for driver in plain.positions:
+        assert (plain.positions[driver] == explicit.positions[driver]).all()
+    assert not any(r.any() for r in plain.retired.values())
+
+
+def test_a_car_that_retires_is_classified_behind_every_finisher():
+    result = race.simulate(field(), LAPS, DEG, 22.0, QUIET, 0.1, runs=200,
+                           rng=np.random.default_rng(5), retire_rate=0.2)
+    runs = len(result.positions[1])
+    for i in range(runs):
+        finished = [result.positions[d][i] for d in result.positions if not result.retired[d][i]]
+        out = [result.positions[d][i] for d in result.positions if result.retired[d][i]]
+        if finished and out:
+            assert max(finished) < min(out)
+    share = np.mean([r.mean() for r in result.retired.values()])
+    assert 0.12 < share < 0.28
+
+
+def test_the_leader_retiring_is_what_loses_it_the_win():
+    cars = field(spread=1.0)                     # car 1 is a second a lap clear
+    result = race.simulate(cars, LAPS, DEG, 22.0, QUIET, 0.1, runs=300,
+                           rng=np.random.default_rng(2), retire_rate=0.1)
+    lost = (result.positions[1] != 1)
+    assert (result.retired[1][lost]).all()
+
+
+def test_unsure_pace_spreads_where_a_car_finishes():
+    sure = race.simulate(field(), LAPS, DEG, 22.0, QUIET, 0.1, runs=200, rng=np.random.default_rng(4))
+    unsure = race.simulate(field(), LAPS, DEG, 22.0, QUIET, 0.1, runs=200, rng=np.random.default_rng(4),
+                           pace_sd={car.driver_number: 0.6 for car in field()})
+    assert unsure.positions[5].std() > sure.positions[5].std() + 0.5

@@ -7,13 +7,18 @@
  * with `?feature=` and follows the replay window's clock (see sync.ts).
  */
 
-export type FeatureId = "tower" | "trace" | "tyres" | "strategy" | "sets" | "stewards" | "track";
+export type FeatureId = "tower" | "trace" | "tyres" | "strategy" | "sets" | "stewards" | "track" | "prediction";
 
 export interface Feature {
   id: FeatureId;
   title: string;
   /** One line on what it shows, for the launcher and the window's header. */
   hint: string;
+  /**
+   * Shown in the replay window itself, under the map, rather than in the
+   * launcher. It can still be popped out into a window of its own.
+   */
+  docked?: boolean;
 }
 
 export const FEATURES: readonly Feature[] = [
@@ -22,9 +27,13 @@ export const FEATURES: readonly Feature[] = [
   { id: "tyres", title: "Tyre model", hint: "modelled wear against what this race did" },
   { id: "strategy", title: "Strategy", hint: "cheapest plans, and what they ignore" },
   { id: "sets", title: "Tyre sets", hint: "every car's sets · follows the clock" },
-  { id: "stewards", title: "Stewards", hint: "verdicts, investigations and penalties" },
-  { id: "track", title: "Track log", hint: "flags, safety car, pit exit and conditions" },
+  { id: "stewards", title: "Stewards", hint: "verdicts, investigations and penalties", docked: true },
+  { id: "track", title: "Track log", hint: "flags, safety car, pit exit and conditions", docked: true },
+  { id: "prediction", title: "Race prediction", hint: "the race, called from Friday and Saturday · chances, not certainties" },
 ];
+
+/** The features the launcher offers: everything not already on the replay window. */
+export const LAUNCHER_FEATURES: readonly Feature[] = FEATURES.filter((feature) => !feature.docked);
 
 export function featureById(id: string | null | undefined): Feature | undefined {
   return FEATURES.find((feature) => feature.id === id);

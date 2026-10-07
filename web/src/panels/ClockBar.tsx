@@ -1,14 +1,11 @@
-import { formatClock, TRACK_STATUS } from "../api";
+import { TRACK_STATUS } from "../api";
 import type { Clock } from "../clock";
 
 interface Props {
   clock: Clock;
   start: number;
   end: number;
-  leaderLap: number;
-  totalLaps: number | null;
   trackStatus: { status: string; message: string } | null;
-  weather: { air_temp: number | null; track_temp: number | null; rainfall: boolean | null } | null;
   loading: boolean;
   /** Every change of track status, for the coloured timeline. */
   statuses?: { t: number; status: string }[];
@@ -52,8 +49,7 @@ export function statusBands(statuses: { t: number; status: string }[], start: nu
  * flag periods coloured in, and the leader's laps marked beneath, so an
  * incident is something to see and jump to rather than hunt for.
  */
-export function ClockBar({ clock, start, end, leaderLap, totalLaps, trackStatus, weather, loading,
-                           statuses = [], crossings = null }: Props) {
+export function ClockBar({ clock, start, end, trackStatus, loading, statuses = [], crossings = null }: Props) {
   const bands = statusBands(statuses, start, end);
   const span = end - start;
   const laps = crossings && span > 0
@@ -119,14 +115,8 @@ export function ClockBar({ clock, start, end, leaderLap, totalLaps, trackStatus,
         </div>
       </div>
 
+      {/* Lap, clock and weather are in the strip under the map; this only says whether playback is buffered. */}
       <div className="readout">
-        <span className="time">{formatClock(clock.t - start)}</span>
-        <span className="lap">
-          LAP {leaderLap}
-          {totalLaps ? ` / ${totalLaps}` : ""}
-        </span>
-        {weather?.track_temp != null && <span className="weather">TRACK {weather.track_temp.toFixed(0)}°C</span>}
-        {weather?.rainfall && <span className="weather wet">RAIN</span>}
         <span className={`dot${loading ? " is-loading" : ""}`} title={loading ? "buffering" : "buffered"} />
       </div>
     </div>

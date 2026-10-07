@@ -148,6 +148,47 @@ def test_the_first_race_at_a_circuit_refuses_rather_than_reading_its_own_pit_lan
         race_inputs.build(con, "Sakhir", 2024)
 
 
+
+def _qualifying(year: int, rnd: int, location: str, date: str, tmp_path) -> None:
+    key = f"{year}_{rnd:02d}_Q"
+    lake.write_session({
+        "sessions": pd.DataFrame({
+            "session_key": [key], "event_name": [f"{location} Grand Prix"],
+            "country": [location], "location": [location], "session_name": ["Qualifying"],
+            "date_utc": [pd.Timestamp(f"{date} 13:00", tz="UTC") - pd.Timedelta(days=1)],
+            "t0_utc": [pd.Timestamp(f"{date} 12:00", tz="UTC") - pd.Timedelta(days=1)], "start_t": [0.0],
+            "total_laps": [None], "circuit_rotation_deg": [0.0],
+            "fastf1_version": ["test"], "ingested_at": [pd.Timestamp.now(tz="UTC")]}),
+        "laps": _race(key, seed=1),
+    }, year, rnd, "Q", lake=tmp_path)
+
+
+def test_a_prediction_can_stand_in_for_what_a_first_visit_lacks(con, tmp_path):
+    """
+    Lenient is for a prediction: the circuit's texture borrowed from the rest
+    of the field, the pace level from the weekend's own qualifying, and the
+    season's first race given last season's tyre wear. Each one says so, and
+    nothing from the race or after it gets in.
+    """
+    _qualifying(2024, 1, "Sakhir", "2024-03-02", tmp_path)
+    con = connect()                          # the lake's views are read when connecting
+    inputs = race_inputs.build(con, "Sakhir", 2024, lenient=True)
+
+    assert inputs.target_session == "2024_01_R"
+    assert inputs.pit_loss_s == pytest.approx(PIT_LOSS, abs=2.0)     # Baku and Monza 2023's stops
+    assert inputs.pit_stops == 0                                     # none of them were at Sakhir
+    assert inputs.fitted_on == ["Baku Grand Prix 2023", "Monza Grand Prix 2023"]
+    quali_pole = con.sql("select min(lap_time_s) from laps where session_key = '2024_01_Q'").fetchone()[0]
+    assert inputs.quickest_lap_s == pytest.approx(quali_pole * race_inputs.QUALI_TO_RACE)
+    notes = " ".join(inputs.notes)
+    assert "typical pit lane" in notes and "end of 2023" in notes
+
+
+def test_lenient_still_refuses_when_there_is_nothing_at_all_to_stand_in(con):
+    """Baku 2023 is the lake's first race: no earlier stops anywhere, no earlier season."""
+    with pytest.raises(race_inputs.NotEnoughData):
+        race_inputs.build(con, "Baku", 2023, lenient=True)
+
 def test_the_race_distance_is_the_scheduled_one_which_was_known_in_advance(con):
     assert race_inputs.build(con, "Baku", 2024).total_laps == TOTAL_LAPS
 

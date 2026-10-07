@@ -10,9 +10,11 @@ import {
 } from "react";
 
 /**
- * The workspace: the track map in the middle, with the left column (session,
- * weather, driver cards, the feature launcher) and the leaderboard beside it.
- * The user sizes the two side columns by dragging; the map takes the rest.
+ * The workspace: the track map in the middle with the session strip under it
+ * and the stewards and track log below that, the left column (sync, the
+ * feature launcher, driver cards) and the leaderboard beside it. The user
+ * sizes the two side columns and the row under the map by dragging; the map
+ * takes the rest.
  *
  * Every size is a percentage of the workspace, so a layout survives the
  * window being resized; `null` means "the default for this screen", which is
@@ -25,15 +27,17 @@ export interface Layout {
   left: number | null;
   /** The leaderboard's width. */
   right: number | null;
+  /** The stewards and track log row, as a percentage of the middle column's height. */
+  lower: number | null;
 }
 
-export const DEFAULT_LAYOUT: Layout = { left: null, right: null };
+export const DEFAULT_LAYOUT: Layout = { left: null, right: null, lower: null };
 
 // v2: the map-centred layout. A v1 layout sized panels that no longer exist.
 const STORAGE_KEY = "racecraft:layout:v2";
 
-/** Floors, in rem. */
-const FLOOR = { left: 16, map: 20, right: 15 } as const;
+/** Floors, in rem. `mapHeight` and `lower` are heights within the middle column. */
+const FLOOR = { left: 16, map: 20, right: 15, mapHeight: 14, lower: 7 } as const;
 
 /** A splitter's thickness, in px. Matches .splitter in styles.css. */
 const SPLIT_PX = 6;
@@ -46,7 +50,7 @@ export function loadLayout(): Layout {
     const saved = raw as Record<string, unknown>;
     const pick = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value) && value > 0 && value < 100 ? value : null;
-    return { left: pick(saved.left), right: pick(saved.right) };
+    return { left: pick(saved.left), right: pick(saved.right), lower: pick(saved.lower) };
   } catch {
     return DEFAULT_LAYOUT;
   }
@@ -173,14 +177,17 @@ interface WorkspaceProps {
   onChange: (next: Layout) => void;
   left: ReactNode;
   map: ReactNode;
+  /** What sits under the map, in the middle column. */
+  below?: ReactNode;
   right: ReactNode;
 }
 
-/** The three columns and the two splitters between them. */
-export function Workspace({ layout, onChange, left, map, right }: WorkspaceProps) {
+/** The three columns, the two splitters between them, and the one under the map. */
+export function Workspace({ layout, onChange, left, map, below, right }: WorkspaceProps) {
   const root = useRef<HTMLElement>(null);
   const leftCol = useRef<HTMLDivElement>(null);
   const rightCol = useRef<HTMLDivElement>(null);
+  const middle = useRef<HTMLDivElement>(null);
   const width = (ref: { current: HTMLElement | null }) => ref.current?.getBoundingClientRect().width ?? 0;
   const span = () => (root.current ? contentBox(root.current).width : 0);
 
@@ -193,9 +200,21 @@ export function Workspace({ layout, onChange, left, map, right }: WorkspaceProps
     onChange({ ...layout, [key]: clampPercent(px, box.width, FLOOR[key] * rem, room) });
   };
 
+  // The row under the map, by height, keeping the map above its own floor.
+  const setLower = (px: number) => {
+    if (!middle.current) return;
+    const box = contentBox(middle.current);
+    const rem = remPx();
+    const room = box.height - FLOOR.mapHeight * rem - SPLIT_PX;
+    onChange({ ...layout, lower: clampPercent(px, box.height, FLOOR.lower * rem, room) });
+  };
+  const lowerHeight = () => middle.current?.querySelector<HTMLElement>(".below-map")?.getBoundingClientRect().height ?? 0;
+  const middleHeight = () => (middle.current ? contentBox(middle.current).height : 0);
+
   const style = {
     ...(layout.left !== null && { "--left-w": `${layout.left}%` }),
     ...(layout.right !== null && { "--right-w": `${layout.right}%` }),
+    ...(layout.lower !== null && { "--lower-h": `${layout.lower}%` }),
   } as CSSProperties;
 
   return (
@@ -209,7 +228,22 @@ export function Workspace({ layout, onChange, left, map, right }: WorkspaceProps
         onStep={(points) => setSide("left", rightCol, width(leftCol) + (points / 100) * span())}
         onReset={() => onChange({ ...layout, left: null })}
       />
-      <div className="col col-map">{map}</div>
+      <div className="col col-map" ref={middle}>
+        <div className="map-area">{map}</div>
+        {below && (
+          <>
+            <Splitter
+              orientation="horizontal"
+              label="Resize the stewards and track log"
+              value={layout.lower}
+              onMove={(y) => middle.current && setLower(contentBox(middle.current).top + middleHeight() - y - SPLIT_PX / 2)}
+              onStep={(points) => setLower(lowerHeight() - (points / 100) * middleHeight())}
+              onReset={() => onChange({ ...layout, lower: null })}
+            />
+            <div className="below-map">{below}</div>
+          </>
+        )}
+      </div>
       <Splitter
         orientation="vertical"
         label="Resize the leaderboard"

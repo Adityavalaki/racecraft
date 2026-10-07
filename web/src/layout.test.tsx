@@ -76,13 +76,17 @@ describe("loadLayout", () => {
     expect(loadLayout()).toEqual(DEFAULT_LAYOUT);
   });
   it("restores a saved layout", () => {
-    const saved: Layout = { left: 24, right: 20 };
+    const saved: Layout = { left: 24, right: 20, lower: 30 };
     localStorage.setItem(KEY, JSON.stringify(saved));
     expect(loadLayout()).toEqual(saved);
   });
+  it("keeps a layout saved before the row under the map could be sized", () => {
+    localStorage.setItem(KEY, JSON.stringify({ left: 24, right: 20 }));
+    expect(loadLayout()).toEqual({ left: 24, right: 20, lower: null });
+  });
   it("drops anything that is not a sensible percentage", () => {
-    localStorage.setItem(KEY, JSON.stringify({ left: 140, right: "big" }));
-    expect(loadLayout()).toEqual({ left: null, right: null });
+    localStorage.setItem(KEY, JSON.stringify({ left: 140, right: "big", lower: -5 }));
+    expect(loadLayout()).toEqual({ left: null, right: null, lower: null });
   });
   it("ignores a layout saved for the old five-panel screen", () => {
     localStorage.setItem("racecraft:layout:v1", JSON.stringify({ tower: 45, right: 20, map: 50, stewards: 30 }));

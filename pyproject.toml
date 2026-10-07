@@ -46,8 +46,9 @@ racecraft = "racecraft.app.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# Pirelli's compound nominations, read by racecraft.model.compounds.
-"racecraft.model" = ["*.csv"]
+# Pirelli's compound nominations, read by racecraft.model.compounds, and what
+# each weekend signal is worth to a race prediction, read by racecraft.model.predict.
+"racecraft.model" = ["*.csv", "*.json"]
 # The app's icon, used by its window and its shortcuts.
 "racecraft.app" = ["*.ico", "*.png"]
 

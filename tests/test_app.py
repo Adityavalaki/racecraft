@@ -292,3 +292,16 @@ def test_a_path_with_an_apostrophe_cannot_break_out_of_the_script():
 
 def test_the_icon_ships_with_the_package():
     assert shortcuts.ICON.exists() and shortcuts.ICON.stat().st_size > 1000
+
+
+def test_the_desktop_build_bundles_every_data_file_the_package_reads():
+    """PyInstaller takes code, not files beside it: each one has to be named in the spec."""
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = (repo / "packaging" / "Racecraft.spec").read_text(encoding="utf-8")
+    shipped = [p for pattern in ("*.csv", "*.json", "*.ico", "*.png")
+               for p in (repo / "src" / "racecraft").rglob(pattern)]
+    assert shipped
+    missing = [p.name for p in shipped if p.name not in spec]
+    assert not missing, f"not in packaging/Racecraft.spec: {missing}"

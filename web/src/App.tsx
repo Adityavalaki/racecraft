@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LIVE_KEY, TRACK_STATUS, formatClock, type SessionState } from "./api";
+import { LIVE_KEY, formatClock, type SessionState } from "./api";
 import { useClock } from "./clock";
-import { FEATURES, openFeature, type FeatureId } from "./features";
+import { LAUNCHER_FEATURES, openFeature, type FeatureId } from "./features";
 import { Workspace, useLayout } from "./layout";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
 import { DriverCards } from "./panels/DriverCards";
 import { Leaderboard } from "./panels/Leaderboard";
+import { Stewards, filterLabel } from "./panels/Stewards";
 import { SyncButton } from "./panels/SyncButton";
+import { TrackLog } from "./panels/TrackLog";
 import { TrackMap } from "./panels/TrackMap";
-import { useSession, useSessionList, useStateAt, type ListState } from "./sessionData";
+import { useMessagesAt, useSession, useSessionList, useStateAt, type ListState } from "./sessionData";
 import { SHORTCUTS, useShortcuts } from "./shortcuts";
 import { useReplayBroadcast } from "./sync";
 
@@ -17,13 +19,15 @@ import { useReplayBroadcast } from "./sync";
 const MAX_PICKED = 3;
 
 /**
- * The replay window: the track map in the middle, the leaderboard beside it,
- * the session, weather and picked drivers on the left, and the clock beneath.
+ * The replay window. In the middle, the track map, the session strip under it
+ * (event, lap, time, weather) and, below that, the stewards and the track log
+ * side by side. The leaderboard on the right; on the left, sync, the feature
+ * launcher and the picked drivers' telemetry; the clock along the bottom.
  *
  * Everything else (the full timing tower, the race trace, the tyre model,
- * strategy, tyre sets, the stewards and the track log) opens in a window of
- * its own from the left column, following this window's clock: it owns the
- * clock, and tells every feature window where it is (see sync.ts).
+ * strategy, tyre sets, the race prediction) opens in a window of its own from
+ * the left column, following this window's clock: it owns the clock, and
+ * tells every feature window where it is (see sync.ts).
  */
 export default function App() {
   const { sessions, listState, sessionKey, setSessionKey, reloadSessions } = useSessionList();
@@ -50,6 +54,14 @@ export default function App() {
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
   const state = useStateAt(sessionKey, info, clock.t);
+  const { stewards, trackLog } = useMessagesAt(sessionKey, info, clock.t);
+  const driverCodes = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const driver of info?.drivers ?? []) {
+      if (driver.abbreviation) out[driver.driver_number] = driver.abbreviation;
+    }
+    return out;
+  }, [info]);
 
   // Ride the leading edge while following. Reading clock.t here would make this
   // fire on every tick, so it watches only where the session now ends.
@@ -160,7 +172,8 @@ export default function App() {
             Reset layout
           </button>
         )}
-        <SyncButton onSynced={reloadSessions} />
+        {/* With a session on screen, sync sits at the top of the left column instead. */}
+        {!info && <SyncButton onSynced={reloadSessions} />}
         {error && <div className="error">{error}</div>}
       </header>
 
@@ -170,25 +183,29 @@ export default function App() {
           onChange={setLayout}
           left={
             <section className="panel panel-left">
-              <SessionCard info={info} state={state} t={clock.t} />
-              <h2>Drivers</h2>
-              <DriverCards selected={selected} drivers={state?.drivers ?? []} cars={state?.cars ?? {}}
-                           hasDrs={hasDrs} onUnpick={toggleDriver} />
+              <div className="left-sync">
+                <SyncButton onSynced={reloadSessions} />
+              </div>
               <h2>Features</h2>
               <nav className="feature-launcher" aria-label="Open a feature in its own window">
-                {FEATURES.map((feature) => (
+                {LAUNCHER_FEATURES.map((feature) => (
                   <button key={feature.id} type="button" className="open-feature" title={feature.hint}
                           onClick={() => open(feature.id)}>
                     {feature.title} <span aria-hidden="true">↗</span>
                   </button>
                 ))}
               </nav>
-              <h2>Keys</h2>
-              <dl className="shortcuts">
-                {SHORTCUTS.map(([key, what]) => (
-                  <div key={key}><dt>{key}</dt><dd>{what}</dd></div>
-                ))}
-              </dl>
+              <h2>Drivers</h2>
+              <DriverCards selected={selected} drivers={state?.drivers ?? []} cars={state?.cars ?? {}}
+                           hasDrs={hasDrs} onUnpick={toggleDriver} />
+              <details className="keys">
+                <summary>Keys</summary>
+                <dl className="shortcuts">
+                  {SHORTCUTS.map(([key, what]) => (
+                    <div key={key}><dt>{key}</dt><dd>{what}</dd></div>
+                  ))}
+                </dl>
+              </details>
             </section>
           }
           map={
@@ -210,7 +227,34 @@ export default function App() {
               </div>
               <TrackMap info={info} cars={cars} drivers={info.drivers} selected={selected}
                         showNames={showNames} showDrs={showDrs} safetyCar={state?.safety_car ?? null} />
+              <SessionStrip info={info} state={state} t={clock.t} />
             </section>
+          }
+          below={
+            <>
+              <section className="panel panel-stewards" aria-label="Stewards">
+                <div className="panel-bar">
+                  <h2>
+                    Stewards
+                    {filterLabel(selected, driverCodes) && <small> · {filterLabel(selected, driverCodes)}</small>}
+                  </h2>
+                  <button type="button" className="pop-out" onClick={() => open("stewards")}
+                          aria-label="Open the stewards in a window of their own"
+                          title="Open in a window of its own">↗</button>
+                </div>
+                <Stewards events={stewards} start={info.t_start} codes={driverCodes}
+                          selected={selected} onSelect={toggleDriver} />
+              </section>
+              <section className="panel panel-track" aria-label="Track log">
+                <div className="panel-bar">
+                  <h2>Track log</h2>
+                  <button type="button" className="pop-out" onClick={() => open("track")}
+                          aria-label="Open the track log in a window of its own"
+                          title="Open in a window of its own">↗</button>
+                </div>
+                <TrackLog events={trackLog} start={info.t_start} />
+              </section>
+            </>
           }
           right={
             <section className="panel panel-right">
@@ -231,10 +275,7 @@ export default function App() {
           clock={handClock}
           start={info.t_start}
           end={info.t_end}
-          leaderLap={state?.leader_lap ?? 0}
-          totalLaps={info.total_laps}
           trackStatus={state?.track_status ?? null}
-          weather={state?.weather ?? null}
           loading={positions.loading}
           statuses={info.track_status}
           crossings={crossings}
@@ -244,34 +285,42 @@ export default function App() {
   );
 }
 
-/** The session at a glance: lap, time, flag and weather. */
-function SessionCard({ info, state, t }: {
+/**
+ * The session at a glance, under the map: which event, the lap and the clock,
+ * then the weather. The flag is shown in the clock bar, so it is not repeated.
+ */
+function SessionStrip({ info, state, t }: {
   info: NonNullable<ReturnType<typeof useSession>["info"]>;
   state: SessionState | null;
   t: number;
 }) {
-  const flag = state?.track_status ? TRACK_STATUS[state.track_status.status] : undefined;
   const weather = state?.weather;
+  const figure = (value: number | null | undefined, unit: string, digits = 0) =>
+    value == null ? "—" : `${value.toFixed(digits)}${unit}`;
   return (
-    <div className="session-card">
-      <div className="session-card-title">{info.session.event_name}</div>
-      <div className="session-card-sub">{info.session.session_name}</div>
-      <dl className="session-figures">
+    <div className="session-strip" aria-label="Session">
+      <div className="strip-event">
+        <b>{info.session.event_name}</b>
+        <span>{info.session.session_name}</span>
+      </div>
+      <dl className="strip-figures">
         <div>
           <dt>LAP</dt>
           <dd>{state?.leader_lap ?? 0}{info.total_laps ? <small> / {info.total_laps}</small> : null}</dd>
         </div>
         <div><dt>TIME</dt><dd>{formatClock(t - info.t_start)}</dd></div>
       </dl>
-      {flag && <div className="session-flag" style={{ background: flag.color }}>{flag.label}</div>}
-      {weather && (
-        <dl className="weather-card">
-          {weather.track_temp != null && <div><dt>TRACK</dt><dd>{weather.track_temp.toFixed(0)}°C</dd></div>}
-          {weather.air_temp != null && <div><dt>AIR</dt><dd>{weather.air_temp.toFixed(0)}°C</dd></div>}
-          {weather.wind_speed != null && <div><dt>WIND</dt><dd>{weather.wind_speed.toFixed(1)} m/s</dd></div>}
-          <div><dt>RAIN</dt><dd className={weather.rainfall ? "wet" : ""}>{weather.rainfall ? "YES" : "DRY"}</dd></div>
-        </dl>
-      )}
+      <dl className="strip-figures">
+        <div><dt>TRACK</dt><dd>{figure(weather?.track_temp, "°C")}</dd></div>
+        <div><dt>AIR</dt><dd>{figure(weather?.air_temp, "°C")}</dd></div>
+      </dl>
+      <dl className="strip-figures">
+        <div><dt>WIND</dt><dd>{figure(weather?.wind_speed, " m/s", 1)}</dd></div>
+        <div>
+          <dt>RAIN</dt>
+          <dd className={weather?.rainfall ? "wet" : ""}>{weather ? (weather.rainfall ? "YES" : "DRY") : "—"}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -296,7 +345,7 @@ function Placeholder({ list, empty, waiting, error }: {
     return (
       <div className="placeholder">
         <p>No sessions yet.</p>
-        <p className="placeholder-hint">Sync downloads the latest race weekends. Use the Sync button above.</p>
+        <p className="placeholder-hint">Refresh downloads the latest race weekends. Use the Refresh button above.</p>
       </div>
     );
   }

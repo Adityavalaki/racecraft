@@ -159,23 +159,37 @@ describe("App", () => {
     await waitFor(() => expect(board.getByText("VER")).toBeDefined());
     expect(board.getByText("LEADER")).toBeDefined();
     expect(board.getByText("+6.213")).toBeDefined();        // the gap; intervals are the tower's
-    // The flag shows in the clock bar and on the session card.
-    expect(screen.getAllByText("TRACK CLEAR").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("LAP 12 / 57")).toBeDefined();
-    expect(screen.getByText("TRACK 32°C")).toBeDefined();
+    // The flag shows in the clock bar; lap, clock and weather in the strip under the map.
+    expect(within(container.querySelector(".clockbar") as HTMLElement).getByText("TRACK CLEAR")).toBeDefined();
+    const strip = container.querySelector(".session-strip") as HTMLElement;
+    await waitFor(() => expect(strip.textContent).toContain("12 / 57"));
+    expect(within(strip).getByText("32°C")).toBeDefined();
+    expect(within(strip).getByText("Bahrain Grand Prix")).toBeDefined();
     expect(screen.getByRole("slider", { name: /session time/i })).toBeDefined();
   });
 
-  it("puts the map in the middle, the session on the left and the leaderboard on the right", async () => {
+  it("lays out the sketch: launcher left, map with the session strip and race control in the middle, leaderboard right", async () => {
     mockApi();
     const { container } = render(<App />);
     await waitFor(() => expect(container.querySelector(".workspace")).not.toBeNull());
     const columns = Array.from(container.querySelectorAll(".workspace > .col")).map((col) => col.className);
     expect(columns).toEqual(["col col-left", "col col-map", "col col-right"]);
-    expect(container.querySelector(".col-map canvas.track-map")).not.toBeNull();
+
+    const left = container.querySelector(".col-left") as HTMLElement;
+    const order = Array.from(left.querySelectorAll(".left-sync, .feature-launcher, .driver-cards, .keys, h2"))
+      .map((el) => el.className || el.textContent);
+    expect(order[0]).toBe("left-sync");                       // sync first, then the features, then the drivers
+    expect(order.indexOf("feature-launcher")).toBeLessThan(order.indexOf("Drivers"));
+
+    const middle = container.querySelector(".col-map") as HTMLElement;
+    expect(middle.querySelector(".map-area canvas.track-map")).not.toBeNull();
+    expect(middle.querySelector(".map-area .session-strip")).not.toBeNull();
+    const below = Array.from(middle.querySelectorAll(".below-map > section")).map((s) => s.getAttribute("aria-label"));
+    expect(below).toEqual(["Stewards", "Track log"]);
+    expect(middle.querySelector('[role="separator"][aria-orientation="horizontal"]')).not.toBeNull();
+
     expect(container.querySelector(".col-right .leaderboard")).not.toBeNull();
-    await waitFor(() => expect(within(container.querySelector(".col-left") as HTMLElement)
-      .getByText("Bahrain Grand Prix")).toBeDefined());
+    expect(within(container.querySelector(".topbar") as HTMLElement).queryByRole("button", { name: /refresh/i })).toBeNull();
   });
 
   it("selecting a driver in the leaderboard marks that row", async () => {
@@ -206,16 +220,20 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
     const launcher = screen.getByRole("navigation", { name: /open a feature/i });
-    expect(within(launcher).getAllByRole("button")).toHaveLength(7);
+    // Stewards and the track log are on this window, under the map; the launcher has the rest.
+    expect(within(launcher).getAllByRole("button").map((b) => b.textContent?.replace("↗", "").trim())).toEqual(
+      ["Timing tower", "Race trace", "Tyre model", "Strategy", "Tyre sets", "Race prediction"]);
 
     fireEvent.click(within(launcher).getByRole("button", { name: /strategy/i }));
     fireEvent.click(screen.getByRole("button", { name: /full timing tower/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open the stewards in a window/i }));
     await waitFor(() => {
       const calls = fetchMock.mock.calls as unknown as [string, RequestInit | undefined][];
       const opened = calls.filter(([url]) => url.startsWith("/api/app/window"));
       expect(opened.map(([url, init]) => [url, init?.method])).toEqual([
         ["/api/app/window?feature=strategy&session=2024_01_R", "POST"],
         ["/api/app/window?feature=tower&session=2024_01_R", "POST"],
+        ["/api/app/window?feature=stewards&session=2024_01_R", "POST"],
       ]);
     });
   });
@@ -343,9 +361,9 @@ describe("App on a new install", () => {
     mockEmptyLake();
     render(<App />);
     await waitFor(() => expect(screen.getByText("No sessions yet.")).toBeDefined());
-    expect(screen.getByText(/Sync downloads the latest race weekends/)).toBeDefined();
+    expect(screen.getByText(/Refresh downloads the latest race weekends/)).toBeDefined();
     expect(screen.queryByText(/Loading/)).toBeNull();
-    const sync = screen.getByRole("button", { name: /sync latest/i }) as HTMLButtonElement;
+    const sync = screen.getByRole("button", { name: /^refresh$/i }) as HTMLButtonElement;
     expect(sync.disabled).toBe(false);
   });
 
@@ -354,7 +372,7 @@ describe("App on a new install", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("No sessions yet.")).toBeDefined());
 
-    screen.getByRole("button", { name: /sync latest/i }).click();
+    screen.getByRole("button", { name: /^refresh$/i }).click();
 
     await waitFor(() => expect(lake.calls).toContain("GET /api/sessions/2024_01_R"));
     expect(lake.calls).toContain("GET /api/sessions/2024_01_R/laps");
@@ -586,7 +604,7 @@ describe("App with answers that arrive late", () => {
     await waitFor(() => expect(server.waitsFor("/api/sessions")).toBe(true));
     const first = server.take("/api/sessions");
 
-    screen.getByRole("button", { name: /sync latest/i }).click();
+    screen.getByRole("button", { name: /^refresh$/i }).click();
     await waitFor(() => expect(server.waitsFor("/api/sessions")).toBe(true));
     await act(async () => server.take("/api/sessions").answer(after));
     await waitFor(() => expect(picker().value).toBe("2024_02_R"));

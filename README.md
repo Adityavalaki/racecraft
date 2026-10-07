@@ -39,7 +39,7 @@ Then double-click **Racecraft** on the Desktop. One process does everything:
 - **Its own port.** The API is served on `127.0.0.1` at a port the system picks,
   so nothing else on the machine can be in its way; 8000 is never touched.
 - **Syncs while open.** Ten seconds after launch, then every fifteen minutes, it
-  does what the **Sync latest 5** button does, and the button shows its progress.
+  does what the **Refresh** button does, and the button shows its progress.
   New sessions appear in the picker without a reload. Closing the window stops
   it; a session half-fetched at that moment is fetched again next time, because
   the lake writes a session's row last.
@@ -111,17 +111,20 @@ racecraft-serve                                # http://127.0.0.1:8000
 While developing the interface, run `npm run dev` in `web/` for hot reload; it
 proxies `/api` to the server on port 8000.
 
-**The replay window** puts the track map in the middle:
+**The replay window** has three columns and the clock along the bottom:
 
-- **Left:** the session (lap, time, flag, weather), a card for each picked
-  driver (speed, gear, DRS, throttle and brake, tyre, and the gap to the cars
-  ahead and behind), the feature launcher and the keyboard shortcuts.
-- **Right:** the leaderboard: position, gap, tyre and penalties. Click a
-  driver to pick them (up to three); they are ringed on the map.
-- **Bottom:** the clock, on a timeline coloured by yellow flags, safety car,
-  VSC and red flags, with the leader's laps marked beneath.
-- Drag the edges of the side columns to resize them; double-click an edge, or
-  use **Reset layout**, to put it back. The layout is remembered.
+- **Left:**
+  - **Refresh**, which fetches the latest race weekends.
+  - The feature launcher.
+  - A card for each picked driver: speed, gear, DRS, throttle and brake, tyre, and the gap to the cars ahead and behind.
+  - The keyboard shortcuts, folded away under **Keys**.
+- **Middle:**
+  - The track map.
+  - Under the map, the session strip: event, lap, time, track and air temperature, wind and rain.
+  - Under that, the **Stewards** and the **Track log** side by side. Each can also pop out (↗) into a window of its own.
+- **Right:** the leaderboard: position, gap, tyre and penalties. Click a driver to pick them (up to three); they are ringed on the map. **Full timing tower** sits at its foot.
+- **Bottom:** the track status, play and pause, ±30 s, the speeds, and the clock on a timeline. The timeline is coloured by yellow flags, safety car, VSC and red flags, with the leader's laps marked beneath.
+- Drag the edges of the side columns, or the line between the map and the stewards, to resize them. Double-click an edge, or use **Reset layout**, to put it back. The layout is remembered.
 
 On the map, **DRS zones** are drawn where the flap opened during the session
 (2023–2025 only: the 2026 cars have no DRS). While the safety car is out it is
@@ -129,8 +132,8 @@ drawn about 500 m ahead of the leader: F1 publishes no position for it, so it
 is **simulated**, and the map says so.
 
 **Features open in windows of their own** from the left column: the full
-timing tower, race trace, tyre model, strategy, tyre sets, stewards and track
-log. Each follows the replay window's clock as it plays; its own controls (play,
+timing tower, race trace, tyre model, strategy, tyre sets and the race
+prediction. The stewards and the track log can pop out too. Each follows the replay window's clock as it plays; its own controls (play,
 the scrubber, picking a driver, a lap in the trace) move the replay, so every
 window agrees. Put them on a second monitor. In the desktop app they are app
 windows and close with the replay; in a browser they open as tabs or popups.
@@ -221,6 +224,12 @@ trace, and the two that show the models rather than the feed.
   filled, used ones ringed with the laps on them, the set on the car
   highlighted. Selecting a car ranks the strategy model's plans on the tyres it
   actually had, and says which it could not run. See *Tyre sets* below.
+
+- **Race prediction**: the weekend's race, called from Friday and Saturday.
+  Every driver's chance to win, reach the podium and score, and their expected
+  position and likely range. After the race, the actual result sits beside the
+  prediction, scored against the grid. It is saved the first time it is made,
+  so it is never quietly recomputed after the fact. See *Race prediction* below.
 
 ### The tyre model panel is a prediction, not a fit
 
@@ -562,7 +571,7 @@ every request. The connection waits for a real session.
 
 ### Keeping the lake current
 
-**From the interface:** the **Sync latest 5** button in the top bar brings the
+**From the interface:** the **Refresh** button at the top of the left column brings the
 five most recent race weekends into the lake — every session whose data has
 been published, a weekend in progress included. It checks what is already there
 and fetches only the rest, in the background, naming the session in hand while
@@ -624,6 +633,8 @@ racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
 racecraft-analyse race Baku            # simulate the field, answer in places
 racecraft-analyse race Baku --driver HAD   # on the tyres that car actually had
 racecraft-analyse following            # time lost in the wake of the car ahead
+racecraft-analyse predict 2025_04_Q    # the weekend's race, predicted from before it
+racecraft-analyse predict-backtest     # every race since 2023 predicted and scored
 ```
 
 The scripts beside them answer "is this worth anything?", and every figure this
@@ -1023,6 +1034,112 @@ is as good as the best and costs 0.1 s more than the seconds-cheapest plan, for
 0.40 places. The plans are shortlisted by the safety-car ranking, not by
 green-flag seconds, so a long first stint that only pays off when a safety car
 arrives gets raced at all.
+
+## Race prediction
+
+The weekend's race, predicted from Friday and Saturday: each driver's chance to
+win, reach the podium and score, where they are expected to finish, and the
+likely range. Open **Race prediction** from any session of the weekend once
+qualifying is in (on a sprint weekend, once the sprint is in too).
+
+It is made in two steps, both measured against races that have already run.
+
+**Each driver's race pace.** The weekend gives up to five readings per driver:
+
+- **Qualifying gap** to pole.
+- **Practice long runs:** clean stints of six laps or more, corrected for tyre age and compound with the season's wear model. FP2 counts most.
+- **Sprint pace**, on sprint weekends.
+- **Form:** race pace in the season's last six races, newest counting most.
+- **Last season's closing form**, early in a season only. It is not used across a regulation reset (2026), because the cars are new.
+
+Each reading is treated as a noisy measure of the pace the driver will show on
+Sunday. How much each is worth, and how noisy it is, is measured on 2023–2025
+against the pace every driver actually showed in every race
+([prediction_weights.json](src/racecraft/model/prediction_weights.json)).
+
+| Reading | Noise (s a lap) |
+|---|---|
+| Form | 0.38 |
+| Last season | 0.38 |
+| Qualifying | 0.69 |
+| Long runs | 0.78 |
+| Sprint | 1.22 |
+
+The long-run noise figure understates how weak that reading is. Long runs also
+scale least with true pace, because fuel loads in practice are unknown.
+
+A missing reading adds nothing; readings that agree narrow the answer. How wide
+the answer stays is measured as well, so the simulation is exactly as unsure
+as the data says it should be.
+
+**Sunday.** Those paces go into the race simulator with the real grid, the
+circuit's pit lane, overtaking and safety cars, and the season's tyre wear.
+Retirements happen at the season's rate so far. The race is run a thousand
+times.
+
+**Saved, not recomputed.** The first prediction for a weekend is written to
+`DATA_DIR/predictions/<race>.json` and never rewritten. What the window showed
+on Saturday night is what gets scored on Sunday, beside the grid's score.
+
+A past race asked about for the first time is rebuilt from what was known
+before it started, and is labelled as rebuilt.
+
+### Does it beat the grid?
+
+`racecraft-analyse predict-backtest` predicts every race since 2023 from what
+was known before it and scores the prediction against the result. Each season
+from 2023 to 2025 is predicted with weights measured on the other two. 2026 is
+predicted with weights from 2023–2025, so it is a season the weights never saw.
+Bahrain 2023 is skipped: there is nothing before it in the lake.
+
+| Season | Races | Order (rank corr.): model / grid / form | Winner: model / grid / form | Podium places named: model / grid |
+|---|---|---|---|---|
+| 2023 | 21 | **0.64** / 0.59 / 0.59 | 76% / 62% / **81%** | **2.00** / 1.90 |
+| 2024 | 24 | **0.77** / 0.73 / 0.67 | **46%** / **46%** / 30% | 2.00 / 2.00 |
+| 2025 | 24 | **0.66** / 0.65 / 0.58 | **67%** / **67%** / 32% | 2.25 / 2.25 |
+| **2026, held out** | 16 | **0.66** / 0.64 / 0.63 | **69%** / **69%** / 47% | 1.81 / **1.88** |
+| 2023–2025 | 69 | **0.69** / 0.66 / 0.61 | **62%** / 58% / 47% | **2.09** / 2.06 |
+
+How honest the chances are, as Brier scores (lower is better). For the grid, a
+slot's chance is how often that slot has won or reached the podium.
+
+| Season | Win chances: model / grid | Podium chances: model / grid |
+|---|---|---|
+| 2023 | **0.39** / 0.60 | **1.41** / 1.59 |
+| 2024 | **0.72** / 0.75 | **1.34** / 1.39 |
+| 2025 | **0.50** / 0.54 | **1.12** / 1.19 |
+| **2026, held out** | **0.46** / 0.50 | **1.42** / 1.47 |
+
+What the replay says:
+
+- **It beats "finish where you start" every season on order and on honest chances,** including 2026, a new rulebook the weights never saw.
+- **The margins are small.** The grid already holds most of what can be known on Saturday night.
+- **On naming the winner it ties pole** in 2024, 2025 and 2026.
+- **In 2023, form alone did better:** Verstappen won 19 of 22.
+
+Three things here were changed after seeing the replay:
+
+- **Outlier clipping** at ±2.5 s: wet sessions and Q1 crashes were drowning the qualifying and sprint readings.
+- **Last season's closing form,** added because season openers had nothing to go on.
+- **The regulation-reset rule:** carrying 2025 into 2026 made 2026's podium chances worse.
+
+The third choice was made on the held-out season, so 2026 is no longer strictly
+blind on that one point. The rule is known in advance of any season, though.
+
+The replay also caught a leak. One race (Baku 2026) has no published grid. The
+grid was then ranked in the order the results are stored, which is the
+finishing order, so the result itself was being handed in as the grid. A
+missing grid now comes from qualifying, and ties never fall back on row order.
+
+What it cannot see:
+
+- first-lap incidents
+- rain
+- team orders
+- a car that is quick on Friday because it ran light
+
+It is honest about the parts that are chance: retirements and safety cars are
+drawn at random, and its percentages say so.
 
 ## Tyre sets
 

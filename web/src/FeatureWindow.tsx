@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { formatClock } from "./api";
 import { type Feature } from "./features";
 import { BestSectors } from "./panels/BestSectors";
+import { PredictionBoard } from "./panels/PredictionBoard";
 import { RaceTrace } from "./panels/RaceTrace";
 import { Stewards, filterLabel } from "./panels/Stewards";
 import { StrategyBoard } from "./panels/StrategyBoard";
@@ -195,5 +196,7 @@ function FeatureBody(props: BodyProps) {
       );
     case "track":
       return <TrackLog events={props.trackLog} start={info.t_start} />;
+    case "prediction":
+      return <PredictionBoard sessionKey={props.session} selected={selected} onSelect={onSelect} />;
   }
 }

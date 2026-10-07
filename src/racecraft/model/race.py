@@ -81,6 +81,7 @@ class RaceResult:
     """Where each car finished, over many simulated races."""
     positions: dict[int, np.ndarray] = field(default_factory=dict)      # driver -> finishing positions
     order: list[int] = field(default_factory=list)                      # by mean finish
+    retired: dict[int, np.ndarray] = field(default_factory=dict)        # driver -> did not finish, per run
 
     def summary(self, cars: dict[int, Car]) -> list[dict]:
         out = []
@@ -115,26 +116,49 @@ def simulate(cars: list[Car], total_laps: int, degradation: dict[str, float], pi
              compound_offset_s: dict[str, float] | None = None,
              curvature: dict[str, float] | None = None,
              runs: int = 200, rng: np.random.Generator | None = None,
-             following=None) -> RaceResult:
+             following=None, pace_sd: dict[int, float] | None = None,
+             retire_rate: float = 0.0) -> RaceResult:
     """
     Run the race `runs` times and collect where everyone finished.
 
     `following` is the wake penalty by gap, as measured for the season being
     run; see `traffic.measure`. It falls back to the 2026 figure.
+
+    Two things a strategy study leaves out and a prediction needs, both off by
+    default (and then not drawing a single random number, so every existing
+    result is unchanged):
+
+    * `pace_sd`, seconds a lap by driver: how unsure the pace is. Each run
+      draws every car's pace once, for the whole race. Lap-to-lap noise alone
+      averages out over a race and would make every finish look certain.
+    * `retire_rate`: the chance a car does not finish. One that retires stops
+      on a random lap and is classified behind every finisher, later
+      retirements ahead of earlier ones.
     """
     rng = rng or np.random.default_rng(0)
     by_number = {car.driver_number: car for car in cars}
     finishes: dict[int, list[int]] = {car.driver_number: [] for car in cars}
+    retirements: dict[int, list[bool]] = {car.driver_number: [] for car in cars}
+    index = {car.driver_number: i for i, car in enumerate(cars)}
+    spread = None if pace_sd is None else np.array([float(pace_sd.get(car.driver_number, 0.0)) for car in cars])
 
     for _ in range(runs):
+        offsets = rng.normal(0.0, spread) if spread is not None else None
+        retire_at = None
+        if retire_rate > 0:
+            out = rng.random(len(cars)) < retire_rate
+            retire_at = np.where(out, rng.integers(1, total_laps + 1, size=len(cars)), np.inf)
         order = _one_race(cars, total_laps, degradation, pit_loss_s, neutralisation,
-                          passes_per_lap, compound_offset_s or {}, curvature, rng, following)
+                          passes_per_lap, compound_offset_s or {}, curvature, rng, following,
+                          offsets=offsets, retire_at=retire_at)
         for position, driver in enumerate(order, start=1):
             finishes[driver].append(position)
+            retirements[driver].append(bool(retire_at is not None and retire_at[index[driver]] <= total_laps))
 
     positions = {driver: np.array(values) for driver, values in finishes.items()}
     ranked = sorted(positions, key=lambda d: positions[d].mean())
-    result = RaceResult(positions=positions, order=ranked)
+    result = RaceResult(positions=positions, order=ranked,
+                        retired={driver: np.array(values) for driver, values in retirements.items()})
     result.summary(by_number)      # validates every car is present
     return result
 
@@ -142,7 +166,8 @@ def simulate(cars: list[Car], total_laps: int, degradation: dict[str, float], pi
 def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], pit_loss_s: float,
               neutralisation: Neutralisation, passes_per_lap: float,
               compound_offset_s: dict[str, float], curvature: dict[str, float] | None,
-              rng: np.random.Generator, following=None) -> list[int]:
+              rng: np.random.Generator, following=None,
+              offsets: np.ndarray | None = None, retire_at: np.ndarray | None = None) -> list[int]:
     n = len(cars)
     numbers = [car.driver_number for car in cars]
     elapsed = np.array([0.6 * (car.grid - 1) for car in cars], dtype=float)   # the grid is staggered
@@ -169,6 +194,8 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
             age = tyre_age[index]
             wear = degradation.get(compound, 0.0) * age + (curvature or {}).get(compound, 0.0) * age * age
             base = car.pace_s + compound_offset_s.get(compound, 0.0) + wear
+            if offsets is not None:
+                base += offsets[index]
             if neutral:
                 lap_times[index] = safety_car_lap
             else:
@@ -189,15 +216,34 @@ def _one_race(cars: list[Car], total_laps: int, degradation: dict[str, float], p
                 tyre_age[index] = car.age_at(stint[index]) + 1
                 stint_laps[index] = 1
 
+        retired = None if retire_at is None else retire_at <= lap
+        if retired is not None:
+            elapsed = _park(elapsed, retired, retire_at, total_laps)
         if neutral:
             elapsed = _bunch_up(elapsed)
         else:
             # Judged against the order at the start of the lap: a car that has
             # caught the one ahead has to get past it, and whether it does is
             # what the circuit decides.
-            elapsed = _apply_blocking(elapsed, order, passes_per_lap, rng)
+            # A car that has just retired is parked, not a car to queue behind.
+            running = order if retired is None else order[~retired[order]]
+            elapsed = _apply_blocking(elapsed, running, passes_per_lap, rng)
+        if retired is not None:
+            # Again after the bunching: a safety car closes up the runners, not the retired.
+            elapsed = _park(elapsed, retired, retire_at, total_laps)
 
     return [numbers[i] for i in np.argsort(elapsed)]
+
+
+# Where a retired car is put: so far back that nobody is ever behind it, and
+# among the retired, a later retirement ahead of an earlier one.
+RETIRED_S = 1e9
+
+
+def _park(elapsed: np.ndarray, retired: np.ndarray, retire_at: np.ndarray, total_laps: int) -> np.ndarray:
+    parked = elapsed.copy()
+    parked[retired] = RETIRED_S + (total_laps - retire_at[retired])
+    return parked
 
 
 def stops_now(lap: int, total_laps: int, due_lap: int, neutral: bool, stint_laps: float) -> bool:

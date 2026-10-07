@@ -98,7 +98,7 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
     <div className="sync">
       <button type="button" className="sync-button" onClick={start} disabled={running}
               title="Fetch any session from the latest five race weekends that is not in the lake yet">
-        {running ? "Syncing…" : "Sync latest 5"}
+        {running ? "Refreshing…" : "Refresh"}
       </button>
       <span className="sync-status" role="status" title={detailOf(status, error)}>
         {summaryOf(status, error)}

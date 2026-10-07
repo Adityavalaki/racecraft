@@ -85,11 +85,11 @@ def pit_loss(laps: pd.DataFrame,
     laps = laps.assign(circuit=canonical_circuit(laps["location"]))
     for circuit, circuit_laps in laps.groupby("circuit"):
         losses, seasons = [], set()
-        for (session, driver), driver_laps in circuit_laps.groupby(["session_key", "driver_number"]):
-            driver_laps = driver_laps.sort_values("lap_number")
-            skip = {lap for (k, d, lap) in penalised if k == session and d == driver}
-            for loss in _stop_costs(driver_laps, skip):
-                losses.append(loss)
+        for session, session_laps in circuit_laps.groupby("session_key"):
+            here = _session_stop_costs(str(session), session_laps,
+                                       frozenset((d, lap) for (k, d, lap) in penalised if k == session))
+            losses.extend(here)
+            if here:
                 seasons.add(session[:4])
         if len(losses) >= 5:
             values = np.array(losses)
@@ -102,6 +102,35 @@ def pit_loss(laps: pd.DataFrame,
                 seasons=len(seasons),
             ))
     return sorted(out, key=lambda p: p.seconds)
+
+
+# A finished race's stops never change, but every question about any circuit
+# measures all of them again; a replay of every race since 2023 did so 86 times.
+# Keyed by what the laps hold rather than where they came from, so two lakes
+# that share a session key never share an answer.
+_session_cache: dict[tuple, list[float]] = {}
+
+
+_FINGERPRINT_COLUMNS = ["driver_number", "lap_number", "lap_time_s", "track_status",
+                        "is_pit_in_lap", "is_pit_out_lap", "position"]
+
+
+def _fingerprint(session: str, session_laps: pd.DataFrame) -> tuple:
+    """Every column the measurements read, hashed: any change to them is a different session."""
+    columns = [c for c in _FINGERPRINT_COLUMNS if c in session_laps]
+    digest = int(pd.util.hash_pandas_object(session_laps[columns], index=False).sum())
+    return (session, len(session_laps), digest)
+
+
+def _session_stop_costs(session: str, session_laps: pd.DataFrame, skip: frozenset) -> list[float]:
+    key = (*_fingerprint(session, session_laps), skip)
+    if key not in _session_cache:
+        costs = []
+        for driver, driver_laps in session_laps.groupby("driver_number"):
+            costs.extend(_stop_costs(driver_laps.sort_values("lap_number"),
+                                     {lap for (d, lap) in skip if d == driver}))
+        _session_cache[key] = costs
+    return _session_cache[key]
 
 
 def _stop_costs(driver_laps: pd.DataFrame, skip: set[int] | frozenset = frozenset()) -> list[float]:
@@ -286,7 +315,11 @@ def passes_per_race(circuit_laps: pd.DataFrame) -> float:
     ahead pits, which is not overtaking.
     """
     counts = []
-    for _, race_laps in circuit_laps.groupby("session_key"):
+    for session, race_laps in circuit_laps.groupby("session_key"):
+        key = ("passes", *_fingerprint(str(session), race_laps))
+        if key in _session_cache:
+            counts.append(_session_cache[key])
+            continue
         per_lap = {n: g.set_index("driver_number") for n, g in race_laps.groupby("lap_number")}
         passes = 0
         for lap in sorted(per_lap):
@@ -301,5 +334,6 @@ def passes_per_race(circuit_laps: pd.DataFrame) -> float:
                 for b in running[i + 1:]:
                     passes += ((before.loc[a, "position"] < before.loc[b, "position"])
                                != (after.loc[a, "position"] < after.loc[b, "position"]))
+        _session_cache[key] = passes
         counts.append(passes)
     return float(np.mean(counts)) if counts else 30.0

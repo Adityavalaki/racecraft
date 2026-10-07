@@ -127,8 +127,8 @@ describe("opening a feature", () => {
     expect(opened).toHaveBeenCalledTimes(1);
   });
 
-  it("has a URL for every feature, and seven of them", () => {
-    expect(FEATURES).toHaveLength(7);
+  it("has a URL for every feature, and eight of them", () => {
+    expect(FEATURES).toHaveLength(8);
     for (const feature of FEATURES) expect(featureUrl(feature.id, "x")).toBe(`/?feature=${feature.id}&session=x`);
   });
 });

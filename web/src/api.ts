@@ -531,6 +531,63 @@ export class HttpError extends Error {
   }
 }
 
+/** One driver in a race prediction: chances, expected finish, and the readings behind them. */
+export interface PredictionDriver {
+  driver_number: number;
+  abbreviation: string;
+  team_name: string | null;
+  team_color: string | null;
+  grid: number;
+  win: number;
+  podium: number;
+  points: number;
+  dnf: number;
+  expected: number;
+  /** The likely range if the car finishes (10th to 90th percentile). */
+  p10: number;
+  /** The median finish, if the car finishes. */
+  p50: number;
+  p90: number;
+  pace_s: number;
+  pace_sd: number;
+  signals: Record<string, number | null>;
+}
+
+export interface PredictionScore {
+  rho: number;
+  winner_hit: boolean;
+  podium_hits: number;
+  brier_win: number;
+  brier_podium: number;
+  logloss_win: number;
+}
+
+/** The weekend's race, predicted from before it started; with the result once there is one. */
+export interface Prediction {
+  race_key: string;
+  event_name: string;
+  year: number;
+  round: number;
+  drivers: PredictionDriver[];
+  basis: {
+    sessions: string[];
+    form_races: string[];
+    grid_source: string;
+    retire_rate: number;
+    runs: number;
+    reference_plan: string;
+    calibration: { fitted_on: string[] };
+    notes: string[];
+  };
+  made_at: string;
+  saved_at?: string;
+  /** Saved before the race started, rather than rebuilt from pre-race data afterwards. */
+  before_race: boolean;
+  /** The race's season was one the signals were weighed on. */
+  in_sample: boolean;
+  result: { finish: Record<string, number>; scores: { model: PredictionScore; grid: PredictionScore } } | null;
+}
+
 async function failure(response: Response): Promise<HttpError> {
   const detail = await response.json().catch(() => ({ detail: response.statusText }));
   return new HttpError(detail.detail ?? `request failed: ${response.status}`, response.status);
@@ -580,6 +637,9 @@ export const api = {
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
+  /** Twenty seconds the first time for a weekend, then saved for good. */
+  prediction: (key: string, signal?: AbortSignal) =>
+    get<Prediction>(`/api/sessions/${key}/prediction`, signal),
   /** Points live at the newest recording. Attaching again to the same one changes nothing. */
   liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
   /** Starts a sync of the latest race weekends, or reports the one running. */

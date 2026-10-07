@@ -10,6 +10,8 @@ Three shapes of request, matching how the panels actually consume data:
 * `/laps` is the whole race in one response, for the race trace.
 * `/insight` is what the models make of the session: degradation, pit loss,
   neutralisation risk, ranked plans. Slow once per season, then cached.
+* `/prediction` is the weekend's race predicted from before it started, saved
+  once and scored against the result when there is one.
 
 The session key `live` is served from a running recording instead of the lake,
 so every endpoint above works against a session in progress without knowing it
@@ -32,6 +34,7 @@ from racecraft import resources
 from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import places_view
+from racecraft.api import prediction_view
 from racecraft.api import session as session_store
 from racecraft.api import sync_view
 from racecraft.api import tyre_sets_view
@@ -179,6 +182,29 @@ def session_places(session_key: str,
     except places_view.NotSimulable as error:
         # 422 rather than 404 or 409: the session exists and is ready, but the
         # races before it cannot support a simulation, and retrying will not help.
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/prediction")
+def session_prediction(session_key: str) -> dict:
+    """
+    The race of this weekend, predicted from practice, qualifying, the sprint
+    and earlier races: each driver's chance to win, reach the podium and score,
+    and where they are expected to finish.
+
+    Made once qualifying is in, saved, and never recomputed; after the race it
+    comes with the result and the scores beside the grid's. About twenty
+    seconds the first time for a weekend.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422,
+                            detail="open the weekend's qualifying or race from the session list for its prediction")
+    _safe(session_key)
+    try:
+        return prediction_view.for_session(session_key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+    except prediction_view.NotPredictable as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 

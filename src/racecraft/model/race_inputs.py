@@ -146,13 +146,22 @@ class RaceInputs:
 
 def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
           cars: int = DEFAULT_CARS, include_race: bool = False,
-          session_key: str | None = None, total_laps: int | None = None) -> RaceInputs:
+          session_key: str | None = None, total_laps: int | None = None,
+          lenient: bool = False, weekend: tuple[int, int] | None = None) -> RaceInputs:
     """
     Assemble the simulator's inputs for the race at `circuit` in `season`.
 
     `session_key` names the race directly, which the interface does; otherwise
     it is found from the circuit and the season. Raises `NotEnoughData` when the
     races before the cutoff cannot support a simulation.
+
+    `lenient` is for a prediction, which runs mostly on the drivers' pace and
+    needs the circuit only for its texture: a first visit then takes the
+    field's typical pit lane and overtaking and the pace level of that
+    weekend's qualifying, and a season's first race last season's tyre wear.
+    Every stand-in is named in the notes. A strategy study keeps it off.
+    `weekend` (year, round) says whose qualifying that is when the race itself
+    is not in the lake yet.
     """
     name = str(circuit_model.canonical_circuit(circuit))
     sessions = con.sql("""select session_key, year, round, location, event_name, date_utc,
@@ -162,7 +171,7 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
     sessions["circuit"] = circuit_model.canonical_circuit(sessions["location"])
     sessions["date_utc"] = pd.to_datetime(sessions["date_utc"], utc=True)
 
-    if not session_key and not (sessions["circuit"] == name).any():
+    if not session_key and not lenient and not (sessions["circuit"] == name).any():
         raise NotEnoughData(f"no races at '{circuit}' in the lake")
 
     if session_key:
@@ -203,6 +212,13 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
     from racecraft.api import penalties     # race control, read the same way the interface reads it
     loss = next((p for p in circuit_model.pit_loss(laps, penalties.penalised_stops_in(con, laps))
                  if p.circuit == name), None)
+    if loss is None and lenient:
+        losses = [p.seconds for p in circuit_model.pit_loss(laps, penalties.penalised_stops_in(con, laps))]
+        if losses:
+            loss = circuit_model.PitLoss(circuit=name, seconds=float(np.median(losses)), spread_s=0.0,
+                                         stops=0, seasons=0)
+            notes.append(f"no earlier race at {name}: the field's typical pit lane "
+                         f"({loss.seconds:.1f} s) and overtaking are used")
     if loss is None:
         raise NotEnoughData(
             f"no earlier race at {name} to measure its pit lane from"
@@ -239,7 +255,12 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
             raise NotEnoughData(f"race distance at {name} is not known")
 
     overtaking = circuit_model.passes_per_race(here)
-    quickest = float(here["lap_time_s"].min())
+    quickest = float(here["lap_time_s"].min()) if not here.empty else float("nan")
+    if not np.isfinite(quickest) and lenient:
+        if target_row is not None:
+            weekend = (int(target_row["year"]), int(target_row["round"]))
+        if weekend is not None:
+            quickest = _weekend_pace(con, *weekend)
     if not np.isfinite(quickest):
         raise NotEnoughData(f"no timed lap at {name} before this race")
 
@@ -255,6 +276,19 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
         if model is not None:
             models.append(model)
             fitted_on.append(str(race["event_name"]))
+    if not models and lenient:
+        last = prior[prior["year"] == season - 1].sort_values(["date_utc", "round"]).tail(LADDER_RACES)
+        for _, race in last.iterrows():
+            race_laps = laps[laps["session_key"] == race["session_key"]]
+            if race_laps.empty:
+                continue
+            model, wake = _race_fit(str(race["session_key"]), race_laps)
+            residuals.append(wake)
+            if model is not None:
+                models.append(model)
+                fitted_on.append(f"{race['event_name']} {season - 1}")
+        if models:
+            notes.append(f"the season's first race: tyre wear and pace from the end of {season - 1}")
     if not models:
         raise NotEnoughData(
             f"no {season} race before this one to fit tyre wear on"
@@ -307,6 +341,19 @@ def build(con, circuit: str, season: int, *, scale: float = DEFAULT_SCALE,
         cars=cars,
         notes=notes,
     )
+
+
+# Qualifying is run light and on new softs; a race lap's quickest is about this
+# much slower. Only a stand-in, for a circuit the lake has never raced at.
+QUALI_TO_RACE = 1.04
+
+
+def _weekend_pace(con, year: int, round_number: int) -> float:
+    """A stand-in for a race's quickest lap: the weekend's pole time, slowed to race trim."""
+    row = con.execute("""select min(l.lap_time_s) from laps l join sessions s using (session_key)
+                         where s.year = ? and s.round = ? and s."session" in ('Q', 'SQ')""",
+                      [year, round_number]).fetchone()
+    return float(row[0]) * QUALI_TO_RACE if row and row[0] is not None else float("nan")
 
 
 # ------------------------------------------------------------- the garage
