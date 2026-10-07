@@ -61,6 +61,10 @@ describe("DriverCards", () => {
     expect(card.getByText("OPEN")).toBeDefined();            // DRS 12
     expect(card.getByRole("meter", { name: "THR" }).getAttribute("aria-valuenow")).toBe("64");
     expect(card.getByRole("meter", { name: "BRK" }).getAttribute("aria-valuenow")).toBe("0");
+    // Vertical bars, filling upward from the bottom, as broadcast telemetry draws them.
+    const throttle = card.getByRole("meter", { name: "THR" }).querySelector(".pedal-fill") as HTMLElement;
+    expect(throttle.style.height).toBe("64%");
+    expect(throttle.style.width).toBe("");
     // Ahead is NOR, by LEC's own interval; behind is HAM, by HAM's interval.
     expect(card.getByText("AHEAD NOR")).toBeDefined();
     expect(card.getByText("+3.500")).toBeDefined();

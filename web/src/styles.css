@@ -1269,20 +1269,35 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding: 0 0.2rem;
 }
 .card-close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.card-body { padding: 0.45rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.card-body {
+  padding: 0.45rem 0.55rem 0.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+}
+.card-info { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
 .card-figures dd { font-size: 1.05rem; color: var(--ink); }
 .card-figures dd small { font-size: 0.65rem; color: var(--ink-soft); }
 .drs.is-open { color: var(--green); }
 .drs.is-eligible { color: #f2c53d; }
 .drs.is-off, .drs.is-none { color: var(--ink-soft); }
-.card-pedals { display: flex; flex-direction: column; gap: 0.2rem; }
-.pedal { display: grid; grid-template-columns: 2.1rem 1fr; align-items: center; gap: 0.4rem; }
-.pedal-label { font-family: "JetBrains Mono", monospace; font-size: 0.56rem; letter-spacing: 0.1em; color: var(--ink-soft); }
-.pedal-track { height: 6px; background: #232c36; border-radius: 3px; overflow: hidden; }
-.pedal-fill { display: block; height: 100%; transition: width 0.15s linear; }
+/* Throttle and brake: two thick bars standing beside the figures, filling upward. */
+.card-pedals { display: flex; gap: 0.45rem; align-items: stretch; }
+.pedal { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; min-height: 6.5rem; }
+.pedal-track {
+  position: relative;
+  flex: 1;
+  width: 1.15rem;
+  background: #232c36;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.pedal-fill { position: absolute; left: 0; right: 0; bottom: 0; transition: height 0.12s linear; }
 .pedal-fill.is-throttle { background: var(--green); }
 .pedal-fill.is-brake { background: var(--red); }
 @media (prefers-reduced-motion: reduce) { .pedal-fill { transition: none; } }
+.pedal-label { font-family: "JetBrains Mono", monospace; font-size: 0.56rem; letter-spacing: 0.1em; color: var(--ink-soft); }
 .card-line { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--ink-mid); }
 .card-line .num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; font-size: 0.78rem; }
 .tyre-chip.small { width: 1rem; height: 1rem; font-size: 0.58rem; display: inline-grid; vertical-align: -0.15rem; }

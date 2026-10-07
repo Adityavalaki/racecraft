@@ -52,15 +52,12 @@ export const DriverCards = memo(function DriverCards({ selected, drivers, cars, 
                       aria-label={`Stop following ${driver?.abbreviation ?? number}`}>×</button>
             </header>
             <div className="card-body">
+              <div className="card-info">
               <dl className="card-figures">
                 <div><dt>SPEED</dt><dd>{car.speed != null ? `${Math.round(car.speed)}` : "—"}<small> km/h</small></dd></div>
                 <div><dt>GEAR</dt><dd>{car.gear != null ? Math.round(car.gear) : "—"}</dd></div>
                 <div><dt>DRS</dt><dd className={`drs is-${drs.state}`}>{drs.text}</dd></div>
               </dl>
-              <div className="card-pedals">
-                <Pedal label="THR" value={car.throttle != null ? car.throttle / 100 : null} kind="throttle" />
-                <Pedal label="BRK" value={car.brake != null ? (car.brake > 0 ? 1 : 0) : null} kind="brake" />
-              </div>
               <div className="card-line">
                 <span>TYRE</span>
                 {driver?.compound ? (
@@ -80,6 +77,11 @@ export const DriverCards = memo(function DriverCards({ selected, drivers, cars, 
                 <span>BEHIND {behind?.abbreviation ?? ""}</span>
                 <span className="num">{behind ? behind.interval_text || "—" : "—"}</span>
               </div>
+              </div>
+              <div className="card-pedals">
+                <Pedal label="THR" value={car.throttle != null ? car.throttle / 100 : null} kind="throttle" />
+                <Pedal label="BRK" value={car.brake != null ? (car.brake > 0 ? 1 : 0) : null} kind="brake" />
+              </div>
             </div>
           </article>
         );
@@ -88,15 +90,19 @@ export const DriverCards = memo(function DriverCards({ selected, drivers, cars, 
   );
 });
 
+/**
+ * One pedal as a tall bar filling from the bottom, the way broadcast
+ * telemetry draws it: throttle green, brake red, the label underneath.
+ */
 function Pedal({ label, value, kind }: { label: string; value: number | null; kind: "throttle" | "brake" }) {
   const share = value == null ? 0 : Math.max(0, Math.min(1, value));
   return (
     <div className="pedal" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100}
          aria-valuenow={value == null ? undefined : Math.round(share * 100)}>
-      <span className="pedal-label">{label}</span>
       <span className="pedal-track">
-        <span className={`pedal-fill is-${kind}`} style={{ width: `${share * 100}%` }} />
+        <span className={`pedal-fill is-${kind}`} style={{ height: `${share * 100}%` }} />
       </span>
+      <span className="pedal-label">{label}</span>
     </div>
   );
 }
