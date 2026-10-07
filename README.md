@@ -108,9 +108,45 @@ cd web; npm install; npm run build; cd ..     # once
 racecraft-serve                                # http://127.0.0.1:8000
 ```
 
-Pick a session, scrub or play, click drivers in the tower to follow them on
-the map and in the trace. While developing the interface, run `npm run dev`
-in `web/` for hot reload; it proxies `/api` to the server on port 8000.
+While developing the interface, run `npm run dev` in `web/` for hot reload; it
+proxies `/api` to the server on port 8000.
+
+**The replay window** puts the track map in the middle:
+
+- **Left:** the session (lap, time, flag, weather), a card for each picked
+  driver (speed, gear, DRS, throttle and brake, tyre, and the gap to the cars
+  ahead and behind), the feature launcher and the keyboard shortcuts.
+- **Right:** the leaderboard: position, gap, tyre and penalties. Click a
+  driver to pick them (up to three); they are ringed on the map.
+- **Bottom:** the clock, on a timeline coloured by yellow flags, safety car,
+  VSC and red flags, with the leader's laps marked beneath.
+- Drag the edges of the side columns to resize them; double-click an edge, or
+  use **Reset layout**, to put it back. The layout is remembered.
+
+On the map, **DRS zones** are drawn where the flap opened during the session
+(2023–2025 only: the 2026 cars have no DRS). While the safety car is out it is
+drawn about 500 m ahead of the leader: F1 publishes no position for it, so it
+is **simulated**, and the map says so.
+
+**Features open in windows of their own** from the left column: the full
+timing tower, race trace, tyre model, strategy, tyre sets, stewards and track
+log. Each follows the replay window's clock as it plays; its own controls (play,
+the scrubber, picking a driver, a lap in the trace) move the replay, so every
+window agrees. Put them on a second monitor. In the desktop app they are app
+windows and close with the replay; in a browser they open as tabs or popups.
+
+| Key | Does |
+|---|---|
+| Space | Play / pause |
+| ← / → | Back / forward 5 s (Shift: 30 s) |
+| ↑ / ↓ | Faster / slower |
+| Home | Back to the start |
+| L | Driver names on the map |
+| D | DRS zones on the map |
+
+The desktop app serves on port 47621 when it is free, so the layout it
+remembers survives a restart; when something else holds that port it picks
+another, and starts with the default layout.
 
 Five panels, one clock. The lower-right panel carries three tabs: the race
 trace, and the two that show the models rather than the feed.

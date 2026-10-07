@@ -23,7 +23,7 @@ from racecraft.app import autosync, instance, server, shortcuts
 # ------------------------------------------------------------- a port of its own
 
 def test_the_server_gets_a_free_port_the_system_chose():
-    sock = server.bound_socket()
+    sock = server.bound_socket(preferred=None)
     try:
         port = sock.getsockname()[1]
         assert port not in (0, 8000)
@@ -34,6 +34,46 @@ def test_the_server_gets_a_free_port_the_system_chose():
         other.close()
     finally:
         sock.close()
+
+
+def _free_port() -> int:
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    return port
+
+
+def test_the_same_port_every_launch_when_it_is_free():
+    """The page's origin, and with it the saved panel layout, survives a restart."""
+    wanted = _free_port()
+    first = server.bound_socket(preferred=wanted)
+    assert first.getsockname()[1] == wanted
+    first.close()
+    again = server.bound_socket(preferred=wanted)
+    try:
+        assert again.getsockname()[1] == wanted
+    finally:
+        again.close()
+
+
+def test_a_taken_preferred_port_still_starts_the_app_elsewhere():
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    taken = holder.getsockname()[1]
+    try:
+        sock = server.bound_socket(preferred=taken)
+        try:
+            assert sock.getsockname()[1] not in (0, taken)
+        finally:
+            sock.close()
+    finally:
+        holder.close()
+
+
+def test_the_preferred_port_is_not_racecraft_serves_nor_one_windows_hands_out():
+    assert server.PREFERRED_PORT != 8000
+    assert 1024 < server.PREFERRED_PORT < 49152
 
 
 def test_the_api_is_served_on_that_port_and_stops_when_asked():

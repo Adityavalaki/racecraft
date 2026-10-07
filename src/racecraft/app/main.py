@@ -36,6 +36,7 @@ from racecraft import config, resources
 from racecraft.app import instance, shortcuts
 from racecraft.app.autosync import AutoSync
 from racecraft.app.server import ServerThread, bound_socket
+from racecraft.app.windows import FeatureWindows
 
 log = logging.getLogger("racecraft.app")
 
@@ -210,6 +211,8 @@ def _open_window(webview, sock, parts: dict, log_file) -> None:
     def boot() -> None:
         """Runs once the window is up: load the API, serve it, point the window at it."""
         try:
+            from fastapi import HTTPException
+
             from racecraft.api import sync_view
             from racecraft.api.app import app as api
 
@@ -221,6 +224,21 @@ def _open_window(webview, sock, parts: dict, log_file) -> None:
             # Recorded before starting, so closing the window stops a partial start.
             server = ServerThread(api, sock)
             parts["server"] = server
+
+            # Each feature opens in a window of its own, made here: the page's
+            # own window.open would land in the system browser. They follow the
+            # replay, so they close with it.
+            features = FeatureWindows(server.url, webview.create_window,
+                                      on_created=lambda w: _give_icon(w), bring_forward=bring_to_front)
+
+            def open_window(feature: str, session: str) -> dict:
+                try:
+                    return features.open(feature, session)
+                except ValueError as error:
+                    raise HTTPException(status_code=400, detail=str(error)) from None
+
+            api.add_api_route("/api/app/window", open_window, methods=["POST"])
+            window.events.closed += features.close_all
             server.start()
             if not wait_until_ready(server.url):
                 raise RuntimeError(f"the server did not answer on {server.url}")
@@ -234,7 +252,14 @@ def _open_window(webview, sock, parts: dict, log_file) -> None:
             log.exception("could not start")
             window.load_html(FAILED.format(reason=f"{type(error).__name__}: {error}", log=log_file))
 
-    webview.start(boot)
+    # Not private: private mode wipes the WebView2 profile at exit, which lost the
+    # saved panel layout on every restart, and each window would have had a
+    # profile of its own, out of reach of the others' BroadcastChannel.
+    webview.start(boot, private_mode=False, storage_path=str(config.DATA_DIR / "webview"))
+
+
+def _give_icon(window) -> None:
+    window.events.shown += lambda: set_window_icon(window)
 
 
 def exit_now() -> None:

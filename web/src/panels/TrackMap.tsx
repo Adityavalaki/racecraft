@@ -7,6 +7,12 @@ interface Props {
   cars: Record<number, { x: number; y: number }>;
   drivers: Driver[];
   selected: number[];
+  /** Label every car, not only the picked ones (L). */
+  showNames?: boolean;
+  /** Draw the DRS zones (D). There are none to draw for 2026. */
+  showDrs?: boolean;
+  /** Where to draw the safety car while it is out; simulated by the server. */
+  safetyCar?: { x: number; y: number } | null;
 }
 
 /**
@@ -20,8 +26,15 @@ interface Props {
  *
  * The track is projected once per size change and kept as a Path2D; only the
  * cars are redrawn as the clock advances.
+ *
+ * DRS zones are drawn over the track in green where the flap opened during
+ * the session (2023-2025: the 2026 cars have no DRS). The safety car is an
+ * amber dot labelled SC, placed about 500 m ahead of the leader: F1 publishes
+ * no position for it, so it is simulated, and the map says so.
  */
-export const TrackMap = memo(function TrackMap({ info, cars, drivers, selected }: Props) {
+export const TrackMap = memo(function TrackMap({
+  info, cars, drivers, selected, showNames = false, showDrs = true, safetyCar = null,
+}: Props) {
   const { ref, size } = useCanvasSize<HTMLCanvasElement>();
   const byNumber = useMemo(() => new Map(drivers.map((d) => [d.driver_number, d])), [drivers]);
 
@@ -46,14 +59,23 @@ export const TrackMap = memo(function TrackMap({ info, cars, drivers, selected }
       return [originX + r.x * scale, originY - r.y * scale] as const;   // canvas y grows downward
     };
 
+    const screen = points.map((point) => [originX + point.x * scale, originY - point.y * scale] as const);
     const path = new Path2D();
-    points.forEach((point, index) => {
-      const px = originX + point.x * scale;
-      const py = originY - point.y * scale;
-      index === 0 ? path.moveTo(px, py) : path.lineTo(px, py);
-    });
+    screen.forEach(([px, py], index) => (index === 0 ? path.moveTo(px, py) : path.lineTo(px, py)));
     path.closePath();
-    return { project, path };
+
+    // Each zone is the stretch of outline between its two indices, running
+    // forward and wrapping past the start line when the first is the larger.
+    const loop = Math.max(1, screen.length - 1);                // the closing point repeats the first
+    const drs = new Path2D();
+    for (const [first, last] of info.drs_zones ?? []) {
+      const count = ((last - first + loop) % loop) + 1;
+      for (let k = 0; k < count; k += 1) {
+        const [px, py] = screen[(first + k) % loop]!;
+        k === 0 ? drs.moveTo(px, py) : drs.lineTo(px, py);
+      }
+    }
+    return { project, path, drs, hasDrs: (info.drs_zones ?? []).length > 0 };
   }, [info, size.width, size.height]);
 
   useEffect(() => {
@@ -83,6 +105,11 @@ export const TrackMap = memo(function TrackMap({ info, cars, drivers, selected }
     context.strokeStyle = "#394450";
     context.lineWidth = 2;
     context.stroke(projection.path);
+    if (showDrs && projection.hasDrs) {
+      context.strokeStyle = "rgba(69, 199, 127, 0.85)";
+      context.lineWidth = 4;
+      context.stroke(projection.drs);
+    }
 
     for (const [number, point] of Object.entries(cars)) {
       const [px, py] = projection.project(point.x, point.y);
@@ -96,12 +123,31 @@ export const TrackMap = memo(function TrackMap({ info, cars, drivers, selected }
         context.lineWidth = 2;
         context.strokeStyle = "#ffffff";
         context.stroke();
-        context.fillStyle = "#ffffff";
-        context.font = "600 12px 'Saira Condensed', sans-serif";
-        context.fillText(driver?.abbreviation ?? number, px + 11, py + 4);
+      }
+      if (isSelected || showNames) {
+        context.fillStyle = isSelected ? "#ffffff" : "#a8b4c1";
+        context.font = isSelected ? "600 12px 'Saira Condensed', sans-serif" : "500 10px 'Saira Condensed', sans-serif";
+        context.fillText(driver?.abbreviation ?? number, px + (isSelected ? 11 : 8), py + 4);
       }
     }
-  }, [ref, projection, cars, selected, byNumber, size.width, size.height]);
+
+    if (safetyCar) {
+      const [px, py] = projection.project(safetyCar.x, safetyCar.y);
+      context.beginPath();
+      context.arc(px, py, 8, 0, Math.PI * 2);
+      context.fillStyle = "#f2c53d";
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = "#ff7a33";
+      context.stroke();
+      context.fillStyle = "#10151a";
+      context.font = "700 9px 'JetBrains Mono', monospace";
+      context.fillText("SC", px - 6, py + 3);
+      context.fillStyle = "#6b7887";
+      context.font = "10px 'JetBrains Mono', monospace";
+      context.fillText("SC position simulated: F1 publishes none", 12, size.height - 10);
+    }
+  }, [ref, projection, cars, selected, byNumber, size.width, size.height, showNames, showDrs, safetyCar]);
 
   return <canvas className="track-map" ref={ref} />;
 });

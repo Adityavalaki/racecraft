@@ -124,31 +124,86 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- layout ---------- */
 
+/*
+  The placeholder page (loading, no sessions, waiting for live) is one centred
+  cell. The session page itself is the workspace below.
+*/
 .grid {
   display: grid;
-  /*
-    Three columns: the tower; the map above the tabbed charts; and race control,
-    split in two — the stewards beside the map, the track log beside the charts.
-    The map is a shape and reads at any size, so the right-hand column takes
-    width the map was not using. Each message panel gets a whole row's height
-    rather than half of one, so neither is a letterbox.
-  */
-  /*
-    The tower's floor is what its table needs: thirteen columns at their own
-    floors, the gaps, and a scrollbar's width (see .tower-head below). Any
-    narrower and the right-hand columns (PEN first) were pushed out of the panel.
-  */
-  grid-template-columns: minmax(var(--tower-min), 1.3fr) minmax(0, 1.5fr) minmax(300px, 0.66fr);
-  /*
-    The panel beneath carries the race trace, the wear chart and the strategy
-    board, all of which need room before they say anything. So the height goes
-    there.
-  */
-  grid-template-rows: minmax(0, 0.78fr) minmax(0, 1.22fr);
-  gap: 6px;
   padding: 6px;
   min-height: 0;
 }
+/*
+  The workspace: the track map in the middle, the left column (session,
+  weather, driver cards, the feature launcher) and the leaderboard beside it.
+  The two side columns are the user's to size by dragging (see layout.tsx);
+  each width is a custom property set from the saved layout, and the
+  fallbacks below are the defaults a fresh install and "Reset layout" give.
+  The map takes whatever is left, and never less than its floor.
+*/
+.workspace {
+  display: flex;
+  padding: 6px;
+  min-height: 0;
+  min-width: 0;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.col-left { flex: 0 1 var(--left-w, max(19rem, 19%)); min-width: 16rem; }
+.col-map { flex: 1 1 0; min-width: 20rem; }
+.col-right { flex: 0 1 var(--right-w, max(17rem, 17%)); min-width: 15rem; }
+.col > .panel { flex: 1; }
+.panel-left { overflow-y: auto; }
+.panel-bar h2 { border-bottom: 0; }
+
+/*
+  A splitter is the 6px gap between two panels, so it costs no space. The line
+  is drawn only on hover, focus or drag, in the signal colour, so a resting
+  layout looks the same as before. touch-action: none keeps a touch drag from
+  scrolling the page instead.
+*/
+.splitter {
+  flex: none;
+  position: relative;
+  touch-action: none;
+}
+.splitter-vertical { width: 6px; cursor: col-resize; }
+.splitter-horizontal { height: 6px; cursor: row-resize; }
+.splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 1px;
+  transition: background 0.12s;
+}
+.splitter-vertical::after { width: 2px; }
+.splitter-horizontal::after { height: 2px; }
+.splitter:hover::after,
+.splitter:focus-visible::after,
+.splitter.is-dragging::after { background: var(--signal); }
+.splitter:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .splitter::after { transition: none; }
+}
+
+.reset-layout {
+  background: none;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-mid);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.6rem;
+  border-radius: 2px;
+}
+.reset-layout:hover { color: var(--ink); border-color: var(--signal); }
+.reset-layout:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .grid.loading {
   place-items: center;
   color: var(--ink-soft);
@@ -179,29 +234,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--rule);
 }
 .panel h2 small { text-transform: none; letter-spacing: 0.04em; color: var(--rule-strong); }
-.panel-tower { grid-column: 1; grid-row: 1 / 3; }
-.panel-map { grid-column: 2; grid-row: 1; }
-.panel-stewards { grid-column: 3; grid-row: 1; }
-.panel-trace { grid-column: 2; grid-row: 2; }
-.panel-track { grid-column: 3; grid-row: 2; }
-/*
-  Below this there is not width for three, and squeezing them is worse than
-  stacking: the map and the charts take the full right-hand width, and the two
-  message panels sit side by side between them. These come after the rules
-  above on purpose — the same selectors, so whichever is later wins, and an
-  earlier version of this block lost to them and never took effect.
-*/
-@media (max-width: 1360px) {
-  .grid {
-    grid-template-columns: minmax(var(--tower-min), 1.1fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
-    grid-template-rows: minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.1fr);
-  }
-  .panel-tower { grid-column: 1; grid-row: 1 / 4; }
-  .panel-map { grid-column: 2 / 4; grid-row: 1; }
-  .panel-stewards { grid-column: 2; grid-row: 2; }
-  .panel-track { grid-column: 3; grid-row: 2; }
-  .panel-trace { grid-column: 2 / 4; grid-row: 3; }
-}
 
 /* ---------- timing tower ---------- */
 
@@ -214,7 +246,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
+  /* Sideways too: a tower dragged narrower than its table scrolls, never hides PEN. */
+  overflow: auto;
   scrollbar-gutter: stable;
 }
 /*
@@ -231,6 +264,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .tower-head,
 .tower-row {
   display: grid;
+  min-width: 42rem;                          /* the table at its column floors */
   grid-template-columns:
     minmax(1.7rem, 0.55fr)   /* position */
     4px                      /* team colour */
@@ -813,10 +847,17 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .omissions ul { margin: 0; padding-left: 1rem; font-size: 0.75rem; line-height: 1.55; }
 .omissions b { color: var(--ink-mid); font-weight: 600; }
 
+/*
+  Too narrow for three columns side by side: the panels stack in one scrolling
+  column at fixed heights, and the splitters step aside. A layout dragged on a
+  wider window is kept, and comes back when the window is wide again.
+*/
 @media (max-width: 1100px) {
-  .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
-  .panel-tower, .panel-map, .panel-trace, .panel-stewards, .panel-track { grid-column: 1; grid-row: auto; }
-  .panel-stewards, .panel-track { height: 280px; }
+  .workspace { flex-direction: column; gap: 6px; }
+  .col { flex: none; width: 100%; min-width: 0; }
+  .splitter { display: none; }
+  .col-map { height: 62vh; }
+  .col-right { height: 70vh; }
   body { overflow: auto; }
   .app { height: auto; }
 }
@@ -1089,4 +1130,291 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 @media (max-width: 640px) {
   .sync-status { display: none; }
+}
+
+/* ---------- feature windows ---------- */
+
+/*
+  A feature in a window of its own: its name and what it shows, whether it is
+  following the replay window, the feature filling the window, and a small
+  clock bar whose controls ask the replay window to move (it owns the clock).
+*/
+.feature-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100vh;
+}
+.feature-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+.feature-title { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.feature-title h1 {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.feature-title small { color: var(--ink-soft); font-size: 0.72rem; }
+.feature-sync {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.feature-sync::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rule-strong);
+}
+.feature-sync.is-on { color: var(--ink-mid); }
+.feature-sync.is-on::before { background: var(--green); }
+.feature-body { margin: 6px; min-height: 0; overflow: hidden; }
+.feature-body > .tab-body { flex: 1; }
+.feature-placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+}
+.feature-filter {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+}
+.feature-clock {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+}
+.feature-clock .time { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; color: var(--ink); }
+.feature-clock :disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- the replay window's columns ---------- */
+
+/* Left: the session at a glance. */
+.session-card { padding: 0.6rem 0.7rem 0.7rem; border-bottom: 1px solid var(--rule); }
+.session-card-title { font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+.session-card-sub { font-size: 0.8rem; color: var(--ink-soft); margin-bottom: 0.5rem; }
+.session-figures, .weather-card, .card-figures { display: flex; gap: 1.1rem; margin: 0; }
+.session-figures dt, .weather-card dt, .card-figures dt, .card-line > span:first-child {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+}
+.session-figures dd, .weather-card dd, .card-figures dd {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+.session-figures dd { font-size: 1.15rem; color: var(--ink); }
+.session-figures dd small { font-size: 0.75rem; color: var(--ink-soft); }
+.session-flag {
+  margin-top: 0.55rem;
+  padding: 0.18rem 0.5rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #0c1015;
+  border-radius: 2px;
+  display: inline-block;
+}
+.weather-card { margin-top: 0.6rem; flex-wrap: wrap; gap: 0.4rem 1rem; }
+.weather-card dd { font-size: 0.82rem; color: var(--ink-mid); }
+.weather-card dd.wet { color: #2f7fd8; }
+
+/* Left: a card per picked driver. */
+.cards-empty { margin: 0; padding: 0.6rem 0.7rem; font-size: 0.8rem; color: var(--ink-soft); }
+.driver-cards { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+.driver-card { border: 1px solid; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.driver-card header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.25rem 0.5rem;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+.card-pos { font-family: "JetBrains Mono", monospace; font-size: 0.72rem; font-weight: 700; }
+.card-code { font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; }
+.card-team { font-size: 0.72rem; opacity: 0.85; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card-close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+.card-close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.card-body { padding: 0.45rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.card-figures dd { font-size: 1.05rem; color: var(--ink); }
+.card-figures dd small { font-size: 0.65rem; color: var(--ink-soft); }
+.drs.is-open { color: var(--green); }
+.drs.is-eligible { color: #f2c53d; }
+.drs.is-off, .drs.is-none { color: var(--ink-soft); }
+.card-pedals { display: flex; flex-direction: column; gap: 0.2rem; }
+.pedal { display: grid; grid-template-columns: 2.1rem 1fr; align-items: center; gap: 0.4rem; }
+.pedal-label { font-family: "JetBrains Mono", monospace; font-size: 0.56rem; letter-spacing: 0.1em; color: var(--ink-soft); }
+.pedal-track { height: 6px; background: #232c36; border-radius: 3px; overflow: hidden; }
+.pedal-fill { display: block; height: 100%; transition: width 0.15s linear; }
+.pedal-fill.is-throttle { background: var(--green); }
+.pedal-fill.is-brake { background: var(--red); }
+@media (prefers-reduced-motion: reduce) { .pedal-fill { transition: none; } }
+.card-line { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--ink-mid); }
+.card-line .num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; font-size: 0.78rem; }
+.tyre-chip.small { width: 1rem; height: 1rem; font-size: 0.58rem; display: inline-grid; vertical-align: -0.15rem; }
+
+/* Left: the features, each opening a window of its own. */
+.feature-launcher { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.open-feature {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  color: var(--ink-mid);
+  text-align: left;
+}
+.open-feature:hover { color: var(--ink); border-color: var(--signal); }
+.open-feature:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.shortcuts { margin: 0; padding: 0.4rem 0.7rem 0.7rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.shortcuts div { display: grid; grid-template-columns: 3.4rem 1fr; gap: 0.5rem; font-size: 0.74rem; }
+.shortcuts dt { font-family: "JetBrains Mono", monospace; font-size: 0.66rem; color: var(--ink-mid); }
+.shortcuts dd { margin: 0; color: var(--ink-soft); }
+
+/* Centre: the map's toggles. */
+.map-toggles { margin-left: auto; display: flex; gap: 4px; }
+.map-toggle {
+  background: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  padding: 0.12rem 0.45rem;
+}
+.map-toggle.is-on { color: var(--green); border-color: var(--green); }
+.map-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.map-toggle:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.map-toggle kbd { font-family: inherit; opacity: 0.7; margin-left: 0.2rem; }
+
+/* Right: the compact leaderboard. */
+.leaderboard { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.leaderboard-head,
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 1.7rem 4px minmax(2.6rem, 1fr) minmax(4.2rem, 1.3fr) 1.6rem minmax(2.4rem, 0.8fr);
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.5rem;
+}
+.leaderboard-head {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  padding-block: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+}
+.leaderboard-head span, .leaderboard-row > * { text-align: center; }
+.leaderboard-rows { overflow-y: auto; min-height: 0; flex: 1; }
+.leaderboard-row {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid #1b222a;
+  padding-block: 0.28rem;
+  font-size: 0.95rem;
+}
+.leaderboard-row:hover { background: var(--panel-2); }
+.leaderboard-row.is-selected { background: #1f2a35; box-shadow: inset 2px 0 0 var(--signal); }
+.leaderboard-row.is-out { opacity: 0.45; }
+.leaderboard-row:focus-visible { outline: 1px solid var(--signal); outline-offset: -1px; }
+.leaderboard > .open-feature { margin: 6px; justify-content: center; }
+
+/* Bottom: the timeline, coloured by what happened when. */
+.timeline { position: relative; flex: 1; height: 30px; min-width: 8rem; }
+.timeline-bands {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 8px;
+  background: #1f2731;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.timeline-played { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(69, 199, 127, 0.28); }
+.band { position: absolute; top: 0; bottom: 0; }
+.band.is-yellow { background: #f2c53d; }
+.band.is-sc { background: #ff7a33; }
+.band.is-vsc { background: #c9a227; background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgba(0, 0, 0, 0.35) 3px 5px); }
+.band.is-red { background: var(--red); }
+.timeline .scrub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.timeline .scrub::-webkit-slider-runnable-track { height: 18px; background: transparent; }
+.timeline .scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 4px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px rgba(255, 122, 51, 0.5);
+}
+.timeline .scrub::-moz-range-track { background: transparent; }
+.timeline .scrub::-moz-range-thumb { width: 4px; height: 18px; border: 0; border-radius: 1px; background: var(--ink); }
+.timeline .scrub:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.timeline-laps { position: absolute; left: 0; right: 0; top: 17px; height: 13px; pointer-events: none; }
+.lap-mark {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 3px;
+  background: var(--rule-strong);
+}
+.lap-mark.is-major {
+  height: 5px;
+  background: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.5rem;
+  color: var(--ink-soft);
+  line-height: 13px;
+  text-indent: 3px;
 }

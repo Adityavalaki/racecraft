@@ -31,6 +31,13 @@ export interface SessionInfo {
   outline: [number, number][];
   bounds: { min_x: number; max_x: number; min_y: number; max_y: number } | Record<string, never>;
   has_position_data: boolean;
+  /** Every change of track status in the session: 1 clear, 2 yellow, 4 SC, 5 red, 6 VSC, 7 VSC ending. */
+  track_status?: { t: number; status: string; message: string }[];
+  /**
+   * Where DRS opens, as [first, last] indices into `outline` (first > last
+   * wraps past the start line). Empty for 2026 (no DRS) and for live.
+   */
+  drs_zones?: [number, number][];
 }
 
 /** The three kinds of race control message. */
@@ -150,7 +157,17 @@ export interface SessionState {
   drivers: DriverTiming[];
   cars: Record<string, CarState>;
   track_status: { status: string; message: string } | null;
-  weather: { air_temp: number | null; track_temp: number | null; rainfall: boolean | null } | null;
+  weather: {
+    air_temp: number | null;
+    track_temp: number | null;
+    rainfall: boolean | null;
+    wind_speed?: number | null;
+  } | null;
+  /**
+   * Where to draw the safety car while it is out: simulated, about 500 m ahead
+   * of the leader, because F1 publishes no position for it.
+   */
+  safety_car?: { x: number; y: number; simulated: true } | null;
 }
 
 export interface Frames {

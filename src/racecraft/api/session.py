@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from racecraft import config
 from racecraft.api import penalties as penalties_model
@@ -44,6 +45,26 @@ MAX_INTERPOLATION_GAP_S = 2.0
 # serving positions. Half a second removes the feed's timestamp jitter while
 # moving the car about a metre along its own path.
 DEFAULT_SMOOTHING_S = 0.5
+# Channels that hold a state, not a quantity: between two samples a car is in
+# one gear or the other, never 6.5, and DRS codes are labels (8 eligible, 10+
+# open), so averaging two of them invents a code. These take the last sample.
+STEPPED_CHANNELS = frozenset({"gear", "drs", "brake"})
+
+# DRS flap open, in the feed's codes (8 is eligible-but-closed). Only 2023-2025
+# carry it: the 2026 cars have active aero instead, and the channel is all 0.
+DRS_OPEN = 10
+# DRS is sampled about four times a second, a few outline points apart at speed,
+# so open samples this close together along the lap are one stretch.
+DRS_GAP_POINTS = 6
+DRS_MIN_ZONE_POINTS = 5
+DRS_MIN_OPENINGS = 3
+DRS_SHARE = 0.10
+
+# F1 publishes no position for the safety car. It is drawn where it usually is,
+# a short way up the road from the leader, along the outline.
+SAFETY_CAR_LEAD_M = 500.0
+POSITION_UNITS_PER_M = 10.0      # FastF1's X/Y are tenths of a metre
+SAFETY_CAR_STATUS = "4"
 
 
 @dataclass
@@ -59,7 +80,7 @@ class Channel:
         stale = (idx < 0) | (np.abs(times - self.t[np.clip(idx, 0, len(self.t) - 1)]) > MAX_INTERPOLATION_GAP_S)
         out: dict[str, list] = {}
         for name, series in self.values.items():
-            if interpolate and series.dtype.kind == "f":
+            if interpolate and series.dtype.kind == "f" and name not in STEPPED_CHANNELS:
                 sampled = np.interp(times, self.t, series)
             else:
                 sampled = series[np.clip(idx, 0, len(series) - 1)]
@@ -163,6 +184,7 @@ class SessionData:
 
         self.outline = self._build_outline()
         self.bounds = self._bounds()
+        self.drs_zones = self._build_drs_zones()
 
     # ------------------------------------------------------------- loading
 
@@ -270,6 +292,7 @@ class SessionData:
             "bounds": self.bounds,
             "has_position_data": bool(self.position),
             "track_status": _records(self.track_status),
+            "drs_zones": self.drs_zones,
         }
 
     def state(self, t: float) -> dict:
@@ -294,12 +317,109 @@ class SessionData:
         for row in state["drivers"]:
             against = penalties.get(int(row["driver_number"]))
             row["penalties"] = None if against is None else against.as_dict()
+        track_status = self.track_status_at(t)
+        leader = next((d.driver_number for d in classification.drivers if d.status == "racing"), None)
         return {
             **state,
             "cars": cars,
-            "track_status": self.track_status_at(t),
+            "track_status": track_status,
             "weather": self.weather_at(t),
+            "safety_car": self.safety_car_at(cars.get(leader)) if (
+                track_status and track_status["status"] == SAFETY_CAR_STATUS) else None,
         }
+
+    def _nearest_outline_index(self, xy: np.ndarray) -> np.ndarray:
+        """For each (x, y), the index of the closest outline point (the closing duplicate left out)."""
+        tree = getattr(self, "_outline_tree", None)
+        if tree is None:
+            # Built once: a race maps tens of thousands of DRS samples, and
+            # comparing each with all 600 points was most of a second.
+            tree = self._outline_tree = cKDTree(np.asarray(self.outline[:-1], dtype=float))
+        _, nearest = tree.query(xy)
+        return np.asarray(nearest, dtype=int)
+
+    def safety_car_at(self, leader_car: dict | None) -> dict | None:
+        """
+        Where to draw the safety car: SAFETY_CAR_LEAD_M up the road from the
+        leader, along the outline (which runs in the direction of travel from
+        the start line). Simulated — F1 publishes no position for it — and
+        None when the leader's own position is not known.
+        """
+        if len(self.outline) < 3 or not leader_car:
+            return None
+        x, y = leader_car.get("x"), leader_car.get("y")
+        if x is None or y is None:
+            return None
+        points = np.asarray(self.outline[:-1], dtype=float)
+        perimeter = float(np.hypot(*np.diff(np.asarray(self.outline, dtype=float), axis=0).T).sum())
+        if perimeter <= 0:
+            return None
+        step = perimeter / len(points)
+        ahead = int(round(SAFETY_CAR_LEAD_M * POSITION_UNITS_PER_M / step))
+        here = int(self._nearest_outline_index(np.array([[x, y]], dtype=float))[0])
+        px, py = points[(here + ahead) % len(points)]
+        return {"x": round(float(px), 1), "y": round(float(py), 1), "simulated": True}
+
+    def _build_drs_zones(self) -> list[list[int]]:
+        """
+        Where DRS opens, as [first, last] outline indices (wrapping past the line
+        when first > last). Empty for 2026, whose cars have no DRS, and for live.
+
+        The flap can only open inside a zone, so every opening by every car in
+        the session is evidence of one. Using only the fastest laps lost zones:
+        in a race DRS needs the car ahead within a second, and the fastest laps
+        are mostly set in clean air, so Bahrain came out with one zone of three.
+        A point counts when enough openings covered it (DRS_MIN_OPENINGS, and
+        DRS_SHARE of the busiest point), which keeps a stray sample mapped to
+        the wrong part of the circuit from drawing a zone of its own.
+        """
+        if len(self.outline) < 3 or not self.car or not self.position:
+            return []
+        n = len(self.outline) - 1
+        counts = np.zeros(n, dtype=int)
+        for number, car in self.car.items():
+            pos = self.position.get(number)
+            if pos is None or "drs" not in car.values:
+                continue
+            open_t = car.t[car.values["drs"] >= DRS_OPEN]
+            if len(open_t) == 0:
+                continue
+            at = pos.at(open_t)
+            known = [i for i, (px, py) in enumerate(zip(at["x"], at["y"])) if px is not None and py is not None]
+            if not known:
+                continue
+            times = open_t[known]
+            xy = np.array([[at["x"][i], at["y"][i]] for i in known], dtype=float)
+            indices = self._nearest_outline_index(xy)
+            # One opening is a run of samples less than a second apart; its
+            # samples sit a few outline points apart and are joined into a span.
+            for run in np.split(np.arange(len(indices)), np.flatnonzero(np.diff(times) > 1.0) + 1):
+                points = indices[run]
+                span = np.zeros(n, dtype=bool)
+                span[points] = True
+                for a, b in zip(points[:-1], points[1:]):
+                    gap = (b - a) % n
+                    if 0 < gap <= DRS_GAP_POINTS:
+                        span[(a + np.arange(gap + 1)) % n] = True
+                counts += span
+        if counts.max() == 0:
+            return []
+        is_open = counts >= max(DRS_MIN_OPENINGS, DRS_SHARE * counts.max())
+        if is_open.all():
+            return [[0, n - 1]]
+        # Runs of open points around the loop, starting just after a closed one.
+        first_closed = int(np.argmin(is_open))
+        zones, start = [], None
+        for k in range(1, n + 1):
+            i = (first_closed + k) % n
+            if is_open[i] and start is None:
+                start = i
+            elif not is_open[i] and start is not None:
+                last = (i - 1) % n
+                if (last - start) % n + 1 >= DRS_MIN_ZONE_POINTS:
+                    zones.append([int(start), int(last)])
+                start = None
+        return zones
 
     def frames(self, start: float, end: float, hz: float = 5.0,
                smooth_s: float = DEFAULT_SMOOTHING_S) -> dict:

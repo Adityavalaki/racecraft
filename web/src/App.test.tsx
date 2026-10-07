@@ -150,25 +150,35 @@ async function flush() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("App", () => {
-  it("loads a session and fills the tower, the clock and the flag bar", async () => {
+  it("loads a session and fills the leaderboard, the clock and the flag", async () => {
     mockApi();
     const { container } = render(<App />);
 
-    // Scoped to the tower: driver codes and sector times also appear in the
-    // best-sectors strip beneath it.
-    await waitFor(() => expect(container.querySelector(".tower-rows")).not.toBeNull());
-    const tower = within(container.querySelector(".tower-rows") as HTMLElement);
-    await waitFor(() => expect(tower.getByText("VER")).toBeDefined());
-    expect(screen.getByText("LEADER")).toBeDefined();
-    // Both the gap and the interval columns: PER is second and 6.213 s behind.
-    expect(tower.getAllByText("+6.213")).toHaveLength(2);
-    expect(screen.getByText("TRACK CLEAR")).toBeDefined();
+    await waitFor(() => expect(container.querySelector(".leaderboard-rows")).not.toBeNull());
+    const board = within(container.querySelector(".leaderboard-rows") as HTMLElement);
+    await waitFor(() => expect(board.getByText("VER")).toBeDefined());
+    expect(board.getByText("LEADER")).toBeDefined();
+    expect(board.getByText("+6.213")).toBeDefined();        // the gap; intervals are the tower's
+    // The flag shows in the clock bar and on the session card.
+    expect(screen.getAllByText("TRACK CLEAR").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("LAP 12 / 57")).toBeDefined();
     expect(screen.getByText("TRACK 32°C")).toBeDefined();
     expect(screen.getByRole("slider", { name: /session time/i })).toBeDefined();
   });
 
-  it("selecting a driver in the tower marks that row", async () => {
+  it("puts the map in the middle, the session on the left and the leaderboard on the right", async () => {
+    mockApi();
+    const { container } = render(<App />);
+    await waitFor(() => expect(container.querySelector(".workspace")).not.toBeNull());
+    const columns = Array.from(container.querySelectorAll(".workspace > .col")).map((col) => col.className);
+    expect(columns).toEqual(["col col-left", "col col-map", "col col-right"]);
+    expect(container.querySelector(".col-map canvas.track-map")).not.toBeNull();
+    expect(container.querySelector(".col-right .leaderboard")).not.toBeNull();
+    await waitFor(() => expect(within(container.querySelector(".col-left") as HTMLElement)
+      .getByText("Bahrain Grand Prix")).toBeDefined());
+  });
+
+  it("selecting a driver in the leaderboard marks that row", async () => {
     mockApi();
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("PER").length).toBeGreaterThan(0));
@@ -180,32 +190,34 @@ describe("App", () => {
   });
 
 
-  it("does not fit a season until a tab that needs it is opened", async () => {
+  it("never fits a season itself: the model features have their own windows", async () => {
     const fetchMock = mockApi();
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
-
-    // The fit costs seconds on the server, so opening a replay must not trigger it.
-    const asked = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/insight"));
-    expect(asked()).toHaveLength(0);
-
-    screen.getByRole("tab", { name: "Strategy" }).click();
-    await waitFor(() => expect(asked().length).toBeGreaterThan(0));
-    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
-
-    // Switching between the two model tabs reuses the one fit.
-    const once = asked().length;
-    screen.getByRole("tab", { name: "Tyre model" }).click();
-    await waitFor(() => expect(screen.getByText(/no dry-tyre laps/i)).toBeDefined());
-    expect(asked()).toHaveLength(once);
+    // The fit costs seconds on the server; the replay window shows nothing that needs it.
+    await act(async () => {
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/insight"))).toBe(false);
   });
 
-  it("keeps the race trace as the tab that opens first", async () => {
-    mockApi();
-    const { container } = render(<App />);
+  it("opens each feature in a window of its own for the session on screen", async () => {
+    const fetchMock = mockApi();
+    render(<App />);
     await waitFor(() => expect(screen.getAllByText("VER").length).toBeGreaterThan(0));
-    expect(screen.getByRole("tab", { name: "Race trace" }).getAttribute("aria-selected")).toBe("true");
-    expect(container.querySelector(".tab-body canvas")).not.toBeNull();
+    const launcher = screen.getByRole("navigation", { name: /open a feature/i });
+    expect(within(launcher).getAllByRole("button")).toHaveLength(7);
+
+    fireEvent.click(within(launcher).getByRole("button", { name: /strategy/i }));
+    fireEvent.click(screen.getByRole("button", { name: /full timing tower/i }));
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as [string, RequestInit | undefined][];
+      const opened = calls.filter(([url]) => url.startsWith("/api/app/window"));
+      expect(opened.map(([url, init]) => [url, init?.method])).toEqual([
+        ["/api/app/window?feature=strategy&session=2024_01_R", "POST"],
+        ["/api/app/window?feature=tower&session=2024_01_R", "POST"],
+      ]);
+    });
   });
 
 
@@ -287,15 +299,6 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("lake not found")).toBeDefined());
   });
 
-  it("shows who holds each sector and what an ideal lap would be", async () => {
-    mockApi();
-    const { container } = render(<App />);
-    await waitFor(() => expect(container.querySelector(".best-sectors")).not.toBeNull());
-    const strip = within(container.querySelector(".best-sectors") as HTMLElement);
-    expect(strip.getByText("29.741")).toBeDefined();     // fastest S1, held by VER
-    expect(strip.getByText("IDEAL")).toBeDefined();
-    expect(strip.getByText("1:32.608")).toBeDefined();   // the three best sectors added up
-  });
 });
 
 describe("App on a new install", () => {
@@ -631,49 +634,6 @@ describe("App with answers that arrive late", () => {
     expect(screen.queryByText("Bahrain could not be read")).toBeNull();
   });
 
-  it("a late model fit for the previous session does not replace this session's", async () => {
-    const server = deferredFetch(answers([BAHRAIN, JEDDAH], (url) => url.includes("/insight")));
-    render(<App />);
-    await waitFor(() => expect(screen.getByText(/Sakhir · 0 cars/)).toBeDefined());
-
-    screen.getByRole("tab", { name: "Strategy" }).click();
-    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R/insight")).toBe(true));
-    const oldFit = server.take("/api/sessions/2024_01_R/insight");
-
-    fireEvent.change(picker(), { target: { value: "2024_02_R" } });
-    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_02_R/insight")).toBe(true));
-    await act(async () => server.take("/api/sessions/2024_02_R/insight").answer(insightWith(22.4)));
-    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
-
-    await act(async () => oldFit.answer(insightWith(30.1)));
-    await flush();
-    expect(screen.getByText("22.4s")).toBeDefined();
-    expect(screen.queryByText("30.1s")).toBeNull();
-  });
-
-  it("a failed model fit is asked for again when its tab is opened again", async () => {
-    let fits = 0;
-    const server = deferredFetch(answers([BAHRAIN], () => false, (url) => {
-      if (!url.includes("/insight")) return undefined;
-      fits += 1;
-      return fits === 1 ? HOLD : insightWith(22.4);
-    }));
-    render(<App />);
-    await waitFor(() => expect(screen.getByText(/Sakhir · 0 cars/)).toBeDefined());
-
-    screen.getByRole("tab", { name: "Strategy" }).click();
-    await waitFor(() => expect(server.waitsFor("/api/sessions/2024_01_R/insight")).toBe(true));
-    await act(async () => server.take("/api/sessions/2024_01_R/insight").answer({ detail: "the fit fell over" }, 500));
-    await waitFor(() => expect(screen.getByText("the fit fell over")).toBeDefined());
-
-    screen.getByRole("tab", { name: "Race trace" }).click();
-    await waitFor(() =>
-      expect(screen.getByRole("tab", { name: "Race trace" }).getAttribute("aria-selected")).toBe("true"));
-    screen.getByRole("tab", { name: "Strategy" }).click();
-    await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
-    expect(fits).toBe(2);
-    expect(screen.queryByText("the fit fell over")).toBeNull();
-  });
 
   it("an earlier live answer arriving after a later one does not move the live edge back", async () => {
     vi.useFakeTimers();
