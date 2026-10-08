@@ -96,10 +96,33 @@ describe("DriverCards", () => {
       const { container } = render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()}
                                                 sessionKey="2025_17_R" t={4000} />);
       expect(await screen.findByRole("img", { name: /last 30 seconds of speed, throttle and brake for LEC/i })).toBeDefined();
-      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4000.00&seconds=30");
+      // Fetched in one go: the half-minute behind the clock and fifteen seconds ahead of it.
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4015.00&seconds=47");
       // One brake block, for the one second-sample on the brake.
       const paths = Array.from(container.querySelectorAll(".pedal-trace path")).map((path) => path.getAttribute("d") ?? "");
       expect(paths.some((d) => (d.match(/M/g) ?? []).length === 1 && d.endsWith("Z") && d.includes("V98"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("the card's telemetry, as the clock runs", () => {
+  it("slides with the clock without asking again, and reads speed between samples", async () => {
+    // Samples at 3968, 3990, 3995, 4005 and 4015: the server answers relative to the end it was asked for.
+    const trace = { driver_number: 16, seconds: 47, t: [-47, -25, -20, -10, 0], speed: [300, 250, 100, 200, 310],
+                    throttle: [100, 100, 0, 60, 100], brake: [false, false, true, false, false], gear: [8, 7, 3, 5, 8] };
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => trace }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const props = { selected: [16], drivers: field, cars: {}, hasDrs: true, onUnpick: vi.fn(), sessionKey: "2025_17_R" };
+      const { container, rerender } = render(<DriverCards {...props} t={4000} />);
+      await screen.findByRole("img", { name: /speed, throttle and brake for LEC/i });
+      const speedAt = () => container.querySelector(".card-speed")?.textContent;
+      expect(speedAt()).toBe("150 km/h");                    // halfway from 100 at 3995 to 200 at 4005
+      rerender(<DriverCards {...props} t={4002} />);
+      expect(speedAt()).toBe("170 km/h");
+      expect(fetchMock).toHaveBeenCalledTimes(1);             // still inside what was fetched
     } finally {
       vi.unstubAllGlobals();
     }

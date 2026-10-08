@@ -69,7 +69,7 @@ export default function App() {
   }, [sessionKey]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
-  const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
+  const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data), clock.speed);
   const state = useStateAt(sessionKey, info, clock.t);
   const { stewards, trackLog } = useMessagesAt(sessionKey, info, clock.t);
   const driverCodes = useMemo(() => {
@@ -163,8 +163,9 @@ export default function App() {
   }, [sessionKey]);
   const openTower = useCallback(() => setScreen("tower"), [setScreen]);
 
-  const picker = <SessionPicker sessions={sessions} value={sessionKey} onChange={setSessionKey} />;
-  const liveFlag = isLive ? (
+  const picker = useMemo(() => <SessionPicker sessions={sessions} value={sessionKey} onChange={setSessionKey} />,
+                         [sessions, sessionKey, setSessionKey]);
+  const liveFlag = useMemo(() => (isLive ? (
     <div className="live-flag">
       <span className={following ? "live-dot is-following" : "live-dot"} />
       {following ? "LIVE" : "PAUSED"}
@@ -173,7 +174,7 @@ export default function App() {
       )}
       {waiting && info && <span className="live-waiting">waiting for live data</span>}
     </div>
-  ) : null;
+  ) : null), [isLive, following, waiting, info]);
   const status = (
     <>
       {liveFlag}
@@ -187,6 +188,18 @@ export default function App() {
       {error && <span className="error">{error}</span>}
     </>
   );
+
+  // The screens other than the replay change with the timing, a few times a
+  // second, not with every animation frame: they are given the state's own
+  // time, and a context that changes only when something they show does, so
+  // the full timing tower is not redrawn sixty times a second.
+  const coarseT = state?.t ?? info?.t_start ?? 0;
+  const screenContext = useMemo(() => (info && sessionKey ? {
+    session: sessionKey, t: coarseT, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
+    insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker,
+    onPopOut: screen === "replay" || screen === "settings" ? undefined : () => popOut(screen), extra: liveFlag,
+  } : null), [sessionKey, coarseT, info, state, laps, crossings, selected, toggleDriver, seekToLap, insight, insightError,
+              actualStops, sessionBest, stewards, trackLog, driverCodes, picker, screen, popOut, liveFlag]);
 
   const body = () => {
     if (screen === "settings") {
@@ -208,15 +221,12 @@ export default function App() {
         <ReplayScreen sessionKey={sessionKey} info={info} state={state} t={clock.t} cars={cars} selected={selected}
                       onSelect={toggleDriver} settings={settings} onToggleNames={toggleNames} onToggleRings={toggleRings}
                       stewards={stewards} trackLog={trackLog} codes={driverCodes} onOpenTower={openTower}
-                      layout={layout} onLayout={setLayout} picker={picker} status={status} />
+                      layout={layout} onLayout={setLayout} picker={picker} status={status}
+                      playbackSpeed={clock.speed} />
       );
     }
     return (
-      <ScreenView id={screen} ctx={{
-        session: sessionKey, t: clock.t, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
-        insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker,
-        onPopOut: () => popOut(screen), extra: liveFlag,
-      }} />
+      <ScreenView id={screen} ctx={screenContext!} />
     );
   };
 

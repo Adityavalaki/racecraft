@@ -30,6 +30,8 @@ interface Props {
   /** The session picker, the live flag and the reset button, for the session bar. */
   picker: ReactNode;
   status?: ReactNode;
+  /** Playback speed: the cards fetch telemetry further ahead the faster it runs. */
+  playbackSpeed?: number;
 }
 
 /**
@@ -111,7 +113,7 @@ export function ReplayScreen(props: Props) {
           <section className="followed" aria-label="Followed drivers">
             <DriverCards selected={selected} drivers={drivers} cars={state?.cars ?? {}} hasDrs={hasDrs}
                          hasOvertake={hasOvertake} onUnpick={props.onSelect} sessionKey={props.sessionKey} t={props.t}
-                         units={settings.units} />
+                         units={settings.units} playbackSpeed={props.playbackSpeed ?? 1} />
           </section>
         }
         right={

@@ -18,6 +18,17 @@ import { api, type Frames } from "./api";
  */
 export const WINDOW_S = 24;
 const SAMPLE_HZ = 10;   // twice the old rate: less to invent between samples
+/**
+ * At 10x and 30x a 24-second window lasts a second or less of real time, and
+ * the next one could not arrive before the cars ran out of road. The window
+ * grows with the speed, so it always covers a few seconds of real time; the
+ * rate falls as it grows, since at that speed a car moves further per frame
+ * than the samples are apart anyway.
+ */
+export function windowFor(speed: number): { seconds: number; hz: number } {
+  const seconds = Math.min(Math.max(WINDOW_S, 12 * speed), 300);
+  return { seconds, hz: speed >= 10 ? 4 : speed >= 5 ? 6 : SAMPLE_HZ };
+}
 const REFETCH_AT = 0.6; // fraction of the window consumed before fetching the next
 const CHECK_MS = 120;
 /** Seconds of already-played positions kept behind the clock when a window is joined. */
@@ -44,9 +55,11 @@ export interface Positions {
   loading: boolean;
 }
 
-export function usePositions(sessionKey: string | null, t: number, enabled: boolean): Positions {
+export function usePositions(sessionKey: string | null, t: number, enabled: boolean, speed = 1): Positions {
   const buffer = useRef<Frames | null>(null);
   const clock = useRef(t);
+  const pace = useRef(speed);
+  pace.current = speed;
   const fetching = useRef(false);
   const [, setVersion] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -66,8 +79,9 @@ export function usePositions(sessionKey: string | null, t: number, enabled: bool
       const { start, replace: outside } = next;
       fetching.current = true;
       setLoading(true);
+      const { seconds, hz } = windowFor(pace.current);
       api
-        .frames(sessionKey, start, start + WINDOW_S, SAMPLE_HZ, controller.signal)
+        .frames(sessionKey, start, start + seconds, hz, controller.signal)
         .then((frames) => {
           if (stopped) return;
           const previous = buffer.current;

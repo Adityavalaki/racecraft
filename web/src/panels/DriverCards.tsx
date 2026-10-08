@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { COMPOUND_COLORS, type CarState, type DriverTiming } from "../api";
 import { speedIn, type Settings } from "../settings";
-import { useRecent } from "../telemetryData";
+import { useTelemetry } from "../telemetryData";
 import { PedalTrace } from "./PedalTrace";
 
 /** How many drivers can be followed at once: a card each, side by side. */
@@ -21,6 +21,8 @@ interface Props {
   sessionKey?: string | null;
   t?: number;
   units?: Settings["units"];
+  /** Playback speed, so the telemetry is fetched far enough ahead to keep up. */
+  playbackSpeed?: number;
 }
 
 /** DRS codes in the feed: 8 is within a second with the flap shut; 10 and up is open. */
@@ -52,7 +54,8 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
  * own, at the clock's time.
  */
 export const DriverCards = memo(function DriverCards({ selected, drivers, cars, hasDrs, hasOvertake = false,
-                                                        onUnpick, sessionKey = null, t = 0, units = "metric" }: Props) {
+                                                        onUnpick, sessionKey = null, t = 0, units = "metric",
+                                                        playbackSpeed = 1 }: Props) {
   if (!selected.length) {
     return <p className="cards-empty">Click a driver in the timing tower to follow them here, up to two.</p>;
   }
@@ -67,14 +70,15 @@ export const DriverCards = memo(function DriverCards({ selected, drivers, cars, 
                       ahead={index !== undefined && index > 0 ? drivers[index - 1] : undefined}
                       behind={index !== undefined ? drivers[index + 1] : undefined}
                       car={cars[String(number)] ?? {}} hasDrs={hasDrs} hasOvertake={hasOvertake}
-                      onUnpick={onUnpick} sessionKey={sessionKey} t={t} units={units} />
+                      onUnpick={onUnpick} sessionKey={sessionKey} t={t} units={units} playbackSpeed={playbackSpeed} />
         );
       })}
     </div>
   );
 });
 
-function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, onUnpick, sessionKey, t, units }: {
+function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, onUnpick, sessionKey, t, units,
+                      playbackSpeed }: {
   number: number;
   driver: DriverTiming | undefined;
   ahead: DriverTiming | undefined;
@@ -86,9 +90,13 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   sessionKey: string | null;
   t: number;
   units: Settings["units"];
+  playbackSpeed: number;
 }) {
-  const { trace } = useRecent(sessionKey, number, t);
-  const speed = speedIn(car.speed, units);
+  const { trace, now } = useTelemetry(sessionKey, number, t, playbackSpeed);
+  // Speed and gear from the buffered telemetry, read at this very frame; the
+  // state's own figures, a few times a second, until it arrives.
+  const speed = speedIn(now?.speed ?? car.speed, units);
+  const gear = now?.gear ?? car.gear;
   const code = driver?.abbreviation ?? String(number);
   const aid = !hasDrs && hasOvertake ? overtakeLabel(driver?.overtake) : drsLabel(car.drs, hasDrs);
   const colour = `#${driver?.team_color ?? "555555"}`;
@@ -120,7 +128,7 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
         </div>
         <div className="card-gear">
           <span>Gear</span>
-          <b className="display">{car.gear != null ? Math.round(car.gear) : "—"}</b>
+          <b className="display">{gear != null ? Math.round(gear) : "—"}</b>
         </div>
         <div className="card-gaps">
           <span className={`aid is-${aid.state}`}

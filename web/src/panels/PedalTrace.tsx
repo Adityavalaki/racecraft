@@ -48,7 +48,8 @@ export const PedalTrace = memo(function PedalTrace({ trace, code }: { trace: Rec
     return <div className="pedal-trace is-empty">{trace ? "No car data here." : "Loading telemetry…"}</div>;
   }
   const n = trace.t.length;
-  const x = (i: number) => (i / (n - 1)) * 600;
+  // By time, not by sample: the window slides every frame, so the trace scrolls rather than steps.
+  const x = (i: number) => ((trace.t[i]! + trace.seconds) / trace.seconds) * 600;
   const speedY = (v: number) => 46 - ((Math.min(Math.max(v, SPEED_FLOOR), SPEED_CEILING) - SPEED_FLOOR) / (SPEED_CEILING - SPEED_FLOOR)) * 42;
   const throttleY = (v: number) => 82 - (Math.min(Math.max(v, 0), 100) / 100) * 30;
   const speed = linePath(trace.speed, x, speedY);

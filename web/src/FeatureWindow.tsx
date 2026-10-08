@@ -19,7 +19,9 @@ export function FeatureWindow({ feature, initialSession }: { feature: Screen & {
   const follow = useFollowedClock();
   const { settings } = useSettings();
   const session = follow.state?.session ?? initialSession;
-  const selected = follow.state?.selected ?? [];
+  // The clock arrives every frame with a fresh list of followed drivers; the same list keeps the same array.
+  const selectedKey = (follow.state?.selected ?? []).join(",");
+  const selected = useMemo(() => (selectedKey ? selectedKey.split(",").map(Number) : []), [selectedKey]);
 
   const { info, laps, crossings, error, waiting, insight, insightError } =
     useSession(session, NEEDS_INSIGHT.has(feature.id));
@@ -54,28 +56,33 @@ export function FeatureWindow({ feature, initialSession }: { feature: Screen & {
     ? (follow.connected ? "Connecting to the replay…" : "Not following: open it from the main window")
     : follow.connected ? "Following the replay" : "Main window closed";
 
-  const sessionName = info ? (
+  const sessionName = useMemo(() => (info ? (
     <span className="session-name">
       <span className="num">R{String(info.session.round ?? "").padStart(2, "0")}</span>
       <b>{info.session.event_name}</b>
       <span>{info.session.session_name}</span>
     </span>
-  ) : null;
-  const followChip = (
-    <span className={`follow-chip${follow.connected && follow.state ? " is-on" : ""}`} role="status">
+  ) : null), [info]);
+  const followOn = Boolean(follow.connected && follow.state);
+  const followChip = useMemo(() => (
+    <span className={`follow-chip${followOn ? " is-on" : ""}`} role="status">
       <span className="follow-dot" aria-hidden="true" />{status}
     </span>
-  );
+  ), [followOn, status]);
+  // As in the main window: the screen moves with the timing, not with every frame.
+  const coarseT = state?.t ?? info?.t_start ?? 0;
+  const ctx = useMemo(() => (info ? {
+    session, t: coarseT, info, state, laps, crossings, selected, onSelect: follow.select, onSelectLap: seekToLap,
+    insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes,
+    picker: sessionName, extra: followChip,
+  } : null), [session, coarseT, info, state, laps, crossings, selected, follow.select, seekToLap, insight, insightError,
+              actualStops, sessionBest, stewards, trackLog, driverCodes, sessionName, followChip]);
 
   return (
     <div className={`feature-app density-${settings.density}`}>
       <div className="feature-brand"><BrandMark size={22} /><span className="display">RACECRAFT</span></div>
       {info ? (
-        <ScreenView id={feature.id} ctx={{
-          session, t, info, state, laps, crossings, selected, onSelect: follow.select, onSelectLap: seekToLap,
-          insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes,
-          picker: sessionName, extra: followChip,
-        }} />
+        <ScreenView id={feature.id} ctx={ctx!} />
       ) : (
         <div className="feature-placeholder">
           {error ? <span className="placeholder-error">{error}</span>

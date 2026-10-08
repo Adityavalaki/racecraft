@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import type { Insight, LapSeries, RaceControlEvent, SessionInfo, SessionState } from "../api";
 import { screenById, type ScreenId } from "../features";
 import { PredictionBoard } from "../panels/PredictionBoard";
@@ -44,7 +44,7 @@ export const NEEDS_INSIGHT = new Set<ScreenId>(["tyres", "strategy"]);
  * One screen, header and all, the same in the main window and in a window of
  * its own. The replay is not here: it is the main window's own.
  */
-export function ScreenView({ id, ctx }: { id: Exclude<ScreenId, "replay" | "settings">; ctx: ScreenContext }) {
+export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<ScreenId, "replay" | "settings">; ctx: ScreenContext }) {
   const screen = screenById(id)!;
   const header = (children?: ReactNode) => (
     <ScreenHeader title={screen.title} hint={screen.hint} picker={ctx.picker} onPopOut={ctx.onPopOut}>
@@ -77,4 +77,4 @@ export function ScreenView({ id, ctx }: { id: Exclude<ScreenId, "replay" | "sett
     case "stewards":
       return <StewardsScreen ctx={ctx} header={header} />;
   }
-}
+});

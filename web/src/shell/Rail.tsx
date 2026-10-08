@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { RAIL_GROUPS, SCREENS, type ScreenId } from "../features";
 import { SyncButton } from "../panels/SyncButton";
 
@@ -47,7 +47,7 @@ export function BrandMark({ size = 30 }: { size?: number }) {
  * settings at its foot. The screen on show is marked for assistive technology
  * as well as by eye.
  */
-export function Rail({ screen, onScreen, onSynced }: Props) {
+export const Rail = memo(function Rail({ screen, onScreen, onSynced }: Props) {
   const item = (id: ScreenId, title: string) => (
     <button key={id} type="button" className={`rail-item${screen === id ? " is-current" : ""}`}
             aria-current={screen === id ? "page" : undefined} onClick={() => onScreen(id)}>
@@ -75,4 +75,4 @@ export function Rail({ screen, onScreen, onSynced }: Props) {
       </div>
     </aside>
   );
-}
+});

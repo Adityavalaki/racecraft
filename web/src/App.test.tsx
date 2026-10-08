@@ -205,7 +205,7 @@ describe("App", () => {
 
     const rows = screen.getAllByRole("button", { pressed: false });
     const perRow = rows.find((row) => row.textContent?.includes("PER"))!;
-    perRow.click();
+    fireEvent.click(perRow);
     await waitFor(() => expect(perRow.getAttribute("aria-pressed")).toBe("true"));
   });
 

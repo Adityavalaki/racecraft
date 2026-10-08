@@ -723,7 +723,7 @@ export const api = {
     get<LapTrace>(`/api/sessions/${key}/lap?driver=${driver}`
       + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
   recent: (key: string, driver: number, t: number, seconds = 30, signal?: AbortSignal) =>
-    get<RecentTrace>(`/api/sessions/${key}/recent?driver=${driver}&t=${t.toFixed(2)}&seconds=${seconds}`, signal),
+    get<RecentTrace>(`/api/sessions/${key}/recent?driver=${driver}&t=${t.toFixed(2)}&seconds=${Math.round(seconds)}`, signal),
   compare: (key: string, driver: number, ref: number, opts: { lap?: number; refLap?: number; t?: number },
             signal?: AbortSignal) =>
     get<LapComparison>(`/api/sessions/${key}/compare?driver=${driver}&ref=${ref}`
