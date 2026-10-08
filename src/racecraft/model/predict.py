@@ -37,7 +37,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
 from racecraft.model import race as race_model
 from racecraft.model import race_inputs, strategy, weekend
@@ -270,6 +269,13 @@ def actual_finish(con, race_key: str) -> pd.Series:
     back = df["position"].max() if df["position"].notna().any() else 0
     df["position"] = df["position"].fillna(back + 1).rank(method="first")
     return pd.Series(df["position"].astype(int).values, index=df["driver_number"].astype(int).values)
+
+
+def spearmanr(a, b):
+    """Rank correlation; scipy's statistics load on first use, not with the app."""
+    from scipy.stats import spearmanr as rank_correlation
+
+    return rank_correlation(a, b)
 
 
 def score(prediction: dict | Prediction, finish: pd.Series) -> dict:

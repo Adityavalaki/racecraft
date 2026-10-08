@@ -178,3 +178,13 @@ def test_partition_filter(key, clause):
     from racecraft.store.db import partition
 
     assert partition(key) == clause
+
+
+def test_the_database_keeps_no_copy_of_the_files_it_reads(tmp_path):
+    """DuckDB's external file cache held 311 MB for the small tables alone; the lake is local, so it stays off."""
+    from racecraft.store.db import connect
+
+    cursor = connect(tmp_path)
+    assert cursor.sql("select current_setting('enable_external_file_cache')").fetchone()[0] is False
+    limit = cursor.sql("select current_setting('memory_limit')").fetchone()[0]
+    assert limit.endswith("GiB") or limit.endswith("MiB")          # a ceiling, not 80% of the machine

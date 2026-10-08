@@ -35,7 +35,6 @@ from pathlib import Path
 import pandas as pd
 
 from racecraft import config
-from racecraft.ingest import fastf1_source
 
 log = logging.getLogger(__name__)
 
@@ -195,6 +194,9 @@ def tables_from_recording(path: Path, session: LiveSession,
         with fastf1.Cache.disabled():
             ses.load(laps=True, telemetry=telemetry, weather=True, messages=True,
                      livedata=livedata)
+        # Imported here: it brings FastF1, which only live timing needs, not the app's start.
+        from racecraft.ingest import fastf1_source
+
         return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
                                      t0=live_t0(livedata, path))
     except DataNotLoadedError as error:

@@ -207,17 +207,25 @@ class SessionData:
         # The partition columns in the filter let DuckDB open only this session's
         # file. Without them it opens all 420 to check each one, and repeated
         # many-file scans crash DuckDB outright; see `store/db.py`.
-        df = con.sql(f"""select driver_number, t, {', '.join(columns)}
-                         from {table} where session_key = '{self.session_key}'{partition(self.session_key)}
-                         order by driver_number, t""").df()
+        #
+        # Read straight into arrays, not through a DataFrame: a race is some
+        # 800,000 samples, and the frame and its per-driver copies cost several
+        # times the arrays kept. Each column is then held at the size it needs
+        # (`_compact`), and each driver's channel is a view of it.
+        arrays = con.sql(f"""select driver_number, t, {', '.join(columns)}
+                             from {table} where session_key = '{self.session_key}'{partition(self.session_key)}
+                             order by driver_number, t""").fetchnumpy()
+        numbers = np.ma.filled(arrays["driver_number"], -1)
+        if len(numbers) == 0:
+            return {}
+        times = np.ma.filled(arrays["t"], np.nan).astype(np.float64, copy=False)
+        values = {c: _compact(c, arrays[c]) for c in columns}
+        del arrays
+        edges = np.concatenate([[0], np.flatnonzero(np.diff(numbers)) + 1, [len(numbers)]])
         out: dict[int, Channel] = {}
-        if df.empty:
-            return out
-        for number, group in df.groupby("driver_number", sort=True):
-            out[int(number)] = Channel(
-                t=group["t"].to_numpy(dtype=float),
-                values={c: group[c].to_numpy(dtype=float) for c in columns},
-            )
+        for first, last in zip(edges[:-1], edges[1:]):
+            out[int(numbers[first])] = Channel(t=times[first:last],
+                                               values={c: v[first:last] for c, v in values.items()})
         return out
 
     def _build_outline(self) -> list[list[float]]:
@@ -686,6 +694,27 @@ def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -
 
 def _records(df: pd.DataFrame) -> list[dict]:
     return [{k: (None if pd.isna(v) else v) for k, v in row.items()} for row in df.to_dict("records")]
+
+
+# Telemetry kept at the size it needs: speed, throttle and position to a
+# hundredth or better in 32 bits; gear, brake and DRS are small whole numbers,
+# one byte each. Time stays 64-bit: session seconds need the precision.
+_FLOAT32 = {"speed", "throttle", "rpm", "x", "y", "z"}
+_SMALL_INT = {"gear", "brake", "drs"}
+
+
+def _compact(name: str, column) -> np.ndarray:
+    """One telemetry column at the smallest dtype that holds it exactly enough."""
+    masked = np.ma.isMaskedArray(column) and bool(np.ma.getmaskarray(column).any())
+    if name in _SMALL_INT and not masked:
+        data = np.asarray(column)
+        if data.dtype == bool:
+            return data.astype(np.uint8)
+        if data.size and np.isfinite(data).all() and data.min() >= 0 and data.max() <= 255 and (data == np.round(data)).all():
+            return data.astype(np.uint8)
+    if name in _FLOAT32 or name in _SMALL_INT:
+        return np.ma.filled(np.ma.asarray(column, dtype=np.float32), np.nan)
+    return np.ma.filled(np.ma.asarray(column, dtype=np.float64), np.nan)
 
 
 def _round(value, digits: int):

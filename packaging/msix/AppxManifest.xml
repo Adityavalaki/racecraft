@@ -15,7 +15,7 @@
 
   <Identity Name="Racecraft"
             Publisher="CN=Racecraft Dev"
-            Version="0.2.1.0"
+            Version="0.2.2.0"
             ProcessorArchitecture="x64" />
 
   <Properties>

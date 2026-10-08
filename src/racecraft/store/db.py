@@ -75,11 +75,21 @@ RECHECK_S = 10.0
 Signature = tuple[int, float]
 
 
+MEMORY_LIMIT = "1GB"
+THREADS = 4
+
+
 class _Lake:
     """One lake's database, and what it was last loaded from."""
 
     def __init__(self) -> None:
-        self.database = duckdb.connect()
+        # DuckDB keeps a copy of every Parquet file it reads (the external file
+        # cache): 311 MB for the small tables alone, and a race's telemetry
+        # again each time one is opened. The lake is on local disk, read once
+        # per table and once per session, so the copy only costs memory. Its
+        # default ceiling, 80% of the machine, is capped too.
+        self.database = duckdb.connect(config={"memory_limit": MEMORY_LIMIT, "threads": THREADS,
+                                               "enable_external_file_cache": False})
         self.loaded: dict[str, Signature] = {}
         self.generation = -1                  # never synced
         self.checked_at = float("-inf")

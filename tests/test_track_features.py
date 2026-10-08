@@ -165,3 +165,16 @@ def test_a_car_within_a_second_is_eligible_only_while_it_is_on():
     assert overtake_status({"status": "racing", "interval_s": 1.4}, True) == "not_eligible"
     assert overtake_status({"status": "racing", "interval_s": None}, True) == "not_eligible"   # the leader, or a lap down
     assert overtake_status({"status": "out", "interval_s": 0.3}, True) == "not_eligible"
+
+
+def test_telemetry_is_held_at_the_size_it_needs():
+    """Gear, brake and DRS are small whole numbers, speed and position need 32 bits: a race takes half the memory."""
+    from racecraft.api.session import _compact
+
+    gear = S._compact("gear", np.array([1.0, 7.0, 8.0]))
+    assert gear.dtype == np.uint8 and gear.tolist() == [1, 7, 8]
+    assert _compact("brake", np.array([True, False])).dtype == np.uint8
+    assert _compact("speed", np.array([287.4, 312.0])).dtype == np.float32
+    # A gap in a small-number channel is kept as a gap, not turned into a gear.
+    holed = _compact("gear", np.ma.masked_array([3.0, 4.0], mask=[False, True]))
+    assert holed.dtype == np.float32 and np.isnan(holed[1])
