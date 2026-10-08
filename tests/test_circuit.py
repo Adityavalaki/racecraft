@@ -112,9 +112,13 @@ def test_safety_cars_that_cluster_early_come_back_as_weights():
 
 
 # Events that genuinely moved to another circuit, checked by hand: the Spanish
-# Grand Prix left Barcelona for Madrid in 2026. Anything else that shows up here
-# is FastF1 renaming a location, which splits that circuit's history.
-MOVED_EVENTS = {"Spanish Grand Prix"}
+# Grand Prix left Barcelona for Madrid in 2026, and the 2026 Bahrain Grand Prix
+# (round 16, October) was held in Kuala Lumpur, not at Sakhir. Checked from the
+# data: a lap of about 5.5 km against Sakhir's 5.4, a footprint of 1,155 x 937 m
+# against 807 x 1,183, 55 laps rather than 57, and no FastF1 circuit map. Anything
+# else that shows up here is FastF1 renaming a location, which splits that
+# circuit's history.
+MOVED_EVENTS = {"Spanish Grand Prix", "Bahrain Grand Prix"}
 
 
 @pytest.mark.realdata
