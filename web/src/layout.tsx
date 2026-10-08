@@ -175,7 +175,8 @@ export function Splitter({ orientation, label, value, onMove, onStep, onReset }:
 interface WorkspaceProps {
   layout: Layout;
   onChange: (next: Layout) => void;
-  left: ReactNode;
+  /** The left column, when the screen has one. */
+  left?: ReactNode;
   map: ReactNode;
   /** What sits under the map, in the middle column. */
   below?: ReactNode;
@@ -219,22 +220,26 @@ export function Workspace({ layout, onChange, left, map, below, right }: Workspa
 
   return (
     <main className="workspace" ref={root} style={style}>
-      <div className="col col-left" ref={leftCol}>{left}</div>
-      <Splitter
-        orientation="vertical"
-        label="Resize the left column"
-        value={layout.left}
-        onMove={(x) => root.current && setSide("left", rightCol, x - contentBox(root.current).left - SPLIT_PX / 2)}
-        onStep={(points) => setSide("left", rightCol, width(leftCol) + (points / 100) * span())}
-        onReset={() => onChange({ ...layout, left: null })}
-      />
+      {left !== undefined && (
+        <>
+          <div className="col col-left" ref={leftCol}>{left}</div>
+          <Splitter
+            orientation="vertical"
+            label="Resize the left column"
+            value={layout.left}
+            onMove={(x) => root.current && setSide("left", rightCol, x - contentBox(root.current).left - SPLIT_PX / 2)}
+            onStep={(points) => setSide("left", rightCol, width(leftCol) + (points / 100) * span())}
+            onReset={() => onChange({ ...layout, left: null })}
+          />
+        </>
+      )}
       <div className="col col-map" ref={middle}>
         <div className="map-area">{map}</div>
         {below && (
           <>
             <Splitter
               orientation="horizontal"
-              label="Resize the stewards and track log"
+              label="Resize the driver cards"
               value={layout.lower}
               onMove={(y) => middle.current && setLower(contentBox(middle.current).top + middleHeight() - y - SPLIT_PX / 2)}
               onStep={(points) => setLower(lowerHeight() - (points / 100) * middleHeight())}
@@ -246,7 +251,7 @@ export function Workspace({ layout, onChange, left, map, below, right }: Workspa
       </div>
       <Splitter
         orientation="vertical"
-        label="Resize the leaderboard"
+        label="Resize the timing tower"
         value={layout.right}
         onMove={(x) => root.current && setSide("right", leftCol, contentBox(root.current).right - x - SPLIT_PX / 2)}
         onStep={(points) => setSide("right", leftCol, width(rightCol) - (points / 100) * span())}

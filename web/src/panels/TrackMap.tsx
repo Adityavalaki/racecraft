@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo } from "react";
-import type { Driver, SessionInfo } from "../api";
+import type { Driver, LapTrace, SessionInfo } from "../api";
 import { useCanvasSize } from "../useCanvasSize";
 
 interface Props {
@@ -11,6 +11,13 @@ interface Props {
   showNames?: boolean;
   /** Draw the DRS zones (D). There are none to draw for 2026. */
   showDrs?: boolean;
+  /** 2026 on: cars eligible for overtake mode, ringed when `showDrs` is on (D). */
+  overtakeEligible?: number[];
+  /**
+   * One car's last lap, to colour the circuit by: green where the throttle was
+   * flat out, red where the brake was on. The pedal map.
+   */
+  pedalLap?: LapTrace | null;
   /** Where to draw the safety car while it is out; simulated by the server. */
   safetyCar?: { x: number; y: number } | null;
 }
@@ -27,13 +34,22 @@ interface Props {
  * The track is projected once per size change and kept as a Path2D; only the
  * cars are redrawn as the clock advances.
  *
- * DRS zones are drawn over the track in green where the flap opened during
- * the session (2023-2025: the 2026 cars have no DRS). The safety car is an
+ * DRS zones are drawn over the track in the overtake colour where the flap
+ * opened during the session (2023-2025: the 2026 cars have no DRS). From 2026
+ * the same toggle rings the cars eligible for overtake mode instead.
+ *
+ * Given a lap, it is the pedal map: the circuit coloured by where that car had
+ * the throttle flat and where it was on the brakes. The safety car is an
  * amber dot labelled SC, placed about 500 m ahead of the leader: F1 publishes
  * no position for it, so it is simulated, and the map says so.
  */
+const NONE: number[] = [];
+/** Throttle at or above this is flat out, for the pedal map. */
+export const FLAT_OUT = 97;
+
 export const TrackMap = memo(function TrackMap({
-  info, cars, drivers, selected, showNames = false, showDrs = true, safetyCar = null,
+  info, cars, drivers, selected, showNames = false, showDrs = true, safetyCar = null, overtakeEligible = NONE,
+  pedalLap = null,
 }: Props) {
   const { ref, size } = useCanvasSize<HTMLCanvasElement>();
   const byNumber = useMemo(() => new Map(drivers.map((d) => [d.driver_number, d])), [drivers]);
@@ -78,6 +94,32 @@ export const TrackMap = memo(function TrackMap({
     return { project, path, drs, hasDrs: (info.drs_zones ?? []).length > 0 };
   }, [info, size.width, size.height]);
 
+  // The pedal map: runs of flat-out throttle and of braking along the lap, as paths.
+  const pedals = useMemo(() => {
+    if (!projection || !pedalLap) return null;
+    const runs = (on: (i: number) => boolean) => {
+      const path = new Path2D();
+      let open = false;
+      for (let i = 0; i < pedalLap.distance.length; i += 1) {
+        const x = pedalLap.x[i];
+        const y = pedalLap.y[i];
+        if (!on(i) || x == null || y == null) {
+          open = false;
+          continue;
+        }
+        const [px, py] = projection.project(x, y);
+        if (open) path.lineTo(px, py);
+        else path.moveTo(px, py);
+        open = true;
+      }
+      return path;
+    };
+    return {
+      throttle: runs((i) => (pedalLap.throttle[i] ?? 0) >= FLAT_OUT),
+      brake: runs((i) => Boolean(pedalLap.brake[i])),
+    };
+  }, [projection, pedalLap]);
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || size.width === 0) return;
@@ -91,7 +133,7 @@ export const TrackMap = memo(function TrackMap({
     context.clearRect(0, 0, size.width, size.height);
 
     if (!projection) {
-      context.fillStyle = "#6b7887";
+      context.fillStyle = "#8B8B96";
       context.font = "13px 'JetBrains Mono', monospace";
       context.fillText("no position data for this session", 16, size.height / 2);
       return;
@@ -99,15 +141,23 @@ export const TrackMap = memo(function TrackMap({
 
     context.lineJoin = "round";
     context.lineCap = "round";
-    context.strokeStyle = "#2b333d";
-    context.lineWidth = 11;
+    context.strokeStyle = "#1E1E24";
+    context.lineWidth = 18;
     context.stroke(projection.path);
-    context.strokeStyle = "#394450";
+    context.strokeStyle = "#62626E";
     context.lineWidth = 2;
     context.stroke(projection.path);
+    if (pedals) {
+      context.strokeStyle = "#1FD17B";
+      context.lineWidth = 5;
+      context.stroke(pedals.throttle);
+      context.strokeStyle = "#FF3B30";
+      context.lineWidth = 8;
+      context.stroke(pedals.brake);
+    }
     if (showDrs && projection.hasDrs) {
-      context.strokeStyle = "rgba(69, 199, 127, 0.85)";
-      context.lineWidth = 4;
+      context.strokeStyle = "rgba(0, 194, 255, 0.85)";
+      context.lineWidth = 3;
       context.stroke(projection.drs);
     }
 
@@ -115,19 +165,38 @@ export const TrackMap = memo(function TrackMap({
       const [px, py] = projection.project(point.x, point.y);
       const driver = byNumber.get(Number(number));
       const isSelected = selected.includes(Number(number));
+      if (showDrs && overtakeEligible.includes(Number(number))) {
+        // A cyan halo: within a second of the car ahead, overtake mode on.
+        context.beginPath();
+        context.arc(px, py, isSelected ? 12 : 9.5, 0, Math.PI * 2);
+        context.lineWidth = 2.5;
+        context.strokeStyle = "rgba(0, 194, 255, 0.95)";
+        context.stroke();
+      }
       context.beginPath();
       context.arc(px, py, isSelected ? 8 : 5.5, 0, Math.PI * 2);
       context.fillStyle = `#${driver?.team_color ?? "999999"}`;
       context.fill();
+      context.lineWidth = isSelected ? 2 : 1.5;
+      context.strokeStyle = isSelected ? "#F4F4F6" : "#0A0A0C";
+      context.stroke();
+      const code = driver?.abbreviation ?? number;
       if (isSelected) {
-        context.lineWidth = 2;
-        context.strokeStyle = "#ffffff";
-        context.stroke();
-      }
-      if (isSelected || showNames) {
-        context.fillStyle = isSelected ? "#ffffff" : "#a8b4c1";
-        context.font = isSelected ? "600 12px 'Saira Condensed', sans-serif" : "500 10px 'Saira Condensed', sans-serif";
-        context.fillText(driver?.abbreviation ?? number, px + (isSelected ? 11 : 8), py + 4);
+        // A followed car is named on a white tag, in the display face.
+        context.font = "italic 800 15px 'Barlow Condensed', 'Arial Narrow', sans-serif";
+        const width = context.measureText(code).width + 14;
+        const left = px + 12;
+        context.fillStyle = "#F4F4F6";
+        context.beginPath();
+        context.roundRect?.(left, py - 10, width, 20, 5);
+        if (!context.roundRect) context.rect(left, py - 10, width, 20);
+        context.fill();
+        context.fillStyle = "#0A0A0C";
+        context.fillText(code, left + 7, py + 5);
+      } else if (showNames) {
+        context.fillStyle = "#C4C4CC";
+        context.font = "italic 700 12px 'Barlow Condensed', 'Arial Narrow', sans-serif";
+        context.fillText(code, px + 8, py + 4);
       }
     }
 
@@ -135,19 +204,20 @@ export const TrackMap = memo(function TrackMap({
       const [px, py] = projection.project(safetyCar.x, safetyCar.y);
       context.beginPath();
       context.arc(px, py, 8, 0, Math.PI * 2);
-      context.fillStyle = "#f2c53d";
+      context.fillStyle = "#FFA23A";
       context.fill();
       context.lineWidth = 2;
-      context.strokeStyle = "#ff7a33";
+      context.strokeStyle = "#0A0A0C";
       context.stroke();
       context.fillStyle = "#10151a";
       context.font = "700 9px 'JetBrains Mono', monospace";
       context.fillText("SC", px - 6, py + 3);
-      context.fillStyle = "#6b7887";
+      context.fillStyle = "#8B8B96";
       context.font = "10px 'JetBrains Mono', monospace";
-      context.fillText("SC position simulated: F1 publishes none", 12, size.height - 10);
+      context.fillText("SC position simulated: F1 publishes none", 12, 18);
     }
-  }, [ref, projection, cars, selected, byNumber, size.width, size.height, showNames, showDrs, safetyCar]);
+  }, [ref, projection, cars, selected, byNumber, size.width, size.height, showNames, showDrs, safetyCar,
+      overtakeEligible, pedals]);
 
   return <canvas className="track-map" ref={ref} />;
 });

@@ -46,13 +46,13 @@ ICON = (resources.bundle_dir() / "racecraft" / "app" / "racecraft.ico" if resour
 READY_TIMEOUT_S = 60
 
 STARTING = """<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;height:100%;background:#0c1015;color:#a8b4c1;
+html,body{margin:0;height:100%;background:#0A0A0C;color:#a8b4c1;
 font:14px/1.5 "Segoe UI",system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
 b{display:block;color:#ff7a33;font:700 18px "Segoe UI";letter-spacing:.3em;margin-bottom:.4em}
 </style></head><body><div><b>RACECRAFT</b>Starting… loading the lake and the models.</div></body></html>"""
 
 FAILED = """<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{{margin:0;height:100%;background:#0c1015;color:#e4e9ef;
+html,body{{margin:0;height:100%;background:#0A0A0C;color:#e4e9ef;
 font:14px/1.6 "Segoe UI",system-ui,sans-serif;display:flex;align-items:center;justify-content:center}}
 div{{max-width:560px;padding:24px}} b{{color:#f0656a}} code{{color:#a8b4c1}}
 </style></head><body><div><b>Racecraft could not start.</b><br>{reason}<br><br>
@@ -205,7 +205,7 @@ def _open_window(webview, sock, parts: dict, log_file) -> None:
     set_app_identity()
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     window = webview.create_window(TITLE, html=STARTING, width=1440, height=900,
-                                   min_size=(1024, 700), background_color="#0c1015")
+                                   min_size=(1024, 700), background_color="#0A0A0C")
     window.events.shown += lambda: set_window_icon(window)
 
     def boot() -> None:

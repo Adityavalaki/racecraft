@@ -1,4 +1,4 @@
-import { TRACK_STATUS } from "../api";
+import { formatClock, TRACK_STATUS } from "../api";
 import type { Clock } from "../clock";
 
 interface Props {
@@ -14,6 +14,19 @@ interface Props {
 }
 
 export const SPEEDS = [1, 2, 5, 10, 30];
+
+/** The status chip's colour: clear is green, flags and the safety car their own. */
+export function flagClass(status: string | null | undefined): string {
+  switch (status) {
+    case "1": return "is-clear";
+    case "2": return "is-yellow";
+    case "4": return "is-sc";
+    case "5": return "is-red";
+    case "6":
+    case "7": return "is-vsc";
+    default: return "is-none";
+  }
+}
 
 /** The statuses worth seeing on the timeline, and how they are drawn. */
 export const TIMELINE_STATUS: Record<string, { label: string; className: string }> = {
@@ -59,24 +72,33 @@ export function ClockBar({ clock, start, end, trackStatus, loading, statuses = [
   const flag = trackStatus ? TRACK_STATUS[trackStatus.status] : undefined;
   return (
     <div className="clockbar">
-      <div className="flag" style={{ background: flag?.color ?? "#39434f" }}>
+      <div className={`flag ${flagClass(trackStatus?.status)}`}>
+        <span className="flag-dot" aria-hidden="true" />
         {flag?.label ?? trackStatus?.message ?? "—"}
       </div>
 
-      <button className="transport" onClick={clock.toggle} aria-label={clock.playing ? "Pause" : "Play"}>
-        {clock.playing ? "❚❚" : "▶"}
-      </button>
-      <button className="transport" onClick={() => clock.nudge(-30)} aria-label="Back 30 seconds">
-        −30s
-      </button>
-      <button className="transport" onClick={() => clock.nudge(30)} aria-label="Forward 30 seconds">
-        +30s
-      </button>
+      <div className="transport-group">
+        <button className="transport" onClick={() => clock.nudge(-30)} aria-label="Back 30 seconds">
+          −30s
+        </button>
+        <button className="transport play" onClick={clock.toggle} aria-label={clock.playing ? "Pause" : "Play"}>
+          {clock.playing ? (
+            <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 1.5h3.5v13H2zM8.5 1.5H12v13H8.5z" fill="currentColor" /></svg>
+          ) : (
+            <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 1.5v13l11-6.5z" fill="currentColor" /></svg>
+          )}
+        </button>
+        <button className="transport" onClick={() => clock.nudge(30)} aria-label="Forward 30 seconds">
+          +30s
+        </button>
+      </div>
 
-      <div className="speeds">
+      <div className="speeds" role="radiogroup" aria-label="Playback speed">
         {SPEEDS.map((speed) => (
           <button
             key={speed}
+            role="radio"
+            aria-checked={clock.speed === speed}
             className={`speed${clock.speed === speed ? " is-active" : ""}`}
             onClick={() => clock.setSpeed(speed)}
           >
@@ -109,7 +131,7 @@ export function ClockBar({ clock, start, end, trackStatus, loading, statuses = [
           {laps.map((mark) => (
             <span key={mark.lap} className={`lap-mark${mark.lap % 10 === 0 ? " is-major" : ""}`}
                   style={{ left: `${mark.at * 100}%` }}>
-              {mark.lap % 10 === 0 ? mark.lap : ""}
+              {mark.lap % 10 === 0 ? `L${mark.lap}` : ""}
             </span>
           ))}
         </div>
@@ -117,6 +139,7 @@ export function ClockBar({ clock, start, end, trackStatus, loading, statuses = [
 
       {/* Lap, clock and weather are in the strip under the map; this only says whether playback is buffered. */}
       <div className="readout">
+        <span className="time num">{formatClock(clock.t - start)}</span>
         <span className={`dot${loading ? " is-loading" : ""}`} title={loading ? "buffering" : "buffered"} />
       </div>
     </div>

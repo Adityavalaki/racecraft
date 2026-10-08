@@ -38,6 +38,8 @@ export interface SessionInfo {
    * wraps past the start line). Empty for 2026 (no DRS) and for live.
    */
   drs_zones?: [number, number][];
+  /** 2026 on: race control switches overtake mode, the successor to DRS. */
+  has_overtake?: boolean;
 }
 
 /** The three kinds of race control message. */
@@ -123,6 +125,11 @@ export interface DriverTiming {
   sectors: SectorTime[];
   /** null when race control has said nothing about this car yet. */
   penalties: DriverPenalties | null;
+  /**
+   * Overtake mode (2026 on), estimated from the timing interval: null for a
+   * session without it.
+   */
+  overtake?: "eligible" | "not_eligible" | "disabled" | null;
 }
 
 export interface SectorTime {
@@ -168,6 +175,8 @@ export interface SessionState {
    * of the leader, because F1 publishes no position for it.
    */
   safety_car?: { x: number; y: number; simulated: true } | null;
+  /** Whether race control has overtake mode on; null for a session without it. */
+  overtake?: { enabled: boolean } | null;
 }
 
 export interface Frames {
@@ -588,6 +597,75 @@ export interface Prediction {
   result: { finish: Record<string, number>; scores: { model: PredictionScore; grid: PredictionScore } } | null;
 }
 
+/** One lap of one car by distance, every five metres: the pedal map and the traces. */
+export interface LapTrace {
+  driver_number: number;
+  abbreviation: string | null;
+  lap: number;
+  lap_time_s: number | null;
+  compound: string | null;
+  tyre_life: number | null;
+  start_t: number;
+  length_m: number;
+  step_m: number;
+  distance: number[];
+  /** Seconds since the lap started. */
+  t: number[];
+  speed: number[];
+  throttle: number[];
+  /** On or off: the public feed never says how hard. */
+  brake: boolean[];
+  gear: number[];
+  x: (number | null)[];
+  y: (number | null)[];
+  brake_zones: { start_m: number; end_m: number; duration_s: number; entry_speed: number; min_speed: number }[];
+  corners: { number: number; letter: string | null; distance: number }[];
+  summary: { top_speed: number; min_speed: number; full_throttle_share: number; braking_share: number; brake_zones: number };
+}
+
+/** The last half-minute of one car, by time: t runs from -seconds to 0. */
+export interface RecentTrace {
+  driver_number: number;
+  seconds: number;
+  t: number[];
+  speed: (number | null)[];
+  throttle: (number | null)[];
+  brake: (boolean | null)[];
+  gear: (number | null)[];
+}
+
+export interface LapComparison {
+  subject: LapTrace;
+  reference: LapTrace;
+  /** Positive where the subject is behind. */
+  delta: { distance: number[]; delta_s: number[]; final_s: number | null };
+}
+
+/** When each car is best off stopping, and who can jump whom, at a moment in a race. */
+export interface PitWindows {
+  session_key: string;
+  t: number;
+  lap: number;
+  total_laps: number;
+  model: { degradation: Record<string, number>; compound_offset_s: Record<string, number>; pit_loss_s: number;
+           pit_spread_s: number; fitted_on_count: number | null; held_out: boolean | null };
+  cars: {
+    driver_number: number;
+    abbreviation: string | null;
+    team_color: string | null;
+    position: number | null;
+    status: string;
+    compound: string | null;
+    age: number | null;
+    laps_completed: number;
+    stops: number | null;
+    used: string[];
+    window: { laps_until: number; window: [number, number]; most_likely_lap: number; next_compound: string; no_stop: boolean } | null;
+  }[];
+  undercuts: { chaser: number; target: number; gap_s: number; gain_s: number; chance: number; fresh_compound: string }[];
+  notes: string[];
+}
+
 async function failure(response: Response): Promise<HttpError> {
   const detail = await response.json().catch(() => ({ detail: response.statusText }));
   return new HttpError(detail.detail ?? `request failed: ${response.status}`, response.status);
@@ -637,6 +715,20 @@ export const api = {
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
+  /** Slow the first time for a season (the model is fitted), then quick. */
+  pitWindows: (key: string, t: number, signal?: AbortSignal) =>
+    get<PitWindows>(`/api/sessions/${key}/pit-windows?t=${t.toFixed(2)}`, signal),
+  /** One lap by distance: `lap`, or the latest finished by `t`. */
+  lap: (key: string, driver: number, opts: { lap?: number; t?: number }, signal?: AbortSignal) =>
+    get<LapTrace>(`/api/sessions/${key}/lap?driver=${driver}`
+      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
+  recent: (key: string, driver: number, t: number, seconds = 30, signal?: AbortSignal) =>
+    get<RecentTrace>(`/api/sessions/${key}/recent?driver=${driver}&t=${t.toFixed(2)}&seconds=${seconds}`, signal),
+  compare: (key: string, driver: number, ref: number, opts: { lap?: number; refLap?: number; t?: number },
+            signal?: AbortSignal) =>
+    get<LapComparison>(`/api/sessions/${key}/compare?driver=${driver}&ref=${ref}`
+      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.refLap != null ? `&ref_lap=${opts.refLap}` : "")
+      + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
   /** Twenty seconds the first time for a weekend, then saved for good. */
   prediction: (key: string, signal?: AbortSignal) =>
     get<Prediction>(`/api/sessions/${key}/prediction`, signal),
@@ -671,11 +763,11 @@ export function formatClock(seconds: number): string {
 }
 
 export const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: "#e8323c",
-  MEDIUM: "#f2c53d",
-  HARD: "#e9eaec",
-  INTERMEDIATE: "#43b047",
-  WET: "#2f7fd8",
+  SOFT: "#FF3B30",
+  MEDIUM: "#FFD60A",
+  HARD: "#F2F2F2",
+  INTERMEDIATE: "#3DD68C",
+  WET: "#3E8EF7",
 };
 
 /** Track status codes from the feed, as the flag bar shows them. */

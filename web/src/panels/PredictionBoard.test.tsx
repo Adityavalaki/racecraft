@@ -37,6 +37,11 @@ function answer(over: Partial<Prediction> = {}): Prediction {
   };
 }
 
+/** The table row a driver's code sits in: the code also shows in the headline cards. */
+function rowButton(codes: HTMLElement[]): HTMLElement {
+  return codes.map((el) => el.closest("button.prediction-row")).find((el): el is HTMLElement => el !== null)!;
+}
+
 function mock(body: Prediction | { detail: string }, ok = true) {
   const fetchMock = vi.fn(async (_url: string) =>
     ({ ok, statusText: "Unprocessable", json: async () => body }) as Response);
@@ -56,7 +61,7 @@ describe("PredictionBoard", () => {
   it("lists the predicted order with each driver's chances and what it was made from", async () => {
     const fetchMock = mock(answer());
     const { container } = render(<PredictionBoard sessionKey="2025_04_Q" selected={[]} onSelect={vi.fn()} />);
-    await screen.findByText("PIA");
+    await screen.findAllByText("PIA");
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_04_Q/prediction");
 
     const rows = Array.from(container.querySelectorAll("button.prediction-row"));
@@ -68,6 +73,11 @@ describe("PredictionBoard", () => {
     expect(within(rows[2] as HTMLElement).getByText("<1%")).toBeDefined();   // rare, not zero
     expect(within(rows[3] as HTMLElement).getByText("PL")).toBeDefined();    // pit-lane start
 
+    // The headline: the favourite and how often they win, and the podium chances.
+    const favourite = within(screen.getByRole("region", { name: "Favourite" }));
+    expect(favourite.getByText("PIA")).toBeDefined();
+    expect(favourite.getByText(/Wins 72% of 1,000 simulated races/)).toBeDefined();
+    expect(screen.getByRole("region", { name: "Podium chances" }).querySelectorAll(".podium-row")).toHaveLength(4);
     expect(screen.getByText(/made before the race/i)).toBeDefined();
     expect(screen.getByText(/FP1, FP2, FP3, qualifying and 3 earlier races/)).toBeDefined();
     expect(screen.getByText(/official starting grid/)).toBeDefined();
@@ -88,7 +98,7 @@ describe("PredictionBoard", () => {
       },
     }));
     const { container } = render(<PredictionBoard sessionKey="2025_04_R" selected={[]} onSelect={vi.fn()} />);
-    await screen.findByText("PIA");
+    await screen.findAllByText("PIA");
     expect(screen.getByText(/rebuilt after the race/i)).toBeDefined();
     expect(Array.from(container.querySelectorAll(".actual")).map((c) => c.textContent)).toEqual(["P6", "P1", "P2", "P20"]);
     // Coloured only outside the likely range: LEC won from a P3–P8 range, PIA's P1–P2 ended sixth.
@@ -104,9 +114,9 @@ describe("PredictionBoard", () => {
     mock(answer());
     const onSelect = vi.fn();
     render(<PredictionBoard sessionKey="2025_04_R" selected={[16]} onSelect={onSelect} />);
-    fireEvent.click((await screen.findByText("RUS")).closest("button")!);
+    fireEvent.click(rowButton(await screen.findAllByText("RUS")));
     expect(onSelect).toHaveBeenCalledWith(63);
-    expect(screen.getByText("LEC").closest("button")!.getAttribute("aria-pressed")).toBe("true");
+    expect(rowButton(screen.getAllByText("LEC")).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("says why when there is no prediction yet", async () => {

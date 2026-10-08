@@ -6,33 +6,43 @@ interface Props {
   drivers: DriverTiming[];
   selected: number[];
   onSelect: (driverNumber: number) => void;
-  /** Opens the full timing tower, in its own window. */
+  /** Goes to the full timing tower. */
   onOpenTower?: () => void;
+  lap?: number;
 }
 
 /**
- * The running order beside the map: position, driver, gap, tyre and whether
- * race control has anything against the car. It is the timing tower cut to
- * what reads at a glance; the whole tower (laps, sectors, pits) is a click
- * away in its own window, so the map can have the room.
+ * The running order beside the map: position, driver, gap, interval, tyre and
+ * whether race control has anything against the car. It is the timing tower
+ * cut to what reads at a glance; the whole tower (laps, sectors, pits) is its
+ * own screen.
  *
- * Click a driver to pick them (up to three): they are ringed on the map and
- * get a card on the left.
+ * An interval in the overtake colour is a car close enough to the one ahead
+ * for overtake mode (2026 on), estimated from the timing gap.
+ *
+ * Click a driver to follow them (up to two): they are tagged on the map and
+ * get a card under it.
  */
-export const Leaderboard = memo(function Leaderboard({ drivers, selected, onSelect, onOpenTower }: Props) {
+export const Leaderboard = memo(function Leaderboard({ drivers, selected, onSelect, onOpenTower, lap }: Props) {
   return (
     <div className="leaderboard">
+      <div className="panel-bar">
+        <h2>Timing tower</h2>
+        {lap != null && <span className="panel-meta num">Lap {lap}</span>}
+      </div>
       <div className="leaderboard-head">
-        <span>POS</span>
+        <span>Pos</span>
         <span />
-        <span>DRIVER</span>
-        <span>GAP</span>
-        <span>TYRE</span>
-        <span title="what race control has said about this car">PEN</span>
+        <span>Driver</span>
+        <span>Gap</span>
+        <span>Int</span>
+        <span>Tyre</span>
+        <span title="What race control has said about this car">Pen</span>
       </div>
       <div className="leaderboard-rows">
         {drivers.map((driver) => {
           const isSelected = selected.includes(driver.driver_number);
+          const eligible = driver.overtake === "eligible";
           return (
             <button
               type="button"
@@ -41,11 +51,15 @@ export const Leaderboard = memo(function Leaderboard({ drivers, selected, onSele
               onClick={() => onSelect(driver.driver_number)}
               aria-pressed={isSelected}
             >
-              <span className="pos">{driver.position}</span>
+              <span className="pos-chip num">{driver.position}</span>
               <span className="team-bar" style={{ background: `#${driver.team_color ?? "555"}` }} />
-              <span className="code">{driver.abbreviation ?? driver.driver_number}</span>
+              <span className="code display">{driver.abbreviation ?? driver.driver_number}</span>
               <span className="num gap">
                 {driver.status === "out" ? "OUT" : driver.gap_text || (driver.position === 1 ? "LEADER" : "—")}
+              </span>
+              <span className={`num int${eligible ? " is-eligible" : ""}`}
+                    title={eligible ? "Overtake eligible, estimated from the timing gap" : undefined}>
+                {driver.position === 1 ? "" : driver.interval_text}
               </span>
               <span className="tyre">
                 {driver.compound ? (
@@ -61,9 +75,9 @@ export const Leaderboard = memo(function Leaderboard({ drivers, selected, onSele
         })}
       </div>
       {onOpenTower && (
-        <button type="button" className="open-feature" onClick={onOpenTower}>
-          Full timing tower ↗
-        </button>
+        <div className="leaderboard-foot">
+          <button type="button" className="button-secondary" onClick={onOpenTower}>Full timing tower</button>
+        </div>
       )}
     </div>
   );

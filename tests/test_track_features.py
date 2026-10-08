@@ -140,3 +140,28 @@ def test_gear_drs_and_brake_take_the_last_sample_rather_than_an_average():
     assert halfway["drs"] == [8.0], "10 between 8 and 12 would be an invented code"
     assert halfway["brake"] == [1.0]
     assert halfway["speed"] == [210.0], "quantities are still interpolated"
+
+
+# ---- overtake mode, 2026's successor to DRS
+
+def test_overtake_mode_follows_race_controls_switch():
+    import pandas as pd
+
+    from racecraft.api import session as session_model
+
+    rc = pd.DataFrame({"t": [100.0, 50.0, 300.0, 200.0], "message": [
+        "OVERTAKE ENABLED", "RISK OF RAIN 0%", " overtake disabled", "SAFETY CAR DEPLOYED"]})
+    changes = session_model._overtake_changes(rc)
+    assert changes.to_dict("records") == [{"t": 100.0, "enabled": True}, {"t": 300.0, "enabled": False}]
+    assert session_model._overtake_changes(rc.iloc[[1, 3]]) is None        # a DRS-era session never mentions it
+
+
+def test_a_car_within_a_second_is_eligible_only_while_it_is_on():
+    from racecraft.api.session import overtake_status
+
+    close = {"status": "racing", "interval_s": 0.6}
+    assert overtake_status(close, True) == "eligible"
+    assert overtake_status(close, False) == "disabled"
+    assert overtake_status({"status": "racing", "interval_s": 1.4}, True) == "not_eligible"
+    assert overtake_status({"status": "racing", "interval_s": None}, True) == "not_eligible"   # the leader, or a lap down
+    assert overtake_status({"status": "out", "interval_s": 0.3}, True) == "not_eligible"

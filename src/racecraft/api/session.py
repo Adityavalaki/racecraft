@@ -50,6 +50,13 @@ DEFAULT_SMOOTHING_S = 0.5
 # open), so averaging two of them invents a code. These take the last sample.
 STEPPED_CHANNELS = frozenset({"gear", "drs", "brake"})
 
+# 2026 replaced DRS with overtake mode: extra electrical deployment for a car
+# within a second of the one ahead at a detection point. Race control switches
+# it on and off as it did DRS. The feed never says when a driver used it, so
+# eligibility is estimated from the timing interval at the last line crossing.
+OVERTAKE_WINDOW_S = 1.0
+OVERTAKE_ON, OVERTAKE_OFF = "OVERTAKE ENABLED", "OVERTAKE DISABLED"
+
 # DRS flap open, in the feed's codes (8 is eligible-but-closed). Only 2023-2025
 # carry it: the 2026 cars have active aero instead, and the channel is all 0.
 DRS_OPEN = 10
@@ -126,6 +133,12 @@ class SessionData:
 
         self.position = self._load_channels(con, "pos_data", ["x", "y"])
         self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs"])
+        # Corner numbers and where they fall along the lap, for the traces.
+        try:
+            self.markers = con.sql(f"""select kind, number, letter, distance from circuit_markers
+                                       where session_key = '{session_key}'""").df()
+        except duckdb.Error:
+            self.markers = pd.DataFrame(columns=["kind", "number", "letter", "distance"])
         self._assemble()
         log.info("loaded %s: %d laps, %d drivers, %d position samples",
                  session_key, len(self.laps), len(self.drivers),
@@ -165,6 +178,7 @@ class SessionData:
                                 ["t", "air_temp", "track_temp", "rainfall", "wind_speed"])
         self.position = {}
         self.car = {}
+        self.markers = tables.get("circuit_markers", pd.DataFrame(columns=["kind", "number", "letter", "distance"]))
         self._assemble()
         return self
 
@@ -185,6 +199,7 @@ class SessionData:
         self.outline = self._build_outline()
         self.bounds = self._bounds()
         self.drs_zones = self._build_drs_zones()
+        self.overtake_changes = _overtake_changes(self.race_control)
 
     # ------------------------------------------------------------- loading
 
@@ -293,6 +308,7 @@ class SessionData:
             "has_position_data": bool(self.position),
             "track_status": _records(self.track_status),
             "drs_zones": self.drs_zones,
+            "has_overtake": self.overtake_changes is not None,
         }
 
     def state(self, t: float) -> dict:
@@ -314,9 +330,11 @@ class SessionData:
                 **{name: _round(values[0], 1) for name, values in telemetry.items()},
             }
         state = classification.as_dict()
+        overtake = self.overtake_enabled_at(t)
         for row in state["drivers"]:
             against = penalties.get(int(row["driver_number"]))
             row["penalties"] = None if against is None else against.as_dict()
+            row["overtake"] = None if overtake is None else overtake_status(row, overtake)
         track_status = self.track_status_at(t)
         leader = next((d.driver_number for d in classification.drivers if d.status == "racing"), None)
         return {
@@ -324,6 +342,7 @@ class SessionData:
             "cars": cars,
             "track_status": track_status,
             "weather": self.weather_at(t),
+            "overtake": None if overtake is None else {"enabled": overtake},
             "safety_car": self.safety_car_at(cars.get(leader)) if (
                 track_status and track_status["status"] == SAFETY_CAR_STATUS) else None,
         }
@@ -489,6 +508,13 @@ class SessionData:
             },
         }
 
+    def overtake_enabled_at(self, t: float) -> bool | None:
+        """Whether race control had overtake mode on at `t`; None for a session without it."""
+        if self.overtake_changes is None:
+            return None
+        past = self.overtake_changes[self.overtake_changes["t"] <= t]
+        return bool(past["enabled"].iloc[-1]) if not past.empty else False
+
     def track_status_at(self, t: float) -> dict | None:
         if self.track_status.empty:
             return None
@@ -518,6 +544,32 @@ class SessionData:
 
 
 _LAP_COLUMNS = ["driver_number", "driver", "lap_number", "lap_start_t", "lap_end_t"]
+
+
+def _overtake_changes(race_control: pd.DataFrame) -> pd.DataFrame | None:
+    """Every switch of overtake mode, in time order; None when race control never mentions it."""
+    if race_control is None or race_control.empty or "message" not in race_control:
+        return None
+    message = race_control["message"].astype(str).str.strip().str.upper()
+    switches = race_control.loc[message.isin([OVERTAKE_ON, OVERTAKE_OFF]), ["t"]].copy()
+    if switches.empty:
+        return None
+    switches["enabled"] = message[switches.index] == OVERTAKE_ON
+    return switches.sort_values("t", kind="stable").reset_index(drop=True)
+
+
+def overtake_status(row: dict, enabled: bool) -> str:
+    """
+    'disabled' while race control has it off; 'eligible' for a running car
+    within a second of the car ahead at the last line crossing; otherwise
+    'not_eligible'. An estimate: the real detection points are around the lap.
+    """
+    if not enabled:
+        return "disabled"
+    interval = row.get("interval_s")
+    if row.get("status") == "racing" and interval is not None and 0 <= interval < OVERTAKE_WINDOW_S:
+        return "eligible"
+    return "not_eligible"
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:

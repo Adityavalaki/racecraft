@@ -1,40 +1,32 @@
 import { useCallback, useMemo } from "react";
 import { formatClock } from "./api";
-import { type Feature } from "./features";
-import { BestSectors } from "./panels/BestSectors";
-import { PredictionBoard } from "./panels/PredictionBoard";
-import { RaceTrace } from "./panels/RaceTrace";
-import { Stewards, filterLabel } from "./panels/Stewards";
-import { StrategyBoard } from "./panels/StrategyBoard";
-import { TimingTower } from "./panels/TimingTower";
-import { TrackLog } from "./panels/TrackLog";
-import { TyreModel } from "./panels/TyreModel";
-import { TyreSets } from "./panels/TyreSets";
+import type { FeatureId, Screen } from "./features";
+import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
 import { lapStartTime, useMessagesAt, useSession, useStateAt } from "./sessionData";
+import { useSettings } from "./settings";
+import { BrandMark } from "./shell/Rail";
 import { useFollowedClock } from "./sync";
 
-const NEEDS_INSIGHT = new Set(["tyres", "strategy", "sets"]);
-const NEEDS_STATE = new Set(["tower", "trace", "sets"]);
-const NEEDS_MESSAGES = new Set(["stewards", "track"]);
-
 /**
- * One feature in a window of its own, following the replay window's clock.
+ * One screen in a window of its own, following the main window's clock.
  *
- * It reads the same session the replay window shows, at the same moment, and
+ * It reads the same session the main window shows, at the same moment, and
  * moves with it as it plays. Its own controls (play/pause, the scrubber,
- * picking drivers, a lap in the race trace) are requests to the replay
- * window, which owns the clock — so every window always agrees.
+ * following a driver, a lap in the race trace) are requests to the main
+ * window, which owns the clock, so every window always agrees.
  */
-export function FeatureWindow({ feature, initialSession }: { feature: Feature; initialSession: string }) {
+export function FeatureWindow({ feature, initialSession }: { feature: Screen & { id: FeatureId }; initialSession: string }) {
   const follow = useFollowedClock();
+  const { settings } = useSettings();
   const session = follow.state?.session ?? initialSession;
   const selected = follow.state?.selected ?? [];
 
   const { info, laps, crossings, error, waiting, insight, insightError } =
     useSession(session, NEEDS_INSIGHT.has(feature.id));
   const t = follow.state?.t ?? info?.t_start ?? 0;
-  const state = useStateAt(NEEDS_STATE.has(feature.id) ? session : null, info, t);
-  const { stewards, trackLog } = useMessagesAt(session, info, t, NEEDS_MESSAGES.has(feature.id));
+  const state = useStateAt(session, info, t);
+  // Race control is polled only by the screen that shows it.
+  const { stewards, trackLog } = useMessagesAt(session, info, t, feature.id === "stewards");
 
   const driverCodes = useMemo(() => {
     const out: Record<number, string> = {};
@@ -59,61 +51,47 @@ export function FeatureWindow({ feature, initialSession }: { feature: Feature; i
   );
 
   const status = follow.state === null
-    ? (follow.connected ? "connecting to the replay…" : "not following: open it from the replay window")
-    : follow.connected ? "following the replay" : "replay window closed";
+    ? (follow.connected ? "Connecting to the replay…" : "Not following: open it from the main window")
+    : follow.connected ? "Following the replay" : "Main window closed";
+
+  const sessionName = info ? (
+    <span className="session-name">
+      <span className="num">R{String(info.session.round ?? "").padStart(2, "0")}</span>
+      <b>{info.session.event_name}</b>
+      <span>{info.session.session_name}</span>
+    </span>
+  ) : null;
+  const followChip = (
+    <span className={`follow-chip${follow.connected && follow.state ? " is-on" : ""}`} role="status">
+      <span className="follow-dot" aria-hidden="true" />{status}
+    </span>
+  );
 
   return (
-    <div className="feature-app">
-      <header className="feature-head">
-        <div className="brand">RACECRAFT</div>
-        <div className="feature-title">
-          <h1>{feature.title}</h1>
-          <small>{feature.hint}</small>
+    <div className={`feature-app density-${settings.density}`}>
+      <div className="feature-brand"><BrandMark size={22} /><span className="display">RACECRAFT</span></div>
+      {info ? (
+        <ScreenView id={feature.id} ctx={{
+          session, t, info, state, laps, crossings, selected, onSelect: follow.select, onSelectLap: seekToLap,
+          insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes,
+          picker: sessionName, extra: followChip,
+        }} />
+      ) : (
+        <div className="feature-placeholder">
+          {error ? <span className="placeholder-error">{error}</span>
+            : waiting ? "Waiting for live data…" : "Loading…"}
         </div>
-        {info && (
-          <div className="session-meta">
-            {info.session.event_name} · {info.session.session_name}
-            {state && ` · LAP ${state.leader_lap}${info.total_laps ? ` / ${info.total_laps}` : ""}`}
-          </div>
-        )}
-        <div className={`feature-sync${follow.connected && follow.state ? " is-on" : ""}`} role="status">
-          {status}
-        </div>
-      </header>
-
-      <main className="feature-body panel">
-        {info ? (
-          <FeatureBody
-            id={feature.id}
-            session={session}
-            t={t}
-            info={info}
-            state={state}
-            laps={laps}
-            selected={selected}
-            onSelect={follow.select}
-            onSelectLap={seekToLap}
-            insight={insight}
-            insightError={insightError}
-            actualStops={actualStops}
-            sessionBest={sessionBest}
-            stewards={stewards}
-            trackLog={trackLog}
-            driverCodes={driverCodes}
-          />
-        ) : (
-          <div className="feature-placeholder">
-            {error ? <span className="placeholder-error">{error}</span>
-              : waiting ? "Waiting for live data…" : "Loading…"}
-          </div>
-        )}
-      </main>
+      )}
 
       {info && (
         <footer className="feature-clock">
-          <button type="button" className="transport" onClick={follow.toggle}
+          <button type="button" className="transport play" onClick={follow.toggle}
                   aria-label={follow.state?.playing ? "Pause" : "Play"} disabled={!follow.connected}>
-            {follow.state?.playing ? "❚❚" : "▶"}
+            {follow.state?.playing ? (
+              <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 1.5h3.5v13H2zM8.5 1.5H12v13H8.5z" fill="currentColor" /></svg>
+            ) : (
+              <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M2 1.5v13l11-6.5z" fill="currentColor" /></svg>
+            )}
           </button>
           <input
             className="scrub"
@@ -126,77 +104,9 @@ export function FeatureWindow({ feature, initialSession }: { feature: Feature; i
             onChange={(event) => follow.seek(Number(event.target.value))}
             aria-label="Session time"
           />
-          <span className="time">{formatClock(t - info.t_start)}</span>
+          <span className="time num">{formatClock(t - info.t_start)}</span>
         </footer>
       )}
     </div>
   );
-}
-
-interface BodyProps {
-  id: Feature["id"];
-  session: string;
-  t: number;
-  info: NonNullable<ReturnType<typeof useSession>["info"]>;
-  state: ReturnType<typeof useStateAt>;
-  laps: ReturnType<typeof useSession>["laps"];
-  selected: number[];
-  onSelect: (driver: number) => void;
-  onSelectLap: (lap: number) => void;
-  insight: ReturnType<typeof useSession>["insight"];
-  insightError: string | null;
-  actualStops: number | null;
-  sessionBest: number | null;
-  stewards: ReturnType<typeof useMessagesAt>["stewards"];
-  trackLog: ReturnType<typeof useMessagesAt>["trackLog"];
-  driverCodes: Record<number, string>;
-}
-
-/** The feature itself: the same panel the replay window used to hold, given the whole window. */
-function FeatureBody(props: BodyProps) {
-  const { id, info, state, selected, onSelect } = props;
-  const loading = !props.insight && !props.insightError;
-  switch (id) {
-    case "tower":
-      return (
-        <>
-          <TimingTower drivers={state?.drivers ?? []} selected={selected} onSelect={onSelect} />
-          <BestSectors sectors={state?.best_sectors ?? []} idealLap={state?.ideal_lap_s ?? null}
-                       fastestLap={props.sessionBest} />
-        </>
-      );
-    case "trace":
-      return (
-        <div className="tab-body">
-          <RaceTrace series={props.laps} selected={selected} currentLap={state?.leader_lap ?? 0}
-                     onSelectLap={props.onSelectLap} />
-        </div>
-      );
-    case "tyres":
-      return <TyreModel insight={props.insight} loading={loading} error={props.insightError} />;
-    case "strategy":
-      return (
-        <StrategyBoard insight={props.insight} loading={loading} error={props.insightError}
-                       actualStops={props.actualStops} sessionKey={props.session} />
-      );
-    case "sets":
-      return (
-        <TyreSets sessionKey={props.session} t={state?.t ?? info.t_start} drivers={state?.drivers ?? []}
-                  selected={selected} onSelect={onSelect} insight={props.insight} />
-      );
-    case "stewards":
-      return (
-        <>
-          {filterLabel(selected, props.driverCodes) && (
-            <div className="feature-filter">{filterLabel(selected, props.driverCodes)}</div>
-          )}
-          <Stewards events={props.stewards} start={info.t_start} codes={props.driverCodes}
-                    selected={selected} onSelect={onSelect} />
-        </>
-      );
-    case "track":
-      return <TrackLog events={props.trackLog} start={info.t_start} />;
-    case "prediction":
-      return <PredictionBoard sessionKey={props.session} selected={selected} onSelect={onSelect} />;
-  }
 }

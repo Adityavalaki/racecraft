@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEATURES, featureUrl, openFeature } from "./features";
+import { SCREENS, featureById, featureUrl, openFeature, type FeatureId } from "./features";
 import { FakeChannel } from "./testing/fakeChannel";
 import { CLOCK_INTERVAL_MS, SILENCE_MS, useFollowedClock, useReplayBroadcast, type ClockState } from "./sync";
 
@@ -115,7 +115,7 @@ describe("opening a feature", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 }) as Response));
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
     await expect(openFeature("tower", "live")).resolves.toBe("browser");
-    expect(opened).toHaveBeenCalledWith("/?feature=tower&session=live", "racecraft-tower", "width=1100,height=760");
+    expect(opened).toHaveBeenCalledWith("/?feature=tower&session=live", "racecraft-tower", "width=1280,height=860");
   });
 
   it("still opens it when the server cannot be reached at all", async () => {
@@ -127,8 +127,12 @@ describe("opening a feature", () => {
     expect(opened).toHaveBeenCalledTimes(1);
   });
 
-  it("has a URL for every feature, and eight of them", () => {
-    expect(FEATURES).toHaveLength(8);
-    for (const feature of FEATURES) expect(featureUrl(feature.id, "x")).toBe(`/?feature=${feature.id}&session=x`);
+  it("has a URL for every screen that can pop out, and only those", () => {
+    // Every screen but the replay and settings can have a window of its own.
+    const poppable = SCREENS.filter((screen) => screen.poppable).map((screen) => screen.id);
+    expect(poppable).toEqual(["tower", "trace", "pedals", "strategy", "tyres", "prediction", "stewards"]);
+    for (const id of poppable) expect(featureUrl(id as FeatureId, "x")).toBe(`/?feature=${id}&session=x`);
+    expect(featureById("replay")).toBeUndefined();
+    expect(featureById("settings")).toBeUndefined();
   });
 });

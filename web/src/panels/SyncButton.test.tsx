@@ -35,7 +35,7 @@ describe("SyncButton", () => {
   it("offers to sync and says nothing until asked", async () => {
     serve([status()]);
     render(<SyncButton onSynced={() => undefined} />);
-    expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^refresh data$/i })).toBeDefined();
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe(""));
   });
 
@@ -62,7 +62,7 @@ describe("SyncButton", () => {
     render(<SyncButton onSynced={onSynced} pollMs={10} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^refresh data$/i }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("added 2 sessions"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(onSynced).toHaveBeenCalledTimes(1);
@@ -77,7 +77,7 @@ describe("SyncButton", () => {
     ], status({ state: "running", weekends: WEEKENDS }));
     const onSynced = vi.fn();
     render(<SyncButton onSynced={onSynced} pollMs={10} />);
-    fireEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^refresh data$/i }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("up to date · 5 weekends"));
     expect(onSynced).not.toHaveBeenCalled();
   });

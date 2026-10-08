@@ -152,3 +152,119 @@ def best_stop_count(total_laps: int, degradation: dict[str, float], pit_loss_s: 
     """
     return best_plans(total_laps, degradation, pit_loss_s, curvature, max_stops,
                       step=step, top=1, compound_offset_s=compound_offset_s)[0].plan.stops
+
+
+# ------------------------------------------------------------- in the race
+
+# Stop laps within this many seconds of the cheapest are the window: the model
+# cannot tell them apart, and a team picks among them on traffic.
+WINDOW_TOLERANCE_S = 2.0
+# Lap-to-lap scatter of a car's pace in clean air, for the undercut's odds.
+LAP_NOISE_S = 0.25
+# A median absolute deviation is this many standard deviations, for a normal spread.
+MAD_TO_SD = 1.4826
+
+
+@dataclass
+class StopWindow:
+    """When a car running on `compound` at `age` is best off stopping, from lap `lap`."""
+    laps_until: int                 # from now to the cheapest stop
+    first_lap: int
+    last_lap: int
+    most_likely_lap: int
+    next_compound: str
+    no_stop: bool = False           # running to the flag is as cheap as any stop
+
+    def as_dict(self) -> dict:
+        return {"laps_until": self.laps_until, "window": [self.first_lap, self.last_lap],
+                "most_likely_lap": self.most_likely_lap, "next_compound": self.next_compound,
+                "no_stop": self.no_stop}
+
+
+def _finish_cost(laps: int, degradation: dict[str, float], offsets: dict[str, float], pit_loss_s: float,
+                 allowed: set[str], min_stint: int) -> tuple[float, str] | None:
+    """The cheapest way to run the last `laps` from fresh tyres: one stint, or two with one more stop."""
+    best: tuple[float, str] | None = None
+    for compound in allowed:
+        one = stint_cost(compound, laps, degradation) + offsets.get(compound, 0.0) * laps
+        if best is None or one < best[0]:
+            best = (one, compound)
+    # A second stop, where the rest of the race is too long for one set.
+    for first in allowed:
+        for second in degradation:
+            for split in range(min_stint, laps - min_stint + 1):
+                two = (stint_cost(first, split, degradation) + offsets.get(first, 0.0) * split
+                       + stint_cost(second, laps - split, degradation) + offsets.get(second, 0.0) * (laps - split)
+                       + pit_loss_s)
+                if best is None or two < best[0]:
+                    best = (two, first)
+    return best
+
+
+def stop_window(total_laps: int, lap: int, compound: str, age: int, degradation: dict[str, float],
+                pit_loss_s: float, compound_offset_s: dict[str, float] | None = None,
+                used: set[str] | frozenset = frozenset(), tolerance_s: float = WINDOW_TOLERANCE_S,
+                min_stint: int = 5) -> StopWindow | None:
+    """
+    The stop lap that loses least over the rest of the race, and every lap
+    within `tolerance_s` of it.
+
+    From lap `lap`, a car on `compound` at `age` can stop after k more laps:
+    those k laps on the old set, the pit lane, then the cheapest finish on
+    fresh tyres. A dry race must use two compounds, so a car that has run only
+    one leaves the pit on a different one. None when there is nothing to decide:
+    too few laps left, or a compound the model has no wear for.
+    """
+    offsets = compound_offset_s or {}
+    remaining = total_laps - lap
+    if remaining < min_stint or compound not in degradation:
+        return None
+    ran = set(used) | {compound}
+    allowed = {c for c in degradation if len(ran) >= 2 or c not in ran}
+    if not allowed:
+        return None
+
+    def keep(k: int) -> float:
+        return sum(degradation[compound] * (age + n) for n in range(1, k + 1)) + offsets.get(compound, 0.0) * k
+
+    costs: list[tuple[float, int, str]] = []
+    for k in range(0, remaining - min_stint + 1):
+        finish = _finish_cost(remaining - k, degradation, offsets, pit_loss_s, allowed, min_stint)
+        if finish is not None:
+            costs.append((keep(k) + pit_loss_s + finish[0], k, finish[1]))
+    if not costs:
+        return None
+    cheapest = min(costs)
+    # Running to the flag is an option only once the rules are met.
+    if len(ran) >= 2 and keep(remaining) <= cheapest[0]:
+        return StopWindow(laps_until=remaining, first_lap=total_laps, last_lap=total_laps,
+                          most_likely_lap=total_laps, next_compound=compound, no_stop=True)
+    near = [k for cost_s, k, _ in costs if cost_s <= cheapest[0] + tolerance_s]
+    return StopWindow(laps_until=cheapest[1], first_lap=lap + min(near), last_lap=lap + max(near),
+                      most_likely_lap=lap + cheapest[1], next_compound=cheapest[2])
+
+
+def undercut_gain(target_compound: str, target_age: int, fresh_compound: str, degradation: dict[str, float],
+                  compound_offset_s: dict[str, float] | None = None) -> float:
+    """
+    Seconds the chasing car gains by stopping a lap before the car ahead: one
+    lap on a fresh `fresh_compound` set against the target's old one, a lap
+    older still. Both then lose the same pit lane. The out-lap's cold tyres are
+    not in it, which flatters the undercut a little.
+    """
+    offsets = compound_offset_s or {}
+    old = degradation.get(target_compound, 0.0) * (target_age + 1) + offsets.get(target_compound, 0.0)
+    new = degradation.get(fresh_compound, 0.0) * 1 + offsets.get(fresh_compound, 0.0)
+    return old - new
+
+
+def undercut_chance(gap_s: float, gain_s: float, pit_spread_s: float, lap_noise_s: float = LAP_NOISE_S) -> float:
+    """
+    The chance the gain beats the gap. Two pit stops, each with the lane's own
+    scatter (`pit_spread_s` is its median absolute deviation), and a lap of
+    noise either way decide it as much as the tyres do.
+    """
+    from math import erf, sqrt
+
+    sigma = sqrt(2 * (pit_spread_s * MAD_TO_SD) ** 2 + 2 * lap_noise_s ** 2) or 1e-6
+    return 0.5 * (1 + erf((gain_s - gap_s) / (sigma * sqrt(2))))

@@ -98,7 +98,10 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
     <div className="sync">
       <button type="button" className="sync-button" onClick={start} disabled={running}
               title="Fetch any session from the latest five race weekends that is not in the lake yet">
-        {running ? "Refreshing…" : "Refresh"}
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {running ? "Refreshing…" : "Refresh data"}
       </button>
       <span className="sync-status" role="status" title={detailOf(status, error)}>
         {summaryOf(status, error)}

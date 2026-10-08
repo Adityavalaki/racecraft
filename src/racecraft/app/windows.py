@@ -30,12 +30,11 @@ log = logging.getLogger(__name__)
 FEATURES: dict[str, str] = {
     "tower": "Timing tower",
     "trace": "Race trace",
-    "tyres": "Tyre model",
+    "pedals": "Pedals and speed",
     "strategy": "Strategy",
-    "sets": "Tyre sets",
-    "stewards": "Stewards",
-    "track": "Track log",
+    "tyres": "Tyres",
     "prediction": "Race prediction",
+    "stewards": "Stewards",
 }
 
 # A lake session code (2024_01_R) or the live key: nothing that could reach a URL oddly.
@@ -72,8 +71,8 @@ class FeatureWindows:
                 return {"feature": feature, "opened": False}
             url = f"{self.base_url}/?{urlencode({'feature': feature, 'session': session})}"
             window = self._create(f"Racecraft · {FEATURES[feature]}", url,
-                                  width=1100, height=760, min_size=(640, 420),
-                                  background_color="#0c1015")
+                                  width=1280, height=860, min_size=(640, 420),
+                                  background_color="#0A0A0C")
             self._open[feature] = window
         try:
             window.events.closed += lambda: self._forget(feature, window)

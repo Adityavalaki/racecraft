@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DriverTiming } from "../api";
 import { ClockBar, statusBands } from "./ClockBar";
-import { DriverCards, drsLabel } from "./DriverCards";
+import { DriverCards, drsLabel, overtakeLabel } from "./DriverCards";
 import { Leaderboard } from "./Leaderboard";
 
 function driver(n: number, code: string, position: number, over: Partial<DriverTiming> = {}): DriverTiming {
@@ -47,47 +47,62 @@ describe("Leaderboard", () => {
 describe("DriverCards", () => {
   const cars = { "16": { x: 0, y: 0, speed: 287.4, gear: 7, throttle: 64, brake: 0, drs: 12 } };
 
-  it("asks for a pick when nobody is picked", () => {
+  it("asks for a pick when nobody is followed", () => {
     render(<DriverCards selected={[]} drivers={field} cars={{}} hasDrs onUnpick={vi.fn()} />);
-    expect(screen.getByText(/click a driver on the leaderboard/i)).toBeDefined();
+    expect(screen.getByText(/click a driver in the timing tower/i)).toBeDefined();
   });
 
   it("shows what the car is doing now and the gaps either side", () => {
-    render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} />);
+    const { container } = render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} />);
     const card = within(screen.getByRole("article", { name: /LEC telemetry/ }));
     expect(card.getByText("P3")).toBeDefined();
-    expect(card.getByText("287")).toBeDefined();            // speed, whole km/h
-    expect(card.getByText("7")).toBeDefined();               // gear
-    expect(card.getByText("OPEN")).toBeDefined();            // DRS 12
-    expect(card.getByRole("meter", { name: "THR" }).getAttribute("aria-valuenow")).toBe("64");
-    expect(card.getByRole("meter", { name: "BRK" }).getAttribute("aria-valuenow")).toBe("0");
-    // Vertical bars, filling upward from the bottom, as broadcast telemetry draws them.
-    const throttle = card.getByRole("meter", { name: "THR" }).querySelector(".pedal-fill") as HTMLElement;
-    expect(throttle.style.height).toBe("64%");
-    expect(throttle.style.width).toBe("");
+    expect(container.querySelector(".card-speed")?.textContent).toBe("287 km/h");   // whole km/h
+    expect(container.querySelector(".card-gear b")?.textContent).toBe("7");
+    expect(card.getByText("DRS open")).toBeDefined();                                // DRS 12
     // Ahead is NOR, by LEC's own interval; behind is HAM, by HAM's interval.
-    expect(card.getByText("AHEAD NOR")).toBeDefined();
-    expect(card.getByText("+3.500")).toBeDefined();
-    expect(card.getByText("BEHIND HAM")).toBeDefined();
-    expect(card.getByText("+4.500")).toBeDefined();
+    expect(card.getByText("Ahead NOR +3.500")).toBeDefined();
+    expect(card.getByText("Behind HAM +4.500")).toBeDefined();
   });
 
-  it("keeps the newest three picks, and unpicks from the card", () => {
+  it("shows speed in the chosen units", () => {
+    const { container } = render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} units="imperial" />);
+    expect(container.querySelector(".card-speed")?.textContent).toBe("179 mph");
+  });
+
+  it("keeps the newest two followed, and unfollows from the card", () => {
     const onUnpick = vi.fn();
     render(<DriverCards selected={[1, 4, 16, 44]} drivers={field} cars={{}} hasDrs onUnpick={onUnpick} />);
     expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label")))
-      .toEqual(["NOR telemetry", "LEC telemetry", "HAM telemetry"]);
+      .toEqual(["LEC telemetry", "HAM telemetry"]);
     fireEvent.click(screen.getByRole("button", { name: "Stop following HAM" }));
     expect(onUnpick).toHaveBeenCalledWith(44);
   });
 
   it("reads the DRS codes as the feed means them, and shows none for 2026", () => {
-    expect(drsLabel(12, true).text).toBe("OPEN");
-    expect(drsLabel(10, true).text).toBe("OPEN");
-    expect(drsLabel(8, true).text).toBe("ELIGIBLE");
-    expect(drsLabel(1, true).text).toBe("OFF");
+    expect(drsLabel(12, true).text).toBe("DRS open");
+    expect(drsLabel(10, true).text).toBe("DRS open");
+    expect(drsLabel(8, true).text).toBe("DRS eligible");
+    expect(drsLabel(1, true).text).toBe("DRS off");
     expect(drsLabel(null, true).text).toBe("—");
     expect(drsLabel(12, false).text).toBe("—");             // no DRS this session
+  });
+
+  it("draws the last half-minute of speed, throttle and brake under each card", async () => {
+    const trace = { driver_number: 16, seconds: 30, t: [-30, -20, -10, 0], speed: [300, 120, 200, 310],
+                    throttle: [100, 0, 60, 100], brake: [false, true, false, false], gear: [8, 3, 5, 8] };
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => trace }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const { container } = render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()}
+                                                sessionKey="2025_17_R" t={4000} />);
+      expect(await screen.findByRole("img", { name: /last 30 seconds of speed, throttle and brake for LEC/i })).toBeDefined();
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4000.00&seconds=30");
+      // One brake block, for the one second-sample on the brake.
+      const paths = Array.from(container.querySelectorAll(".pedal-trace path")).map((path) => path.getAttribute("d") ?? "");
+      expect(paths.some((d) => (d.match(/M/g) ?? []).length === 1 && d.endsWith("Z") && d.includes("V98"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -122,7 +137,31 @@ describe("the timeline", () => {
     expect(Array.from(container.querySelectorAll(".band")).map((b) => b.className))
       .toEqual(["band is-yellow", "band is-sc", "band is-red"]);
     expect(container.querySelectorAll(".lap-mark")).toHaveLength(20);
-    expect(Array.from(container.querySelectorAll(".lap-mark.is-major")).map((m) => m.textContent)).toEqual(["10", "20"]);
+    expect(Array.from(container.querySelectorAll(".lap-mark.is-major")).map((m) => m.textContent)).toEqual(["L10", "L20"]);
     expect((container.querySelector(".timeline-played") as HTMLElement).style.width).toBe("20%");
+  });
+});
+
+describe("overtake mode (2026)", () => {
+  const cars = { "16": { x: 0, y: 0, speed: 287.4, gear: 7, throttle: 64, brake: 0, drs: 0 } };
+
+  it("shows overtake mode in place of DRS when the session has it", () => {
+    const field2026 = [driver(1, "VER", 1, { overtake: "not_eligible" }), driver(16, "LEC", 2, { overtake: "eligible" })];
+    render(<DriverCards selected={[16]} drivers={field2026} cars={cars} hasDrs={false} hasOvertake onUnpick={vi.fn()} />);
+    const card = within(screen.getByRole("article", { name: /LEC telemetry/ }));
+    expect(card.getByText("Overtake eligible").className).toContain("is-eligible");
+    expect(card.queryByText(/DRS/)).toBeNull();
+  });
+
+  it("reads race control's switch and the one-second window", () => {
+    expect(overtakeLabel("eligible").text).toBe("Overtake eligible");
+    expect(overtakeLabel("disabled").text).toBe("Overtake off");
+    expect(overtakeLabel("not_eligible").text).toBe("Not eligible");
+    expect(overtakeLabel(null).text).toBe("—");
+  });
+
+  it("keeps DRS for a session that has it", () => {
+    render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} />);
+    expect(within(screen.getByRole("article", { name: /LEC telemetry/ })).getByText("DRS off")).toBeDefined();   // code 0
   });
 });

@@ -66,19 +66,21 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
         {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid" : "qualifying, penalties not applied"}
       </p>
 
+      <Headline answer={answer} />
+
       <div className="prediction-table" role="table" aria-label="Predicted finishing order">
         <div className="prediction-row is-head" role="row">
-          <span role="columnheader">POS</span>
+          <span role="columnheader">Pos</span>
           <span role="columnheader" />
-          <span role="columnheader">DRIVER</span>
-          <span role="columnheader" className="num">GRID</span>
-          <span role="columnheader">WIN</span>
-          <span role="columnheader">PODIUM</span>
-          <span role="columnheader">POINTS</span>
-          <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">EXP</span>
-          <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">LIKELY RANGE</span>
+          <span role="columnheader">Driver</span>
+          <span role="columnheader" className="num">Grid</span>
+          <span role="columnheader">Win</span>
+          <span role="columnheader">Podium</span>
+          <span role="columnheader">Points</span>
+          <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">Exp.</span>
+          <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
           <span role="columnheader" className="num" title="Chance of not finishing">DNF</span>
-          {finish && <span role="columnheader" className="num">ACTUAL</span>}
+          {finish && <span role="columnheader" className="num">Actual</span>}
         </div>
         {answer.drivers.map((driver, index) => (
           <Row key={driver.driver_number} driver={driver} position={index + 1} cars={cars}
@@ -86,8 +88,6 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
                selected={selected.includes(driver.driver_number)} onSelect={onSelect} />
         ))}
       </div>
-
-      {answer.result && <Scorecard model={answer.result.scores.model} grid={answer.result.scores.grid} />}
 
       <ul className="prediction-notes">
         <li>
@@ -162,6 +162,53 @@ function Chance({ value, kind }: { value: number; kind: string }) {
   );
 }
 
+/**
+ * The race in three cards: the favourite and how often they win, the podium
+ * chances, and (after the race) how the prediction scored against the grid.
+ */
+function Headline({ answer }: { answer: Prediction }) {
+  const favourite = [...answer.drivers].sort((a, b) => b.win - a.win)[0];
+  const podium = [...answer.drivers].sort((a, b) => b.podium - a.podium).slice(0, 4);
+  if (!favourite) return null;
+  const segments = 20;
+  const lit = Math.round(favourite.win * segments);
+  return (
+    <div className="prediction-cards">
+      <section className="panel favourite" aria-label="Favourite">
+        <span className="card-label">Favourite to win</span>
+        <div className="favourite-name">
+          <span className="team-bar tall" style={{ background: `#${favourite.team_color ?? "777"}` }} />
+          <span className="display">{favourite.abbreviation}</span>
+          <span className="favourite-team">{favourite.team_name ?? ""}{favourite.grid < 99 ? ` · from P${favourite.grid}` : ""}</span>
+        </div>
+        <div className="favourite-chance display">{Math.round(favourite.win * 100)}<small>%</small></div>
+        <div className="segments" aria-hidden="true">
+          {Array.from({ length: segments }, (_, k) => <span key={k} className={k < lit ? "is-lit" : ""} />)}
+        </div>
+        <span className="card-note">Wins {percent(favourite.win)} of {answer.basis.runs.toLocaleString()} simulated races.</span>
+      </section>
+      <section className="panel podium-card" aria-label="Podium chances">
+        <span className="card-label">Podium chances</span>
+        {podium.map((d) => (
+          <div key={d.driver_number} className="podium-row">
+            <span className="team-bar tall" style={{ background: `#${d.team_color ?? "777"}` }} />
+            <span className="display">{d.abbreviation}</span>
+            <span className="podium-bar"><i style={{ width: `${d.podium * 100}%` }} /></span>
+            <span className="num">{percent(d.podium)}</span>
+          </div>
+        ))}
+      </section>
+      {answer.result ? <Scorecard model={answer.result.scores.model} grid={answer.result.scores.grid} />
+        : (
+          <section className="panel score-card" aria-label="How it scored">
+            <span className="card-label">Scored against the result</span>
+            <p className="card-note">After the race, the result goes beside each driver and the prediction is scored against the grid.</p>
+          </section>
+        )}
+    </div>
+  );
+}
+
 function Scorecard({ model, grid }: { model: PredictionScore; grid: PredictionScore }) {
   const rows: [string, (s: PredictionScore) => string, (a: PredictionScore, b: PredictionScore) => number][] = [
     ["Order (rank correlation)", (s) => s.rho.toFixed(2), (a, b) => a.rho - b.rho],
@@ -169,12 +216,17 @@ function Scorecard({ model, grid }: { model: PredictionScore; grid: PredictionSc
     ["Podium places named", (s) => `${s.podium_hits} of 3`, (a, b) => a.podium_hits - b.podium_hits],
     ["Win chances (Brier, lower is better)", (s) => s.brier_win.toFixed(2), (a, b) => b.brier_win - a.brier_win],
   ];
+  const order = model.rho > grid.rho ? "The model ordered the field better than the grid did."
+    : model.rho < grid.rho ? "The grid ordered the field better than the model did." : "Model and grid ordered the field as well as each other.";
+  const chances = model.brier_win < grid.brier_win ? "The model gave the better win chances."
+    : model.brier_win > grid.brier_win ? "The grid gave the better win chances." : "";
   return (
+    <section className="panel score-card" aria-label="How it scored">
     <div className="prediction-score" role="table" aria-label="How the prediction did">
       <div className="score-row is-head" role="row">
-        <span role="columnheader">Against the result</span>
-        <span role="columnheader">Prediction</span>
-        <span role="columnheader" title="Everyone finishes where they started">Grid order</span>
+        <span role="columnheader">Scored against the result</span>
+        <span role="columnheader">Model</span>
+        <span role="columnheader" title="Everyone finishes where they started">Grid</span>
       </div>
       {rows.map(([label, show, better]) => {
         const edge = better(model, grid);
@@ -187,6 +239,8 @@ function Scorecard({ model, grid }: { model: PredictionScore; grid: PredictionSc
         );
       })}
     </div>
+    <p className="card-note">{order} {chances}</p>
+    </section>
   );
 }
 

@@ -77,8 +77,8 @@ const clock = (over: Partial<ClockState> = {}): ClockState => ({
 
 /** A driver's row in the tower; their code also shows in the best-sectors strip. */
 function towerRow(code: string): HTMLElement {
-  const row = Array.from(document.querySelectorAll<HTMLElement>(".tower-rows .tower-row"))
-    .find((each) => each.querySelector(".code")?.textContent === code);
+  const row = Array.from(document.querySelectorAll<HTMLElement>(".tower-table tbody tr"))
+    .find((each) => each.querySelector(".row-pick")?.textContent === code);
   if (!row) throw new Error(`no tower row for ${code}`);
   return row;
 }
@@ -109,7 +109,7 @@ describe("a feature window", () => {
     await waitFor(() => expect(screen.getByText("Timing tower")).toBeDefined());
     await waitFor(() => expect(towerRow("PER")).toBeDefined());
     expect(calls).toContain("/api/sessions/2024_01_R/state?t=1234.50");
-    expect(screen.getByRole("status").textContent).toBe("following the replay");
+    expect(screen.getByRole("status").textContent).toBe("Following the replay");
   });
 
   it("the tower window shows who holds each sector and what an ideal lap would be", async () => {
@@ -119,7 +119,7 @@ describe("a feature window", () => {
     await waitFor(() => expect(container.querySelector(".best-sectors")).not.toBeNull());
     const strip = container.querySelector(".best-sectors") as HTMLElement;
     await waitFor(() => expect(strip.textContent).toContain("29.741"));   // fastest S1, held by VER
-    expect(strip.textContent).toContain("IDEAL");
+    expect(strip.textContent?.toUpperCase()).toContain("IDEAL");
     expect(strip.textContent).toContain("1:32.608");                       // the three best sectors added up
   });
 
@@ -161,16 +161,26 @@ describe("a feature window", () => {
 
     open("strategy");
     await waitFor(() => expect(calls.some((url) => url.includes("/insight"))).toBe(true));
+    await waitFor(() => expect(calls.some((url) => url.includes("/pit-windows?t="))).toBe(true));
+    // The model's own plans are under What if.
+    fireEvent.click(screen.getByRole("radio", { name: "What if" }));
     await waitFor(() => expect(screen.getByText("22.4s")).toBeDefined());
   });
 
-  it("reads race control only for the stewards and the track log", async () => {
+  it("reads race control only on the stewards screen", async () => {
     const calls = server();
     replay(clock());
+    const { unmount } = open("tower");
+    await waitFor(() => expect(towerRow("PER")).toBeDefined());
+    await settle();
+    expect(calls.some((url) => url.includes("/messages"))).toBe(false);
+    unmount();
+
     open("stewards");
-    await waitFor(() => expect(screen.getByText(/TRACK LIMITS/i)).toBeDefined());
+    await waitFor(() => expect(screen.getAllByText(/track limits/i).length).toBeGreaterThan(0));
     expect(calls.some((url) => url.includes("/messages") && url.includes("topic=stewards"))).toBe(true);
-    expect(calls.some((url) => url.includes("/state?"))).toBe(false);
+    // Picked by default, the newest message is explained in plain words.
+    expect(screen.getByText(/served at the next stop, or added to the race time/i)).toBeDefined();
   });
 
   it("says when the replay window has closed, and stops offering controls", async () => {
@@ -182,7 +192,7 @@ describe("a feature window", () => {
     await settle();
     main.close();
     act(() => vi.advanceTimersByTime(SILENCE_MS + 1100));
-    expect(screen.getByRole("status").textContent).toBe("replay window closed");
+    expect(screen.getByRole("status").textContent).toBe("Main window closed");
     expect((screen.getByRole("slider", { name: /session time/i }) as HTMLInputElement).disabled).toBe(true);
   });
 });

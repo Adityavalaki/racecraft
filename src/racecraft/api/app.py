@@ -33,10 +33,12 @@ from fastapi.staticfiles import StaticFiles
 from racecraft import resources
 from racecraft.api import insight
 from racecraft.api import live_store
+from racecraft.api import pit_view
 from racecraft.api import places_view
 from racecraft.api import prediction_view
 from racecraft.api import session as session_store
 from racecraft.api import sync_view
+from racecraft.api import telemetry
 from racecraft.api import tyre_sets_view
 from racecraft.api import penalties
 from racecraft.store.db import connect, has_table
@@ -183,6 +185,65 @@ def session_places(session_key: str,
         # 422 rather than 404 or 409: the session exists and is ready, but the
         # races before it cannot support a simulation, and retrying will not help.
         raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/pit-windows")
+def session_pit_windows(session_key: str, t: float = Query(..., description="session time in seconds")) -> dict:
+    """
+    When each running car is best off stopping, and the chance that stopping
+    first gets a car within three seconds of the one ahead the place, at `t`.
+    From the strategy model's held-out fit; slow the first time for a season.
+    """
+    _safe(session_key)
+    try:
+        return pit_view.for_session(session_key, t)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+    except pit_view.NoStrategy as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/lap")
+def session_lap(session_key: str, driver: int = Query(..., ge=0, le=99),
+                lap: int | None = Query(None, ge=1, le=200),
+                t: float | None = Query(None, description="latest lap completed by this session time")) -> dict:
+    """
+    One lap of one car by distance: speed, throttle, brake, gear and position
+    every five metres, with its brake zones and the corners. Draws the pedal
+    map and the traces.
+    """
+    try:
+        return telemetry.lap(_load(session_key), driver, lap, t)
+    except telemetry.NoLap as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/recent")
+def session_recent(session_key: str, driver: int = Query(..., ge=0, le=99), t: float = Query(...),
+                   seconds: float = Query(30.0, gt=0, le=telemetry.RECENT_MAX_S)) -> dict:
+    """The last half-minute (by default) of one car's speed, throttle, brake and gear, up to `t`."""
+    try:
+        return telemetry.recent(_load(session_key), driver, t, seconds)
+    except telemetry.NoLap as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/compare")
+def session_compare(session_key: str, driver: int = Query(..., ge=0, le=99), lap: int | None = Query(None, ge=1, le=200),
+                    ref: int = Query(..., ge=0, le=99), ref_lap: int | None = Query(None, ge=1, le=200),
+                    t: float | None = None) -> dict:
+    """
+    Two laps laid over each other by distance: each lap in full, and the time
+    between them along the first. Without lap numbers, each car's latest lap
+    completed by `t`.
+    """
+    data = _load(session_key)
+    try:
+        subject = telemetry.lap(data, driver, lap, t)
+        reference = telemetry.lap(data, ref, ref_lap, t)
+    except telemetry.NoLap as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    return {"subject": subject, "reference": reference, "delta": telemetry.compare(subject, reference)}
 
 
 @app.get("/api/sessions/{session_key}/prediction")

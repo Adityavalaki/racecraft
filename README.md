@@ -111,32 +111,39 @@ racecraft-serve                                # http://127.0.0.1:8000
 While developing the interface, run `npm run dev` in `web/` for hot reload; it
 proxies `/api` to the server on port 8000.
 
-**The replay window** has three columns and the clock along the bottom:
+**The app** has a navigation rail on the left: the screens, grouped as **Race**, **Plan** and **Control**, with **Refresh data** and **Settings** at its foot. The playback bar runs along the bottom of every screen that follows the clock: the track status, play and pause, ±30 s, the speeds, and a timeline coloured by yellow flags, safety car, VSC and red flags, with the leader's laps marked beneath.
 
-- **Left:**
-  - **Refresh**, which fetches the latest race weekends.
-  - The feature launcher.
-  - A card for each picked driver: speed, gear, DRS, throttle and brake, tyre, and the gap to the cars ahead and behind.
-  - The keyboard shortcuts, folded away under **Keys**.
-- **Middle:**
-  - The track map.
-  - Under the map, the session strip: event, lap, time, track and air temperature, wind and rain.
-  - Under that, the **Stewards** and the **Track log** side by side. Each can also pop out (↗) into a window of its own.
-- **Right:** the leaderboard: position, gap, tyre and penalties. Click a driver to pick them (up to three); they are ringed on the map. **Full timing tower** sits at its foot.
-- **Bottom:** the track status, play and pause, ±30 s, the speeds, and the clock on a timeline. The timeline is coloured by yellow flags, safety car, VSC and red flags, with the leader's laps marked beneath.
-- Drag the edges of the side columns, or the line between the map and the stewards, to resize them. Double-click an edge, or use **Reset layout**, to put it back. The layout is remembered.
+**Replay:**
+
+- **The session bar:** the session, the lap, the clock, where it is and how many cars, and the weather.
+- **The pedal map:** the circuit coloured by one car's last full lap, green where the throttle was flat and red where the brake was on. It shows the first followed driver, or the leader while nobody is followed.
+- **The driver cards:** follow up to two drivers from the timing tower. Each card shows speed, gear, DRS or overtake mode, the gaps either side, and the last 30 seconds of speed, throttle and brake.
+- **The timing tower:** a compact version, with the interval in the overtake colour when a car is close enough. Under it, **race control**: the stewards' verdicts and the track log in one list.
+- **Resizing:** drag the tower's edge or the line above the cards. Double-click, or use **Reset layout**, to put them back. The layout is remembered.
+
+**The other screens:**
+
+| Screen | What it shows |
+|---|---|
+| Timing tower | Every car: gap, interval, last and best lap, the three sectors in timing colours, tyre and age, stops, overtake, penalties. Sort by race order, grid or best lap. |
+| Race trace | Gap to leader, interval or lap time, lap by lap, up to the lap on the clock. Safety-car laps are shaded. Click to jump to a lap. |
+| Pedals and speed | One driver's lap against another's, metre for metre: the time between them, speed, throttle, brake and gear, with the corners marked. Also a cursor through every trace and the pedal map, and each brake zone against the reference driver's. The brake is on or off in the feed, so it shows where and for how long, not how hard. |
+| Strategy | **Pit windows:** for each car, the stop lap that loses least over the rest of the race under the strategy model, and every lap within 2 s of it. The **undercut watch:** for each car within 3 s of the one ahead, the chance stopping first gets the place. The **stint map:** every car's sets so far. **What if** holds the model's cheapest plans, with safety cars and in places. |
+| Tyres | The model's wear curve per compound, with every car placed on it. **What this race did** overlays the race's own tyres, as hindsight. Each car's sets are listed below. |
+| Race prediction | See *Race prediction* below. |
+| Stewards | Every race control message, each explained in plain words: what it is, its status, and its effect on the race. Below them, the flags and the safety car across the race. |
+| Settings | Units, row density, the header clock, the map's names and overtake rings, and refreshing the data. Saved, and shared with pop-out windows. |
+
+The pit windows and undercut odds are estimates from the model, and the screen says what they leave out. The out-lap on cold tyres and traffic on rejoining are not modelled, so they flatter the undercut a little. Nothing on any screen comes from after the clock's time.
 
 On the map, **DRS zones** are drawn where the flap opened during the session
 (2023–2025 only: the 2026 cars have no DRS). While the safety car is out it is
 drawn about 500 m ahead of the leader: F1 publishes no position for it, so it
 is **simulated**, and the map says so.
 
-**Features open in windows of their own** from the left column: the full
-timing tower, race trace, tyre model, strategy, tyre sets and the race
-prediction. The stewards and the track log can pop out too. Each follows the replay window's clock as it plays; its own controls (play,
-the scrubber, picking a driver, a lap in the trace) move the replay, so every
-window agrees. Put them on a second monitor. In the desktop app they are app
-windows and close with the replay; in a browser they open as tabs or popups.
+**2026 has no DRS.** The new cars have active aero instead, and an **overtake mode**: extra electrical deployment for a car within a second of the one ahead, which race control switches on and off as it did DRS ("OVERTAKE ENABLED"). The feed never says when a driver used it, so the driver cards show OVERTAKE in place of DRS and mark a car **eligible** when race control has it on and the car was within a second of the car ahead at the last timing line. **D** then rings the eligible cars on the map. It is an estimate, and the tooltips say so.
+
+**Every screen but the replay and settings pops out** (↗, top right) into a window of its own. Each follows the main window's clock as it plays, and its own controls (play, the scrubber, following a driver, a lap in the trace) move the main window, so every window agrees. Put them on a second monitor. In the desktop app they are app windows and close with the main one; in a browser they open as tabs or popups.
 
 | Key | Does |
 |---|---|

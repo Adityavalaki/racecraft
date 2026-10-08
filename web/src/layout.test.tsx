@@ -113,7 +113,7 @@ describe("Workspace", () => {
       expect(each.getAttribute("tabindex")).toBe("0");
     }
     expect(splitter(/left column/i)).toBeDefined();
-    expect(splitter(/leaderboard/i)).toBeDefined();
+    expect(splitter(/timing tower/i)).toBeDefined();
   });
 
   it("follows the pointer while dragging, and never squeezes the map below its floor", () => {
@@ -158,7 +158,7 @@ describe("Workspace", () => {
     fireEvent.keyDown(left, { key: "ArrowLeft", shiftKey: true });  // 320px - 5%: at the floor
     expect(left.getAttribute("aria-valuenow")).toBe("18");
 
-    const right = splitter(/leaderboard/i);
+    const right = splitter(/timing tower/i);
     fireEvent.keyDown(right, { key: "ArrowLeft" });                 // the line moves left: wider
     expect(right.getAttribute("aria-valuenow")).toBe("22");         // 300px + 1% of 1400
   });
@@ -166,15 +166,15 @@ describe("Workspace", () => {
   it("remembers the layout, and a double-click puts one splitter back", () => {
     fakeLayoutBoxes();
     const first = render(<Harness />);
-    fireEvent.keyDown(splitter(/leaderboard/i), { key: "ArrowLeft" });
+    fireEvent.keyDown(splitter(/timing tower/i), { key: "ArrowLeft" });
     expect(JSON.parse(localStorage.getItem(KEY)!).right).toBeGreaterThan(0);
     first.unmount();
 
     render(<Harness />);                                            // a fresh start keeps it
-    expect(splitter(/leaderboard/i).getAttribute("aria-valuenow")).not.toBeNull();
+    expect(splitter(/timing tower/i).getAttribute("aria-valuenow")).not.toBeNull();
 
-    fireEvent.doubleClick(splitter(/leaderboard/i));
-    expect(splitter(/leaderboard/i).getAttribute("aria-valuenow")).toBeNull();
+    fireEvent.doubleClick(splitter(/timing tower/i));
+    expect(splitter(/timing tower/i).getAttribute("aria-valuenow")).toBeNull();
     expect(localStorage.getItem(KEY)).toBeNull();                  // all default again: nothing kept
   });
 
@@ -184,11 +184,33 @@ describe("Workspace", () => {
     expect(screen.queryByRole("button", { name: "Reset layout" })).toBeNull();
 
     fireEvent.keyDown(splitter(/left column/i), { key: "ArrowRight" });
-    fireEvent.keyDown(splitter(/leaderboard/i), { key: "ArrowLeft" });
+    fireEvent.keyDown(splitter(/timing tower/i), { key: "ArrowLeft" });
     fireEvent.click(screen.getByRole("button", { name: "Reset layout" }));
 
     expect(screen.queryByRole("button", { name: "Reset layout" })).toBeNull();
     for (const each of screen.getAllByRole("separator")) expect(each.getAttribute("aria-valuenow")).toBeNull();
+  });
+});
+
+describe("the replay's workspace", () => {
+  it("has no left column when given none, and a splitter above the driver cards", () => {
+    const { container } = render(
+      <Workspace layout={DEFAULT_LAYOUT} onChange={vi.fn()} map={<div>map</div>} below={<div>cards</div>}
+                 right={<div>tower</div>} />,
+    );
+    const columns = Array.from(container.querySelector(".workspace")!.children).map((c) => c.className);
+    expect(columns).toEqual(["col col-map", "splitter splitter-vertical", "col col-right"]);
+    const cards = splitter(/driver cards/i);
+    expect(cards.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(container.querySelector(".col-map .below-map")?.textContent).toBe("cards");
+  });
+
+  it("sizes the cards from the saved layout", () => {
+    const { container } = render(
+      <Workspace layout={{ left: null, right: null, lower: 30 }} onChange={vi.fn()} map={<div>map</div>}
+                 below={<div>cards</div>} right={<div>tower</div>} />,
+    );
+    expect((container.querySelector(".workspace") as HTMLElement).style.getPropertyValue("--lower-h")).toBe("30%");
   });
 });
 

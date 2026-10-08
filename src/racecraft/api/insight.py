@@ -90,8 +90,28 @@ class SeasonFits:
         return degradation, offsets, [self.names[key] for key in used]
 
 
+# A session in the lake has finished, so its answer never changes; the safety-car
+# ranking alone runs some 80,000 simulated races, so it is worked out once.
+MAX_ANSWERS = 32
+_answer_cache: OrderedDict[tuple, dict] = OrderedDict()
+
+
 def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
     """Everything the models can say about the circuit and tyres of one session."""
+    key = (_lake(), session_key, scale)
+    with _lock:
+        if key in _answer_cache:
+            _answer_cache.move_to_end(key)
+            return _answer_cache[key]
+    answer = _for_session(session_key, scale)
+    with _lock:
+        _answer_cache[key] = answer
+        while len(_answer_cache) > MAX_ANSWERS:
+            _answer_cache.popitem(last=False)
+    return answer
+
+
+def _for_session(session_key: str, scale: float) -> dict:
     con = connect()
     meta = con.sql(
         "select session_key, year, round, session, event_name, location, total_laps, date_utc "
