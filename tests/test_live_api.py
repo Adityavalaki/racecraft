@@ -392,3 +392,9 @@ def test_a_recording_nobody_is_writing_any_more_is_not_offered_as_live(monkeypat
     fresh.write_text("['Heartbeat', '{}', '']\n")
     assert app_module._recording_now(str(fresh)) is True
     assert app_module._recording_now(str(tmp_path / "missing.txt")) is False
+
+
+def test_the_newer_routes_answer_404_on_an_empty_lake_rather_than_failing(client):
+    """A fresh install has no races yet: asking about one is a missing session, not a server fault."""
+    for path in ("pit-windows?t=10", "lap?driver=1", "recent?driver=1&t=10", "compare?driver=1&ref=2"):
+        assert client.get(f"/api/sessions/2026_15_R/{path}").status_code == 404, path

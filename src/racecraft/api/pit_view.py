@@ -34,6 +34,8 @@ class NoStrategy(RuntimeError):
 
 
 def for_session(session_key: str, t: float) -> dict:
+    # The session first: a missing one (or an empty lake) is a KeyError, a 404, not a fault in the model.
+    data = session_store.load(session_key)
     model = insight.for_session(session_key)
     if not model.get("is_race"):
         raise NoStrategy("pit windows are for races")
@@ -44,7 +46,6 @@ def for_session(session_key: str, t: float) -> dict:
         raise NoStrategy("no tyre wear or pit lane measured for this race yet")
     pit_loss, pit_spread = float(pit["seconds"]), float(pit.get("spread_s") or 0.0)
 
-    data = session_store.load(session_key)
     state = data.state(t)
     total = int(model.get("total_laps") or data.meta.get("total_laps") or 0)
     used = _compounds_run(data.laps, t)
