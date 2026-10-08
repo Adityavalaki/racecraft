@@ -23,7 +23,8 @@ param(
     [string]$Output   = "$PSScriptRoot\..\dist\Racecraft.msix",
     [string]$Pfx      = "$PSScriptRoot\msix\RacecraftDev.pfx",
     [string]$Password = "racecraft",
-    [string]$ToolsDir = "$PSScriptRoot\..\build\sdk-tools"
+    # Kept outside build\, so clearing build output never means downloading these again.
+    [string]$ToolsDir = "$PSScriptRoot\.tools"
 )
 
 $ErrorActionPreference = "Stop"

@@ -17,3 +17,6 @@ build/
 packaging/msix/*.pfx
 packaging/msix/*.cer
 packaging/msix/Assets/
+
+# Packaging tools fetched from NuGet by build_msix.ps1
+packaging/.tools/
