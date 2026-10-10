@@ -193,7 +193,7 @@ def test_the_button_starts_a_sync_and_its_progress_can_be_read(monkeypatch):
                         lambda weekends=5, telemetry=True: calls.append((weekends, telemetry))
                         or {"state": "planning"})
     monkeypatch.setattr(sync_view, "status", lambda: {"state": "running", "counts": {}})
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     assert client.post("/api/sync").json()["state"] == "planning"
     assert calls == [(5, True)]

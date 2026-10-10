@@ -221,7 +221,7 @@ def client(store, tmp_path, monkeypatch):
     empty = tmp_path / "lake"
     empty.mkdir()
     monkeypatch.setattr(config, "LAKE_DIR", empty)
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_live_is_offered_in_the_session_list_once_something_is_recorded(client, store, monkeypatch):

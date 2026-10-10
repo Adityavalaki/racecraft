@@ -271,7 +271,7 @@ def test_a_study_races_the_sets_the_car_had(con):
 def client(con):
     from fastapi.testclient import TestClient
     from racecraft.api.app import app
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_the_interface_races_the_cars_own_tyres_and_can_be_told_not_to(client):

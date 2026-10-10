@@ -82,7 +82,7 @@ def client(tmp_path, monkeypatch):
     }
     lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_sessions_are_listed(client):
@@ -185,7 +185,7 @@ def test_a_new_install_lists_no_sessions_rather_than_failing(tmp_path, monkeypat
     empty = tmp_path / "fresh-lake"
     empty.mkdir()
     monkeypatch.setattr(config, "LAKE_DIR", empty)
-    response = TestClient(app).get("/api/sessions")
+    response = TestClient(app, base_url="http://127.0.0.1").get("/api/sessions")
     assert response.status_code == 200
     assert response.json() == []
 

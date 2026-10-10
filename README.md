@@ -28,6 +28,7 @@ It runs as a Windows desktop app, or as a local web app in any browser.
 - [Development](#development)
 - [Project layout](#project-layout)
 - [Configuration](#configuration)
+- [Security](#security)
 - [Limits, and what the data cannot tell you](#limits-and-what-the-data-cannot-tell-you)
 - [Data, licences and credits](#data-licences-and-credits)
 
@@ -395,9 +396,40 @@ All optional, set as environment variables:
 | `RACECRAFT_DATA_DIR` | `data/` in a checkout, `%LOCALAPPDATA%\Racecraft` when installed | Everything Racecraft writes |
 | `RACECRAFT_LAKE_DIR` | `<data dir>/lake` | The race data |
 | `RACECRAFT_FASTF1_CACHE` | `<data dir>/fastf1_cache` | FastF1's download cache |
+| `RACECRAFT_ALLOWED_HOSTS` | none | Extra addresses the server answers to (comma-separated), to open it from another device. See [Security](#security). |
 
 The app's own settings (units, density, map options) are on the Settings screen
 and are saved in the window's storage.
+
+---
+
+## Security
+
+Racecraft has no accounts, passwords or API keys, and keeps no personal data:
+everything it stores is public timing data. The server is for your own
+computer, and is built to stay that way:
+
+- **It listens on 127.0.0.1 only**, so other devices cannot reach it.
+- **It answers to this computer's names only** (`127.0.0.1`, `localhost`), so a
+  website that points its own domain at your computer (DNS rebinding) is
+  refused.
+- **Only its own pages can change anything.** A request that starts a data
+  refresh or attaches live timing is refused if another website sent it.
+- **Every response carries security headers:** a content security policy that
+  allows only the app's own scripts, and protection against framing and type
+  sniffing. The page loads nothing from other sites; the fonts are bundled.
+- **Input is checked:** session keys before they reach a query, and live
+  recordings must be in the live folder.
+- **The API's documentation pages are off.**
+
+To open it from another device on purpose, start it with
+`racecraft-serve --host 0.0.0.0` and name the address you will use in
+`RACECRAFT_ALLOWED_HOSTS`. There is no login, so anyone on that network can
+then use it: do this only on a network you trust.
+
+The signing certificate for the installer (`packaging/msix/*.pfx`) is a private
+key. It is ignored by git and has never been committed. Make your own with
+`packaging\make_cert.ps1 -Password <yours>`.
 
 ---
 

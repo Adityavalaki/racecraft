@@ -278,7 +278,7 @@ def client(con, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(predict, "load_calibration", lambda path=None: _calibration(fitted_on=["2023"]))
     monkeypatch.setattr("racecraft.api.prediction_view.RUNS", 100)
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def _saturday(tmp_path):

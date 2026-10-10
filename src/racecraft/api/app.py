@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from racecraft import resources
+from racecraft.api import guard
 from racecraft.api import insight
 from racecraft.api import live_store
 from racecraft.api import pit_view
@@ -48,7 +49,9 @@ log = logging.getLogger(__name__)
 WEB_DIST = (resources.bundle_dir() / "web" / "dist" if resources.frozen()
             else Path(__file__).resolve().parents[3] / "web" / "dist")
 
-app = FastAPI(title="Racecraft", version="0.1.0")
+# No /docs, /redoc or /openapi.json: nothing uses them, and the docs pages load
+# their scripts from a CDN that the content security policy refuses.
+app = FastAPI(title="Racecraft", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
 # The Vite dev server runs on another port during development.
 app.add_middleware(
@@ -57,6 +60,9 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+# Added last, so it is outermost: every request is checked and every response
+# carries the headers, the CORS preflight and the 404s included. See guard.py.
+app.add_middleware(guard.Guard)
 
 
 @app.get("/api/sessions")
@@ -319,15 +325,23 @@ def live_attach(recording: str | None = None, year: int | None = None,
     Year, round and session are only needed outside a race weekend, when the
     schedule cannot say which session a recording belongs to.
     """
-    from pathlib import Path
-
     from racecraft.live import feed as feed_module
+    from racecraft.live import recorder
 
+    path = None
+    if recording:
+        # Only a recording in the live folder: this is a request, and a path
+        # from a request must not open any file on the computer. A bare name
+        # is looked up there; a full path must lead there.
+        live_dir = recorder.LIVE_DIR.resolve()
+        path = (live_dir / recording).resolve()
+        if not path.is_relative_to(live_dir) or not path.is_file():
+            raise HTTPException(status_code=400, detail=f"no recording '{recording}' in {live_dir}")
     named = None
     if year and round_number and session_name:
         named = feed_module.LiveSession(year, round_number, session_name)
     try:
-        live_store.store.attach(Path(recording) if recording else None, named)
+        live_store.store.attach(path, named)
     except live_store.NotLive as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
     return live_store.store.status()
