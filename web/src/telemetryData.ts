@@ -35,7 +35,7 @@ export function useLapTrace(sessionKey: string | null, driver: number | null, la
       return;
     }
     const controller = new AbortController();
-    api.lap(sessionKey, driver, { lap }, controller.signal)
+    api.lap(sessionKey, driver, { lap, orEarlier: true }, controller.signal)
       .then((next) => {
         // An error body is JSON too: the shape is checked rather than assumed.
         if (!isLapTrace(next)) {

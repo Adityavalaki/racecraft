@@ -63,6 +63,54 @@ def test_without_a_lap_number_the_latest_lap_finished_by_the_clock_is_used():
         telemetry.lap(data, 1, 9)
 
 
+def _broken_pedals(car: Channel, start: float, end: float) -> Channel:
+    """The feed's broken stretch: throttle missing, brake stuck on (2026 Round 17 FP1)."""
+    inside = (car.t >= start) & (car.t <= end)
+    throttle = car.values["throttle"].copy()
+    throttle[inside] = np.nan
+    brake = car.values["brake"].copy()
+    brake[inside] = 1.0
+    return Channel(t=car.t, values={**car.values, "throttle": throttle, "brake": brake})
+
+
+def test_by_default_a_lap_with_broken_pedals_is_passed_over():
+    car = _car(lap_s=120.0)                                         # two laps' worth of samples
+    data = _data({1: _broken_pedals(car, 1060.0, 1120.0)}, [(1, 1, 1000.0, 1060.0), (1, 2, 1060.0, 1120.0)])
+    assert telemetry.lap(data, 1, t=1130.0)["lap"] == 1             # lap 2 is the broken one
+    asked = telemetry.lap(data, 1, 2)                               # asked for by number, it still comes
+    assert not any(asked["brake"])                                  # but not as a lap of solid brake
+    only = _data({1: _broken_pedals(car, 1000.0, 1120.0)}, [(1, 1, 1000.0, 1060.0), (1, 2, 1060.0, 1120.0)])
+    with pytest.raises(telemetry.NoLap, match="usable telemetry"):
+        telemetry.lap(only, 1, t=1130.0)
+
+
+def test_or_earlier_falls_back_from_a_broken_lap_asked_for_by_number():
+    """The pedal map asks for the lap just completed by number, so it needs the fallback too."""
+    car = _car(lap_s=120.0)
+    data = _data({1: _broken_pedals(car, 1060.0, 1120.0)}, [(1, 1, 1000.0, 1060.0), (1, 2, 1060.0, 1120.0)])
+    assert telemetry.lap(data, 1, 2, or_earlier=True)["lap"] == 1
+    assert telemetry.lap(data, 1, 1, or_earlier=True)["lap"] == 1
+    assert telemetry.lap(data, 1, 2)["lap"] == 2                    # without it, the lap asked for
+    with pytest.raises(telemetry.NoLap, match="usable telemetry"):
+        telemetry.lap(_data({1: _broken_pedals(car, 1000.0, 1120.0)},
+                            [(1, 1, 1000.0, 1060.0), (1, 2, 1060.0, 1120.0)]), 1, 2, or_earlier=True)
+
+
+def test_recent_does_not_show_a_stuck_brake_as_braking():
+    data = _data({1: _broken_pedals(_car(), 1030.0, 1060.0)}, [(1, 1, 1000.0, 1060.0)])
+    window = telemetry.recent(data, 1, t=1050.0, seconds=30)
+    assert window["brake"][-1] is None                              # pedals unknown, not on
+    assert window["brake"][0] is False                              # 20 s in: known, and off
+
+
+def test_by_default_a_lap_mostly_without_a_position_is_passed_over():
+    car = _car(lap_s=120.0)
+    data = _data({1: car}, [(1, 1, 1000.0, 1060.0), (1, 2, 1060.0, 1120.0)])
+    keep = (car.t < 1062.0) | (car.t > 1110.0)                      # lap 2's positions mostly missing
+    data.position[1] = Channel(t=car.t[keep], values={"x": car.t[keep] * 10.0, "y": car.t[keep] * 0.0})
+    assert telemetry.lap(data, 1, t=1130.0)["lap"] == 1
+
+
 def test_two_laps_compare_corner_for_corner_and_end_on_the_lap_time_gap():
     quick = _car(lap_s=60.0)
     slow = _car(lap_s=61.0, slow_from=20.0, slow_to=27.0, start=2000.0)    # brakes a second longer

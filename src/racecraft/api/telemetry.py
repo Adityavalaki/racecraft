@@ -28,34 +28,66 @@ STEP_M = 5.0
 MIN_BRAKE_ZONE_S = 0.25
 RECENT_HZ = 8.0
 RECENT_MAX_S = 120.0
+# A lap is drawn by default only when this share of it has pedals and a
+# position. The feed sometimes sends a car's pedals as nothing (throttle
+# missing, brake stuck on) and its position as nothing for whole laps, early in
+# a practice session above all: drawn, that is a lap of solid brake.
+USABLE_SHARE = 0.8
 
 
 class NoLap(LookupError):
     """There is no such lap for that car, or it has no telemetry. The message says which."""
 
 
-def _lap_row(data, driver: int, lap: int | None, t: float | None) -> pd.Series:
+def _lap_row(data, driver: int, lap: int | None, t: float | None, or_earlier: bool = False) -> pd.Series:
     laps = data.laps[(data.laps["driver_number"] == driver)
                      & data.laps["lap_start_t"].notna() & data.laps["lap_end_t"].notna()]
     if laps.empty:
         raise NoLap(f"no timed laps for car {driver}")
-    if lap is not None:
+    if lap is not None and not or_earlier:
         row = laps[laps["lap_number"] == lap]
         if row.empty:
             raise NoLap(f"car {driver} has no lap {lap}")
         return row.iloc[0]
     done = laps if t is None else laps[laps["lap_end_t"] <= t]
+    if lap is not None:
+        done = done[done["lap_number"] <= lap]
     if done.empty:
         raise NoLap(f"car {driver} has not completed a lap yet")
-    return done.sort_values("lap_end_t").iloc[-1]
+    for _, row in done.sort_values("lap_end_t", ascending=False).iterrows():
+        if _usable(data, driver, row):
+            return row
+    raise NoLap(f"car {driver} has no completed lap with usable telemetry yet")
 
 
-def lap(data, driver: int, lap_number: int | None = None, t: float | None = None) -> dict:
+def _usable(data, driver: int, row: pd.Series) -> bool:
+    """Whether a lap's pedals and position are there for most of it."""
+    start, end = float(row["lap_start_t"]), float(row["lap_end_t"])
+    car = data.car.get(driver)
+    if car is None or len(car.t) == 0:
+        return False
+    inside = (car.t >= start) & (car.t <= end)
+    if inside.sum() < 20:
+        return False
+    if np.isfinite(car.values["throttle"][inside].astype(float)).mean() < USABLE_SHARE:
+        return False
+    pos = data.position.get(driver)
+    if pos is None or len(pos.t) == 0:
+        return True                          # no positions in this session at all: the traces still stand
+    xs = pos.at(np.linspace(start, end, 40), interpolate=False)["x"]
+    return sum(v is not None for v in xs) >= USABLE_SHARE * len(xs)
+
+
+def lap(data, driver: int, lap_number: int | None = None, t: float | None = None,
+        or_earlier: bool = False) -> dict:
     """
     One lap by distance. `lap_number` picks it; otherwise the car's latest lap
-    completed by session time `t` (or its last lap of all).
+    completed by session time `t` (or its last lap of all). Without a number,
+    or with `or_earlier`, a lap whose telemetry the feed broke is passed over
+    for the one before it: the pedal map asks for the lap just completed, and
+    would otherwise draw a lap of solid brake.
     """
-    row = _lap_row(data, driver, lap_number, t)
+    row = _lap_row(data, driver, lap_number, t, or_earlier)
     start, end = float(row["lap_start_t"]), float(row["lap_end_t"])
     car = data.car.get(driver)
     if car is None or len(car.t) == 0:
@@ -83,7 +115,9 @@ def lap(data, driver: int, lap_number: int | None = None, t: float | None = None
 
     speed_g = np.interp(grid, distance, speed)
     throttle_g = np.interp(grid, distance, car.values["throttle"][inside].astype(float))
-    brake_g = stepped("brake").astype(float) > 0
+    # Where the throttle is missing the brake channel is stuck on, so neither
+    # pedal is known there; brake is reported off rather than on throughout.
+    brake_g = (stepped("brake").astype(float) > 0) & np.isfinite(throttle_g)
     gear_g = stepped("gear").astype(int)
     pos = data.position.get(driver)
     if pos is not None and len(pos.t):
@@ -154,6 +188,9 @@ def recent(data, driver: int, t: float, seconds: float = 30.0) -> dict:
         raise NoLap(f"no car telemetry for car {driver}")
     times = np.linspace(t - seconds, t, int(seconds * RECENT_HZ) + 1)
     sampled = car.at(times)
+    # As in `lap`: where the throttle is missing the brake is stuck on, so unknown.
+    known = [v is not None and np.isfinite(v) for v in sampled["throttle"]]
+    sampled["brake"] = [v if ok else None for v, ok in zip(sampled["brake"], known)]
     return {
         "driver_number": driver,
         "seconds": seconds,

@@ -212,14 +212,16 @@ def session_pit_windows(session_key: str, t: float = Query(..., description="ses
 @app.get("/api/sessions/{session_key}/lap")
 def session_lap(session_key: str, driver: int = Query(..., ge=0, le=99),
                 lap: int | None = Query(None, ge=1, le=200),
-                t: float | None = Query(None, description="latest lap completed by this session time")) -> dict:
+                t: float | None = Query(None, description="latest lap completed by this session time"),
+                or_earlier: bool = Query(False, description="that lap, or the latest before it with usable telemetry")
+                ) -> dict:
     """
     One lap of one car by distance: speed, throttle, brake, gear and position
     every five metres, with its brake zones and the corners. Draws the pedal
     map and the traces.
     """
     try:
-        return telemetry.lap(_load(session_key), driver, lap, t)
+        return telemetry.lap(_load(session_key), driver, lap, t, or_earlier)
     except telemetry.NoLap as error:
         raise HTTPException(status_code=404, detail=str(error)) from None
 

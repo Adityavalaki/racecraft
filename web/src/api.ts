@@ -719,9 +719,11 @@ export const api = {
   pitWindows: (key: string, t: number, signal?: AbortSignal) =>
     get<PitWindows>(`/api/sessions/${key}/pit-windows?t=${t.toFixed(2)}`, signal),
   /** One lap by distance: `lap`, or the latest finished by `t`. */
-  lap: (key: string, driver: number, opts: { lap?: number; t?: number }, signal?: AbortSignal) =>
+  /** `orEarlier`: that lap, or the latest before it whose telemetry the feed did not break. */
+  lap: (key: string, driver: number, opts: { lap?: number; t?: number; orEarlier?: boolean }, signal?: AbortSignal) =>
     get<LapTrace>(`/api/sessions/${key}/lap?driver=${driver}`
-      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
+      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : "")
+      + (opts.orEarlier ? "&or_earlier=true" : ""), signal),
   recent: (key: string, driver: number, t: number, seconds = 30, signal?: AbortSignal) =>
     get<RecentTrace>(`/api/sessions/${key}/recent?driver=${driver}&t=${t.toFixed(2)}&seconds=${Math.round(seconds)}`, signal),
   compare: (key: string, driver: number, ref: number, opts: { lap?: number; refLap?: number; t?: number },

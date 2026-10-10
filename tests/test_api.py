@@ -254,6 +254,38 @@ class TestPositionSmoothing:
         x, _ = _smooth_positions(self._channel(), np.array([500.0]), 0.5)
         assert x == [None]
 
+    def test_a_car_is_not_drawn_inside_a_gap_in_its_positions(self):
+        """In the garage the feed has no position; the car must not slide across the map meanwhile."""
+        from racecraft.api.session import Channel, _smooth_positions
+        whole = self._channel()
+        keep = (whole.t < 20) | (whole.t > 60)
+        channel = Channel(t=whole.t[keep], values={k: v[keep] for k, v in whole.values.items()})
+        x, _ = _smooth_positions(channel, np.array([10.0, 21.0, 40.0, 59.0, 70.0]), 0.5)
+        assert x[0] is not None and x[-1] is not None
+        assert x[1:4] == [None, None, None]
+
+
+def test_the_feeds_no_position_is_dropped_not_drawn_at_the_origin():
+    """(0, 0) is "no position" in the feed, marked OnTrack all the same; see 2026 Round 17 FP1."""
+    import duckdb
+
+    from racecraft.api.session import SessionData
+
+    con = duckdb.connect()
+    con.sql("""create table pos_data as select * from (values
+        ('2026_17_FP1', 3, 1.0, -5667.0, 571.0, 2026, 17, 'FP1'),
+        ('2026_17_FP1', 3, 2.0, 0.0, 0.0, 2026, 17, 'FP1'),
+        ('2026_17_FP1', 3, 3.0, -5600.0, 560.0, 2026, 17, 'FP1'),
+        ('2026_17_FP1', 4, 1.0, 0.0, 0.0, 2026, 17, 'FP1'),
+        ('2026_17_FP1', 5, 1.0, 0.0, 120.0, 2026, 17, 'FP1')
+    ) t(session_key, driver_number, t, x, y, year, round, session)""")
+    data = SessionData.__new__(SessionData)
+    data.session_key = "2026_17_FP1"
+    channels = data._load_channels(con, "pos_data", ["x", "y"])
+    assert list(channels[3].t) == [1.0, 3.0]
+    assert 4 not in channels                                    # nothing but "no position"
+    assert list(channels[5].values["x"]) == [0.0]               # on an axis is still a place
+
 
 def test_frames_can_be_served_raw(client):
     smoothed = client.get(f"/api/sessions/{KEY}/frames",

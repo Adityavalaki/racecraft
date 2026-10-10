@@ -221,6 +221,18 @@ class SessionData:
         times = np.ma.filled(arrays["t"], np.nan).astype(np.float64, copy=False)
         values = {c: _compact(c, arrays[c]) for c in columns}
         del arrays
+        if "x" in values and "y" in values:
+            # (0, 0) is the feed's "no position", not a place: a car in the
+            # garage, before it goes out, or while its transponder drops out,
+            # and still marked OnTrack. Kept, it puts the car at the origin
+            # and draws a line to it across the circuit; dropped, the car has
+            # no position there, and is not drawn.
+            real = ~((values["x"] == 0) & (values["y"] == 0))
+            if not real.all():
+                numbers, times = numbers[real], times[real]
+                values = {c: v[real] for c, v in values.items()}
+                if len(numbers) == 0:
+                    return {}
         edges = np.concatenate([[0], np.flatnonzero(np.diff(numbers)) + 1, [len(numbers)]])
         out: dict[int, Channel] = {}
         for first, last in zip(edges[:-1], edges[1:]):
@@ -684,8 +696,13 @@ def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -
     at = np.where(usable, at, np.interp(times, t, distance))
     at = np.maximum.accumulate(at)          # a car only ever goes forward
 
-    # Outside the samples there is nothing to stand on, so say so.
-    stale = (times < t[0] - MAX_INTERPOLATION_GAP_S) | (times > t[-1] + MAX_INTERPOLATION_GAP_S)
+    # Outside the samples there is nothing to stand on, so say so; nor inside a
+    # gap longer than the feed ever leaves while a car is running (the garage,
+    # a dropout), where it would otherwise slide across the circuit.
+    after = np.clip(np.searchsorted(t, times, side="left"), 0, len(t) - 1)
+    before = np.clip(after - 1, 0, len(t) - 1)
+    in_gap = (t[after] - t[before] > MAX_INTERPOLATION_GAP_S) & (times > t[before]) & (times < t[after])
+    stale = (times < t[0] - MAX_INTERPOLATION_GAP_S) | (times > t[-1] + MAX_INTERPOLATION_GAP_S) | in_gap
     xs = np.interp(at, distance, x)
     ys = np.interp(at, distance, y)
     return ([None if bad else v for bad, v in zip(stale, xs)],
