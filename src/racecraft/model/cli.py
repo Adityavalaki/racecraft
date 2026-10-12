@@ -9,6 +9,8 @@ Run the models over the lake: `racecraft-analyse`.
     racecraft-analyse race Baku --grid 8   # plans for one car, ranked in places
     racecraft-analyse predict 2025_04_R    # the race, predicted from before it started
     racecraft-analyse predict-backtest     # every race since 2023, predicted and scored
+    racecraft-analyse predict 2025_06_SQ --sprint   # the sprint, from sprint qualifying
+    racecraft-analyse predict-backtest --sprint     # every sprint since 2023, the same way
 
 Every number the README quotes comes from these commands, so anyone can
 reproduce them rather than taking them on trust.
@@ -494,8 +496,8 @@ def cmd_predict(args) -> int:
     from racecraft.model import predict
 
     con = connect()
-    result = predict.race(con, args.race, runs=args.runs)
-    print(f"{result.event_name} {result.year}: predicted from {', '.join(result.basis['sessions'])}"
+    result = (predict.sprint if args.sprint else predict.race)(con, args.race, runs=args.runs)
+    print(f"{result.event_name} {result.year} {result.kind}: predicted from {', '.join(result.basis['sessions'])}"
           f" and {len(result.basis['form_races'])} earlier races, grid from {result.basis['grid_source']}")
     print(f"{'':>3} {'driver':<6} {'grid':>4} {'win':>6} {'podium':>7} {'points':>7} {'dnf':>5} {'expected':>9} {'range':>7}")
     for i, d in enumerate(result.drivers, start=1):
@@ -503,7 +505,7 @@ def cmd_predict(args) -> int:
               f" {d['dnf']:>5.0%} {d['expected']:>9.1f} {d['p10']:>3}-{d['p90']:<3}")
     for note in result.basis["notes"]:
         print(f"  note: {note}")
-    finish = predict.actual_finish(con, args.race)
+    finish = predict.actual_finish(con, result.race_key)
     if not finish.empty:
         sc = predict.score(result, finish)
         print(f"\nagainst the result: rank correlation {sc['rho']:.2f}, winner {'right' if sc['winner_hit'] else 'wrong'},"
@@ -523,12 +525,13 @@ def cmd_predict_backtest(args) -> int:
     def progress(done, total, key):
         print(f"  {done}/{total} {key}", file=sys.stderr, flush=True)
 
+    kind = "sprint" if args.sprint else "race"
     scores = predict.backtest(con, runs=args.runs, holdout=args.holdout, progress=progress,
-                              seasons=args.season or None)
+                              seasons=args.season or None, kind=kind)
     table = predict.summarise(scores, holdout=args.holdout)
     skipped = [s for s in scores if s.skipped]
     pd.set_option("display.width", 200)
-    print(f"\n{len(scores) - len(skipped)} races predicted, {len(skipped)} skipped")
+    print(f"\n{len(scores) - len(skipped)} {kind}s predicted, {len(skipped)} skipped")
     for s in skipped:
         print(f"  skipped {s.race_key}: {s.skipped}")
     print("\nOrder and picks (higher is better)")
@@ -540,11 +543,12 @@ def cmd_predict_backtest(args) -> int:
     if args.out:
         Path(args.out).write_text(json.dumps([s.__dict__ for s in scores], indent=1, default=str), encoding="utf-8")
     if args.save:
-        rows = predict.training_rows(con, predict.race_keys(con))
+        rows = predict.training_rows(con, predict.race_keys(con, kind=kind), kind)
         years = sorted(int(y) for y in rows["year"].unique() if int(y) < args.holdout)
         cal = predict.fit_calibration(rows[rows["year"].isin(years)], [str(y) for y in years])
-        predict.CALIBRATION_FILE.write_text(json.dumps(cal.as_dict(), indent=2) + "\n", encoding="utf-8")
-        print(f"\nsaved the signals' worth, measured on {', '.join(map(str, years))}, to {predict.CALIBRATION_FILE.name}")
+        target = predict.calibration_file(kind)
+        target.write_text(json.dumps(cal.as_dict(), indent=2) + "\n", encoding="utf-8")
+        print(f"\nsaved the signals' worth, measured on {', '.join(map(str, years))}, to {target.name}")
     return 0
 
 
@@ -606,8 +610,9 @@ def main(argv: list[str] | None = None) -> int:
     circuit_parser.set_defaults(handler=cmd_circuit)
 
     predict_parser = commands.add_parser("predict", help="the race, predicted from before it started")
-    predict_parser.add_argument("race", help="the race's session key, e.g. 2025_04_R")
+    predict_parser.add_argument("race", help="any session of the weekend, e.g. 2025_04_R")
     predict_parser.add_argument("--runs", type=int, default=1000)
+    predict_parser.add_argument("--sprint", action="store_true", help="the weekend's sprint instead of its race")
     predict_parser.set_defaults(handler=cmd_predict)
 
     backtest_parser = commands.add_parser("predict-backtest", help="every race predicted and scored against the grid")
@@ -617,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
                                  help="predict only this season (repeatable); calibrations are unchanged")
     backtest_parser.add_argument("--out", help="write each race's scores here as JSON")
     backtest_parser.add_argument("--save", action="store_true", help="save the signals' worth for predictions")
+    backtest_parser.add_argument("--sprint", action="store_true", help="every sprint instead of every race")
     backtest_parser.set_defaults(handler=cmd_predict_backtest)
 
     args = parser.parse_args(argv)

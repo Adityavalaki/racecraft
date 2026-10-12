@@ -255,26 +255,70 @@ def session_compare(session_key: str, driver: int = Query(..., ge=0, le=99), lap
 
 
 @app.get("/api/sessions/{session_key}/prediction")
-def session_prediction(session_key: str) -> dict:
+def session_prediction(session_key: str,
+                       kind: str = Query("race", pattern="^(race|sprint)$",
+                                         description="the weekend's Grand Prix, or its sprint")) -> dict:
     """
     The race of this weekend, predicted from practice, qualifying, the sprint
     and earlier races: each driver's chance to win, reach the podium and score,
-    and where they are expected to finish.
+    and where they are expected to finish. `kind=sprint` predicts the sprint,
+    from sprint qualifying, FP1 and earlier races.
 
-    Made once qualifying is in, saved, and never recomputed; after the race it
-    comes with the result and the scores beside the grid's. About twenty
-    seconds the first time for a weekend.
+    Made once qualifying (or sprint qualifying) is in, saved, and never
+    recomputed; afterwards it comes with the result and the scores beside the
+    grid's. About twenty seconds the first time for a weekend.
     """
     if session_key == live_store.SESSION_KEY:
         raise HTTPException(status_code=422,
                             detail="open the weekend's qualifying or race from the session list for its prediction")
     _safe(session_key)
     try:
-        return prediction_view.for_session(session_key)
+        return prediction_view.for_session(session_key, kind)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
     except prediction_view.NotPredictable as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@app.get("/api/sessions/{session_key}/standings")
+def session_standings(session_key: str,
+                      moment: str = Query("before", pattern="^(before|after)$",
+                                          description="results before this session started, or with it too")) -> dict:
+    """
+    The drivers' and constructors' championships of this session's season, as
+    they stood when it started (so opening a race does not give its result
+    away), or once it was over.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for its standings")
+    _safe(session_key)
+    import pandas as pd
+
+    from racecraft.model import standings
+
+    con = connect()
+    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
+    year, start = int(row[0]), pd.Timestamp(row[1])
+    start = start.tz_localize("UTC") if start.tzinfo is None else start
+    # A second past the start takes in this session and nothing after it on the same weekend.
+    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    body = standings.standings(con, year, as_of=as_of).as_dict()
+    body["moment"] = moment
+    return body
+
+
+@app.get("/api/sessions/{session_key}/weekend")
+def session_weekend(session_key: str) -> dict:
+    """The weekend's sessions in the lake, in running order, and whether it has a sprint."""
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="live has no weekend in the lake yet")
+    _safe(session_key)
+    try:
+        return prediction_view.weekend_of(session_key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
 
 
 @app.get("/api/sessions/{session_key}/tyre-sets")

@@ -22,6 +22,12 @@ Four signals, each a pace relative to the field's median, in seconds a lap
 
 Each comes from data the lake already holds, through the same cleaning and
 fits the rest of the models use.
+
+`sprint_evidence` is the same for a sprint, as known once sprint qualifying is
+in: its gap stands for qualifying's, FP1 is the only practice there is, and
+the sprint's own pace is the answer rather than a signal. Only sessions run
+before the sprint are read: in 2023 the Grand Prix's qualifying came first,
+and from 2024 it comes after.
 """
 
 from __future__ import annotations
@@ -58,6 +64,12 @@ BACK_OF_GRID = 99
 # read too, as a signal of its own: the calibration measures how much a winter
 # of development (or a new rulebook) erodes it.
 CARRY_UNTIL = 3
+# Sprint qualifying's codes: the "sprint shootout" of 2023, "sprint qualifying" since.
+SPRINT_QUALIFYING = ("SQ", "SS")
+# A sprint lap is compared with the field's only where this many cars set a
+# clean one, and a driver's sprint pace needs this many such laps.
+SPRINT_PACE_CARS = 5
+SPRINT_PACE_LAPS = 5
 # Seasons that start a new rulebook: the cars are new, and last season's order
 # says little about this one. Known in advance, so it is not hindsight; but it
 # was added after the replay showed 2026 openers predicted worse with it.
@@ -246,6 +258,58 @@ def race_key_of(year: int, rnd: int) -> str:
     return f"{int(year)}_{int(rnd):02d}_R"
 
 
+def sprint_key_of(year: int, rnd: int) -> str:
+    return f"{int(year)}_{int(rnd):02d}_S"
+
+
+class NotSprintWeekend(LookupError):
+    """The weekend has no sprint."""
+
+
+def sessions_of(con, session_key: str) -> list[str]:
+    """The weekend's sessions in the lake, in the order they ran."""
+    return _weekend(con, session_key).sort_values("date_utc")["session"].astype(str).tolist()
+
+
+def is_sprint_weekend(codes) -> bool:
+    return any(code in codes for code in (*SPRINT_QUALIFYING, "S"))
+
+
+def _form_and_carry(con, year: int, rnd: int):
+    """Recent form, and last season's for a season's first races; the notes say which."""
+    form_s, form_races, degradation, offsets = form(con, year, rnd)
+    carry_s = pd.Series(dtype=float)
+    notes: list[str] = []
+    if len(form_races) < CARRY_UNTIL and year not in NEW_RULES:
+        carry_s, carried, _, _ = form(con, year - 1, 99)
+        if carried:
+            notes.append(f"early in the season: the end of {year - 1} is read too")
+    if form_s.empty:
+        notes.append("first race of the season: no earlier races to judge form or tyre wear from")
+    return form_s, form_races, degradation, offsets, carry_s, notes
+
+
+def _driver_table(con, result_keys: list[str], slots: pd.Series, columns: dict) -> pd.DataFrame:
+    """A row per driver: who they are, their grid slot, and each signal (missing where unread)."""
+    marks = ", ".join("?" for _ in result_keys)
+    drivers = con.execute(f"""select driver_number, abbreviation, team_name, team_color from results
+                              where session_key in ({marks})""", result_keys).df()
+    drivers = drivers.drop_duplicates("driver_number")
+    drivers = drivers.set_index(drivers["driver_number"].astype(int).values)
+    table = pd.DataFrame(index=sorted(set(drivers.index) | set(slots.index)))
+    table.index.name = "driver_number"
+    table["abbreviation"] = drivers["abbreviation"]
+    table["team_name"] = drivers["team_name"]
+    table["team_color"] = drivers["team_color"]
+    table["grid"] = slots
+    for name, values in columns.items():
+        table[name] = values
+    table["grid"] = table["grid"].fillna(BACK_OF_GRID)
+    # Qualifying gaps are one-lap times; relative to the field like the rest.
+    table["quali_gap_s"] = table["quali_gap_s"] - table["quali_gap_s"].median()
+    return table
+
+
 def evidence(con, session_key: str) -> Evidence:
     """
     Everything known about each driver before the race starts. `session_key`
@@ -259,14 +323,8 @@ def evidence(con, session_key: str) -> Evidence:
     event = weekend.loc[weekend["session"] == "R"]
     notes: list[str] = []
 
-    form_s, form_races, degradation, offsets = form(con, year, rnd)
-    carry_s = pd.Series(dtype=float)
-    if len(form_races) < CARRY_UNTIL and year not in NEW_RULES:
-        carry_s, carried, _, _ = form(con, year - 1, 99)
-        if carried:
-            notes.append(f"early in the season: the end of {year - 1} is read too")
-    if form_s.empty:
-        notes.append("first race of the season: no earlier races to judge form or tyre wear from")
+    form_s, form_races, degradation, offsets, carry_s, early = _form_and_carry(con, year, rnd)
+    notes += early
 
     quali_key = by_code.get("Q")
     quali = quali_gap(con, quali_key) if quali_key else pd.Series(dtype=float)
@@ -277,25 +335,14 @@ def evidence(con, session_key: str) -> Evidence:
     if grid_source == "qualifying":
         notes.append("grid taken from qualifying: penalties not applied")
 
-    drivers = con.execute("""select driver_number, abbreviation, team_name, team_color from results
-                             where session_key in (?, ?)""", [race_key, quali_key or race_key]).df()
-    drivers = drivers.drop_duplicates("driver_number")
-    drivers = drivers.set_index(drivers["driver_number"].astype(int).values)
-    table = pd.DataFrame(index=sorted(set(drivers.index) | set(slots.index)))
-    table.index.name = "driver_number"
-    table["abbreviation"] = drivers["abbreviation"]
-    table["team_name"] = drivers["team_name"]
-    table["team_color"] = drivers["team_color"]
-    table["grid"] = slots
-    table["quali_gap_s"] = quali
-    table["long_run_s"] = runs["long_run_s"] if "long_run_s" in runs else np.nan
-    table["long_run_laps"] = runs["long_run_laps"] if "long_run_laps" in runs else 0.0
-    table["sprint_s"] = sprint
-    table["form_s"] = form_s
-    table["carry_s"] = carry_s
-    table["grid"] = table["grid"].fillna(BACK_OF_GRID)
-    # Qualifying gaps are one-lap times; relative to the field like the rest.
-    table["quali_gap_s"] = table["quali_gap_s"] - table["quali_gap_s"].median()
+    table = _driver_table(con, [race_key, quali_key or race_key], slots, {
+        "quali_gap_s": quali,
+        "long_run_s": runs["long_run_s"] if "long_run_s" in runs else np.nan,
+        "long_run_laps": runs["long_run_laps"] if "long_run_laps" in runs else 0.0,
+        "sprint_s": sprint,
+        "form_s": form_s,
+        "carry_s": carry_s,
+    })
     used = [code for code in ("FP1", "FP2", "FP3", "SQ", "S", "Q") if code in by_code]
     return Evidence(
         race_key=race_key, year=year, round=rnd,
@@ -306,9 +353,80 @@ def evidence(con, session_key: str) -> Evidence:
     )
 
 
+def sprint_evidence(con, session_key: str) -> Evidence:
+    """
+    Everything known about each driver before the sprint starts, from any
+    session of a sprint weekend. Raises `NotSprintWeekend` on any other.
+    """
+    weekend = _weekend(con, session_key).sort_values("date_utc")
+    year, rnd = int(weekend["year"].iloc[0]), int(weekend["round"].iloc[0])
+    by_code = dict(zip(weekend["session"], weekend["session_key"]))
+    if not is_sprint_weekend(by_code):
+        raise NotSprintWeekend(f"{weekend['event_name'].iloc[0]} {year} has no sprint")
+    sprint_key = sprint_key_of(year, rnd)
+    # What had run by the sprint's start; with the sprint not in the lake yet,
+    # everything but the race, which always comes after it.
+    if "S" in by_code:
+        start = weekend.loc[weekend["session"] == "S", "date_utc"].iloc[0]
+        before = weekend[weekend["date_utc"] < start]["session"].tolist()
+    else:
+        before = [code for code in by_code if code != "R"]
+    notes: list[str] = []
+
+    form_s, form_races, degradation, offsets, carry_s, early = _form_and_carry(con, year, rnd)
+    notes += early
+    sq_code = next((code for code in SPRINT_QUALIFYING if code in before), None)
+    sq_key = by_code.get(sq_code) if sq_code else None
+    quali = quali_gap(con, sq_key) if sq_key else pd.Series(dtype=float)
+    practice = {code: _laps(con, by_code[code]) for code in before if code in PRACTICE_WEIGHT}
+    runs = long_runs(practice, degradation, offsets)
+    slots, grid_source = grid(con, sprint_key, sq_key)
+    if grid_source == "qualifying":
+        notes.append("grid taken from sprint qualifying: penalties not applied")
+
+    table = _driver_table(con, [sprint_key, sq_key or sprint_key], slots, {
+        "quali_gap_s": quali,
+        "long_run_s": runs["long_run_s"] if "long_run_s" in runs else np.nan,
+        "long_run_laps": runs["long_run_laps"] if "long_run_laps" in runs else 0.0,
+        "sprint_s": np.nan,                         # the sprint is what is being predicted
+        "form_s": form_s,
+        "carry_s": carry_s,
+    })
+    used = [code for code in before if code in PRACTICE_WEIGHT] + ([sq_code] if sq_code else [])
+    event = weekend.iloc[0]
+    return Evidence(
+        race_key=sprint_key, year=year, round=rnd, event_name=str(event["event_name"]),
+        location=str(event["location"]), table=table, sessions_used=used, form_races=form_races,
+        grid_source=grid_source, notes=notes, race_in_lake="S" in by_code,
+    )
+
+
+def sprint_pace(laps: pd.DataFrame) -> pd.Series:
+    """
+    A sprint's pace per driver, relative to the field's median: each clean lap
+    against the field's median on that same lap (which takes out fuel and the
+    track), the driver's median of those, over at least SPRINT_PACE_LAPS laps.
+
+    Not the lap-effects fit `race_pace` uses: nobody stops in a sprint, so a
+    driver alone on a compound has nothing to separate the tyre from the
+    driver, and the fit puts them a hundred seconds a lap off (Russell on the
+    only softs, China 2024). The tyre a driver chose is part of their sprint.
+    """
+    clean = pace_model.clean_race_laps(laps)
+    if clean.empty:
+        return pd.Series(dtype=float)
+    field = clean.groupby("lap_number")["lap_time_s"].transform("median")
+    cars = clean.groupby("lap_number")["lap_time_s"].transform("size")
+    delta = (clean["lap_time_s"] - field)[cars >= SPRINT_PACE_CARS]
+    by_driver = delta.groupby(clean.loc[delta.index, "driver_number"].astype(int))
+    pace = by_driver.median()[by_driver.size() >= SPRINT_PACE_LAPS]
+    return (pace - pace.median()) if len(pace) else pace
+
+
 def actual_pace(con, race_key: str) -> pd.Series:
     """
-    What the race showed each driver's pace to be: the answer the blend is
-    fitted against. Never an input to a prediction.
+    What the race (or the sprint) showed each driver's pace to be: the answer
+    the blend is fitted against. Never an input to a prediction.
     """
-    return race_pace(_laps(con, race_key))
+    laps = _laps(con, race_key)
+    return sprint_pace(laps) if race_key.endswith("_S") else race_pace(laps)

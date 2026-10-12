@@ -572,8 +572,68 @@ export interface PredictionScore {
 }
 
 /** The weekend's race, predicted from before it started; with the result once there is one. */
+/** One Grand Prix finish in a driver's form strip: the place, or why there was none ("R", "D", ...). */
+export interface StandingsFinish {
+  round: number;
+  event_name: string;
+  position: number | null;
+  status: string | null;
+}
+
+export interface DriverStanding {
+  position: number;
+  driver_number: number;
+  abbreviation: string;
+  full_name: string | null;
+  team_name: string | null;
+  team_color: string | null;
+  points: number;
+  gap: number;
+  wins: number;
+  podiums: number;
+  sprint_wins: number;
+  /** Places gained (+) or lost since before the latest weekend counted; null for a first appearance. */
+  change: number | null;
+  form: StandingsFinish[];
+}
+
+export interface ConstructorStanding {
+  position: number;
+  team: string;
+  team_color: string | null;
+  points: number;
+  gap: number;
+  wins: number;
+  podiums: number;
+  drivers: { abbreviation: string; points: number }[];
+}
+
+export type StandingsMoment = "before" | "after";
+
+/** The championships as they stood when a session started, or once it was over. */
+export interface Standings {
+  year: number;
+  moment: StandingsMoment;
+  drivers: DriverStanding[];
+  constructors: ConstructorStanding[];
+  races: number;
+  sprints: number;
+  last: { round: number; event_name: string; session: string } | null;
+  notes: string[];
+}
+
+/** A weekend's sessions in the lake, in running order, and whether it has a sprint. */
+export interface WeekendInfo {
+  sessions: string[];
+  sprint: boolean;
+}
+
+export type PredictionKind = "race" | "sprint";
+
 export interface Prediction {
   race_key: string;
+  /** The weekend's Grand Prix or its sprint; predictions saved before sprints were predicted say "race". */
+  kind?: PredictionKind;
   event_name: string;
   year: number;
   round: number;
@@ -584,8 +644,10 @@ export interface Prediction {
     grid_source: string;
     retire_rate: number;
     runs: number;
+    /** The sprint's distance; a race prediction leaves it out. */
+    laps?: number;
     reference_plan: string;
-    calibration: { fitted_on: string[] };
+    calibration: { fitted_on: string[]; scale?: Record<string, number>; noise_sd?: Record<string, number> };
     notes: string[];
   };
   made_at: string;
@@ -732,8 +794,12 @@ export const api = {
       + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.refLap != null ? `&ref_lap=${opts.refLap}` : "")
       + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
   /** Twenty seconds the first time for a weekend, then saved for good. */
-  prediction: (key: string, signal?: AbortSignal) =>
-    get<Prediction>(`/api/sessions/${key}/prediction`, signal),
+  prediction: (key: string, kind: PredictionKind, signal?: AbortSignal) =>
+    get<Prediction>(`/api/sessions/${key}/prediction${kind === "sprint" ? "?kind=sprint" : ""}`, signal),
+  weekend: (key: string, signal?: AbortSignal) => get<WeekendInfo>(`/api/sessions/${key}/weekend`, signal),
+  /** The season's championships, from results before this session (or with it, `after`). */
+  standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
   /** Points live at the newest recording. Attaching again to the same one changes nothing. */
   liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
   /** Starts a sync of the latest race weekends, or reports the one running. */

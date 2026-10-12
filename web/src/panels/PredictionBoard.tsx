@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, type Prediction, type PredictionDriver, type PredictionScore } from "../api";
+import {
+  api, type Prediction, type PredictionDriver, type PredictionKind, type PredictionScore, type WeekendInfo,
+} from "../api";
 
 interface Props {
   sessionKey: string;
@@ -13,60 +15,113 @@ const SESSION_NAMES: Record<string, string> = {
 const SIGNAL_NAMES: Record<string, string> = {
   quali_gap_s: "qualifying", long_run_s: "long runs", sprint_s: "sprint", form_s: "form", carry_s: "last season",
 };
+/** The signals as the note about their worth names them, for each kind of prediction. */
+const SIGNAL_WORDS: Record<PredictionKind, Record<string, string>> = {
+  race: { quali_gap_s: "qualifying", long_run_s: "practice long runs", sprint_s: "the sprint",
+          form_s: "recent race pace", carry_s: "last season's form" },
+  sprint: { quali_gap_s: "sprint qualifying", long_run_s: "FP1 long runs", sprint_s: "the sprint",
+            form_s: "recent race pace", carry_s: "last season's form" },
+};
+const SPRINT_SESSIONS = ["SQ", "SS", "S"];
+const NO_WEEKEND: WeekendInfo = { sessions: [], sprint: false };
 
 /**
- * The race, predicted from before it started.
+ * The race, predicted from before it started; on a sprint weekend, the sprint too.
  *
  * Practice long runs, qualifying, the sprint and the season's earlier races
  * give each driver a race pace and how sure it is; the race simulator then runs
  * the race a thousand times from the real grid, with this circuit's pit lane,
  * overtaking and safety cars, and retirements at the season's rate. What comes
- * back is chances, not a call: who wins most often, and how often.
+ * back is chances, not a call: who wins most often, and how often. The sprint
+ * is the same from sprint qualifying, FP1 and the earlier races, over its own
+ * distance with no stops, its signals weighed on past sprints.
  *
- * It is saved the first time it is made, once qualifying is in, and never
- * recomputed, so after the race this is what was said on Saturday night, with
- * the result beside it and the same scores the replay of every race since 2023
+ * Each is saved the first time it is made, once its qualifying is in, and never
+ * recomputed, so afterwards this is what was said beforehand, with the result
+ * beside it and the same scores the replay of every race and sprint since 2023
  * uses, against simply finishing where you started.
  */
 export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
+  const [weekend, setWeekend] = useState<WeekendInfo | null>(null);
+  const [kind, setKind] = useState<PredictionKind | null>(null);
   const [answer, setAnswer] = useState<Prediction | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Which weekend this is, to offer the sprint and to open on the one that is next.
   useEffect(() => {
+    const controller = new AbortController();
+    setWeekend(null);
+    setKind(null);
+    api
+      .weekend(sessionKey, controller.signal)
+      .then((body) => {
+        const known = isWeekend(body) ? body : NO_WEEKEND;
+        setWeekend(known);
+        setKind(openingKind(sessionKey, known));
+      })
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        setWeekend(NO_WEEKEND);
+        setKind("race");
+      });
+    return () => controller.abort();
+  }, [sessionKey]);
+
+  useEffect(() => {
+    if (!kind) return;
     const controller = new AbortController();
     setAnswer(null);
     setError(null);
     api
-      .prediction(sessionKey, controller.signal)
+      .prediction(sessionKey, kind, controller.signal)
       .then(setAnswer)
       .catch((e: Error) => {
         if (e.name !== "AbortError") setError(String(e.message ?? e));
       });
     return () => controller.abort();
-  }, [sessionKey]);
+  }, [sessionKey, kind]);
 
-  if (error) return <div className="panel-note error">{error}</div>;
+  const shown: PredictionKind = kind ?? "race";
+  const switcher = weekend?.sprint ? (
+    <div className="segmented prediction-kind" role="radiogroup" aria-label="Which race">
+      {([["race", "Grand Prix"], ["sprint", "Sprint"]] as [PredictionKind, string][]).map(([key, text]) => (
+        <button key={key} type="button" role="radio" aria-checked={shown === key} className={shown === key ? "is-on" : ""}
+                onClick={() => setKind(key)}>{text}</button>
+      ))}
+    </div>
+  ) : null;
+
+  if (error) return <div className="prediction">{switcher}<div className="panel-note error">{error}</div></div>;
   if (!answer) {
     return (
-      <div className="panel-note">
-        Predicting the race: a thousand simulated races from this weekend's running. About twenty
-        seconds the first time; saved after that.
+      <div className="prediction">
+        {switcher}
+        <div className="panel-note">
+          {shown === "sprint"
+            ? "Predicting the sprint: a thousand simulated sprints from sprint qualifying, FP1 and the season so far. About ten seconds the first time; saved after that."
+            : "Predicting the race: a thousand simulated races from this weekend's running. About twenty seconds the first time; saved after that."}
+        </div>
       </div>
     );
   }
 
+  const sprint = (answer.kind ?? "race") === "sprint";
+  const event = sprint ? "sprint" : "race";
   const finish = answer.result?.finish ?? null;
   const cars = answer.drivers.length;
+  const worth = signalRanking(answer, sprint ? "sprint" : "race");
   return (
     <div className="prediction">
+      {switcher}
       <p className="prediction-basis">
-        <b>{answer.before_race ? "Made before the race" : "Rebuilt after the race, from what was known before it"}</b>
+        <b>{answer.before_race ? `Made before the ${event}` : `Rebuilt after the ${event}, from what was known before it`}</b>
         {" · "}from {answer.basis.sessions.map((code) => SESSION_NAMES[code] ?? code).join(", ")}
         {answer.basis.form_races.length > 0 && ` and ${answer.basis.form_races.length} earlier races`}
-        {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid" : "qualifying, penalties not applied"}
+        {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid"
+          : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
       </p>
 
-      <Headline answer={answer} />
+      <Headline answer={answer} event={event} />
 
       <div className="prediction-table" role="table" aria-label="Predicted finishing order">
         <div className="prediction-row is-head" role="row">
@@ -76,7 +131,7 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
           <span role="columnheader" className="num">Grid</span>
           <span role="columnheader">Win</span>
           <span role="columnheader">Podium</span>
-          <span role="columnheader">Points</span>
+          <span role="columnheader" title={sprint ? "Finishing in the top eight, who score in a sprint" : "Finishing in the top ten"}>Points</span>
           <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">Exp.</span>
           <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
           <span role="columnheader" className="num" title="Chance of not finishing">DNF</span>
@@ -90,14 +145,23 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
       </div>
 
       <ul className="prediction-notes">
+        {sprint ? (
+          <li>
+            Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated sprints
+            {answer.basis.laps ? ` of ${answer.basis.laps} laps` : ""}, with no stops. Retirements are drawn
+            at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate scaled to the sprint's distance,
+            and safety cars at this circuit's; first-lap incidents, rain and team orders are not modelled.
+          </li>
+        ) : (
+          <li>
+            Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated races. Retirements are drawn
+            at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate so far, and safety cars at this
+            circuit's; first-lap incidents, rain and team orders are not modelled.
+          </li>
+        )}
         <li>
-          Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated races. Retirements are drawn
-          at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate so far, and safety cars at this
-          circuit's; first-lap incidents, rain and team orders are not modelled.
-        </li>
-        <li>
-          What each signal is worth was measured on {answer.basis.calibration.fitted_on.join(", ")}: recent race
-          pace counts most, then qualifying; practice long runs least, since fuel loads are unknown.
+          What each signal is worth was measured on {sprint ? "the sprints of " : ""}
+          {answer.basis.calibration.fitted_on.join(", ")}{worth ? `: ${worth}` : ""}.
         </li>
         {answer.basis.notes.map((note) => <li key={note}>{note}</li>)}
       </ul>
@@ -166,7 +230,7 @@ function Chance({ value, kind }: { value: number; kind: string }) {
  * The race in three cards: the favourite and how often they win, the podium
  * chances, and (after the race) how the prediction scored against the grid.
  */
-function Headline({ answer }: { answer: Prediction }) {
+function Headline({ answer, event }: { answer: Prediction; event: "race" | "sprint" }) {
   const favourite = [...answer.drivers].sort((a, b) => b.win - a.win)[0];
   const podium = [...answer.drivers].sort((a, b) => b.podium - a.podium).slice(0, 4);
   if (!favourite) return null;
@@ -185,7 +249,7 @@ function Headline({ answer }: { answer: Prediction }) {
         <div className="segments" aria-hidden="true">
           {Array.from({ length: segments }, (_, k) => <span key={k} className={k < lit ? "is-lit" : ""} />)}
         </div>
-        <span className="card-note">Wins {percent(favourite.win)} of {answer.basis.runs.toLocaleString()} simulated races.</span>
+        <span className="card-note">Wins {percent(favourite.win)} of {answer.basis.runs.toLocaleString()} simulated {event}s.</span>
       </section>
       <section className="panel podium-card" aria-label="Podium chances">
         <span className="card-label">Podium chances</span>
@@ -202,7 +266,7 @@ function Headline({ answer }: { answer: Prediction }) {
         : (
           <section className="panel score-card" aria-label="How it scored">
             <span className="card-label">Scored against the result</span>
-            <p className="card-note">After the race, the result goes beside each driver and the prediction is scored against the grid.</p>
+            <p className="card-note">After the {event}, the result goes beside each driver and the prediction is scored against the grid.</p>
           </section>
         )}
     </div>
@@ -260,6 +324,40 @@ function surpriseTitle(actual: number, driver: PredictionDriver): string {
   if (actual < driver.p10) return `Better than the likely range (P${driver.p10}–P${driver.p90})`;
   if (actual > driver.p90) return `Worse than the likely range (P${driver.p10}–P${driver.p90}), or did not finish`;
   return `Inside the likely range (P${driver.p10}–P${driver.p90})`;
+}
+
+function isWeekend(body: unknown): body is WeekendInfo {
+  const value = body as WeekendInfo | null;
+  return !!value && Array.isArray(value.sessions) && typeof value.sprint === "boolean";
+}
+
+/**
+ * Which prediction to open on: the sprint from its own sessions, and from
+ * earlier in a sprint weekend before the Grand Prix's qualifying has run;
+ * otherwise the Grand Prix.
+ */
+export function openingKind(sessionKey: string, weekend: WeekendInfo): PredictionKind {
+  if (!weekend.sprint) return "race";
+  const code = sessionKey.split("_")[2] ?? "";
+  if (SPRINT_SESSIONS.includes(code)) return "sprint";
+  return weekend.sessions.includes("Q") ? "race" : "sprint";
+}
+
+/**
+ * What the measured weights say, in words: signals ranked by how much each
+ * tells (its scale squared over its noise), as the calibration has them.
+ */
+export function signalRanking(answer: Prediction, kind: PredictionKind): string | null {
+  const { scale, noise_sd: noise } = answer.basis.calibration;
+  if (!scale || !noise) return null;
+  const words = SIGNAL_WORDS[kind];
+  const ranked = Object.keys(scale)
+    .filter((name) => noise[name] && words[name])
+    .sort((a, b) => (scale[b]! / noise[b]!) ** 2 - (scale[a]! / noise[a]!) ** 2)
+    .map((name) => words[name]!);
+  if (ranked.length < 2) return null;
+  if (ranked.length === 2) return `${ranked[0]} counts most, then ${ranked[1]}`;
+  return `${ranked[0]} counts most, then ${ranked.slice(1, -1).join(", then ")}; ${ranked[ranked.length - 1]} least`;
 }
 
 /** A chance as a whole percent, with "<1%" rather than a misleading 0 for the rare but possible. */

@@ -13,6 +13,9 @@ everything after it out), saved the same way, and marked as rebuilt.
 
 Either way, once the race is in the lake the answer carries the result next to
 the prediction, and the same scores the replay uses, beside the grid's.
+
+The sprint is served the same way (`kind="sprint"`), made once sprint
+qualifying is in and saved as `<sprint>.json`.
 """
 
 from __future__ import annotations
@@ -48,24 +51,39 @@ def predictions_dir() -> Path:
     return config.DATA_DIR / "predictions"
 
 
-def for_session(session_key: str) -> dict:
-    """The prediction for the race of the weekend `session_key` belongs to, with the result if there is one."""
+def for_session(session_key: str, kind: str = "race") -> dict:
+    """
+    The prediction for the race (or the sprint) of the weekend `session_key`
+    belongs to, with the result if there is one.
+    """
     _safe(session_key)
     con = connect()
-    ev = weekend.evidence(con, session_key)          # KeyError for a session not in the lake
+    try:
+        # KeyError for a session not in the lake
+        ev = (weekend.sprint_evidence if kind == "sprint" else weekend.evidence)(con, session_key)
+    except weekend.NotSprintWeekend as error:
+        raise NotPredictable(f"{error}: there is no sprint to predict") from None
     race_key = ev.race_key
     path = predictions_dir() / f"{race_key}.json"
 
     saved = _read(path)
     if saved is None:
-        saved = _make_once(con, session_key, race_key, ev, path)
+        saved = _make_once(con, session_key, race_key, ev, path, kind)
 
     answer = dict(saved)
-    answer["result"] = _result(con, race_key, saved) if ev.race_in_lake else None
+    answer.setdefault("kind", "race")                # saved before sprints were predicted
+    answer["result"] = _result(con, race_key, saved, kind) if ev.race_in_lake else None
     return answer
 
 
-def _make_once(con, session_key: str, race_key: str, ev, path: Path) -> dict:
+def weekend_of(session_key: str) -> dict:
+    """The weekend's sessions in the lake, and whether it has a sprint."""
+    _safe(session_key)
+    codes = weekend.sessions_of(connect(), session_key)       # KeyError for a session not in the lake
+    return {"sessions": codes, "sprint": weekend.is_sprint_weekend(codes)}
+
+
+def _make_once(con, session_key: str, race_key: str, ev, path: Path, kind: str = "race") -> dict:
     """Make and save the prediction, one computation per race however many windows ask."""
     while True:
         with _lock:
@@ -78,11 +96,11 @@ def _make_once(con, session_key: str, race_key: str, ev, path: Path) -> dict:
                 break
         waiting.wait(timeout=300)
     try:
-        ready, waiting_for = _ready(ev)
+        ready, waiting_for = _ready(ev, kind)
         if not ready:
-            raise NotPredictable(f"the prediction is made once {waiting_for} is in")
+            raise NotPredictable(f"the {kind} prediction is made once {waiting_for} is in")
         try:
-            made = predict.race(con, session_key, runs=RUNS)
+            made = (predict.sprint if kind == "sprint" else predict.race)(con, session_key, runs=RUNS)
         except race_inputs.NotEnoughData as error:
             raise NotPredictable(str(error)) from None
         body = made.as_dict()
@@ -90,7 +108,7 @@ def _make_once(con, session_key: str, race_key: str, ev, path: Path) -> dict:
         body["in_sample"] = str(ev.year) in body["basis"]["calibration"]["fitted_on"]
         if ev.race_in_lake:
             body["basis"]["notes"].append(
-                "rebuilt after the race, from what was known before it: nothing from the race or later is used")
+                f"rebuilt after the {kind}, from what was known before it: nothing from the {kind} or later is used")
         if body["in_sample"]:
             body["basis"]["notes"].append(
                 f"{ev.year} is one of the seasons the signals were weighed on, so this is not a pure forecast")
@@ -101,8 +119,11 @@ def _make_once(con, session_key: str, race_key: str, ev, path: Path) -> dict:
             _computing.pop(race_key).set()
 
 
-def _ready(ev) -> tuple[bool, str]:
+def _ready(ev, kind: str = "race") -> tuple[bool, str]:
     """Qualifying sets the grid; on a sprint weekend the sprint comes before the race too."""
+    if kind == "sprint":
+        ready = any(code in ev.sessions_used for code in weekend.SPRINT_QUALIFYING)
+        return ready, "" if ready else "sprint qualifying"
     if "Q" not in ev.sessions_used:
         return False, "qualifying"
     sprint_weekend = any(code in ev.sessions_used for code in ("SQ", "SS"))
@@ -111,7 +132,7 @@ def _ready(ev) -> tuple[bool, str]:
     return True, ""
 
 
-def _result(con, race_key: str, saved: dict) -> dict | None:
+def _result(con, race_key: str, saved: dict, kind: str = "race") -> dict | None:
     finish = predict.actual_finish(con, race_key)
     if finish.empty:
         return None
@@ -119,7 +140,7 @@ def _result(con, race_key: str, saved: dict) -> dict | None:
     grid = grid[grid < weekend.BACK_OF_GRID]
     years = [int(y) for y in saved["basis"]["calibration"]["fitted_on"]] or [saved["year"] - 1]
     model = predict.score(saved, finish)
-    baseline = predict.grid_score(grid, finish, predict.slot_chances(con, years))
+    baseline = predict.grid_score(grid, finish, predict.slot_chances(con, years, kind))
     return {
         "finish": {str(int(d)): int(p) for d, p in finish.items()},
         "scores": {"model": _plain(model), "grid": _plain(baseline)},

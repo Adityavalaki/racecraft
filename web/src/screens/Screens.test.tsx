@@ -275,3 +275,53 @@ describe("settings", () => {
     expect(speedIn(null, "metric").value).toBe("—");
   });
 });
+
+describe("StandingsScreen", () => {
+  const table = (moment: "before" | "after") => ({
+    year: 2026, moment, races: moment === "before" ? 14 : 15, sprints: 5,
+    last: { round: 15, event_name: "Azerbaijan Grand Prix", session: moment === "before" ? "sprint" : "Grand Prix" },
+    drivers: [
+      { position: 1, driver_number: 63, abbreviation: "RUS", full_name: "George Russell", team_name: "Mercedes",
+        team_color: "00D7B6", points: 238, gap: 0, wins: 3, podiums: 8, sprint_wins: 1, change: 1,
+        form: [{ round: 14, event_name: "Italian Grand Prix", position: 1, status: null },
+               { round: 15, event_name: "Azerbaijan Grand Prix", position: null, status: "R" }] },
+      { position: 2, driver_number: 3, abbreviation: "VER", full_name: "Max Verstappen", team_name: "Red Bull Racing",
+        team_color: "4781D7", points: 213, gap: 25, wins: 2, podiums: 9, sprint_wins: 0, change: -1, form: [] },
+    ],
+    constructors: [
+      { position: 1, team: "Mercedes", team_color: "00D7B6", points: 573, gap: 0, wins: 11, podiums: 22,
+        drivers: [{ abbreviation: "ANT", points: 335 }, { abbreviation: "RUS", points: 238 }] },
+      { position: 2, team: "Red Bull Racing", team_color: "4781D7", points: 324, gap: 249, wins: 2, podiums: 10,
+        drivers: [{ abbreviation: "VER", points: 213 }, { abbreviation: "LAW", points: 14 }] },
+    ],
+    notes: ["Singapore Grand Prix sprint: the feed sent no points, so they are worked out from the classified positions"],
+  });
+
+  it("shows both championships as they stood going into the session, and after it on request", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      ({ ok: true, json: async () => table(url.endsWith("moment=after") ? "after" : "before") }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const onSelect = vi.fn();
+    render(<ScreenView id="standings" ctx={context({ onSelect })} />);
+
+    const drivers = within(await screen.findByRole("table", { name: "Drivers' standings" }));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/standings?moment=before");
+    expect(drivers.getByText("RUS")).toBeDefined();
+    expect(drivers.getByText("238")).toBeDefined();
+    expect(drivers.getByText("−25")).toBeDefined();                       // VER's gap to the leader
+    expect(drivers.getByLabelText("up 1 since the last weekend")).toBeDefined();
+    expect(drivers.getByLabelText("Latest finishes: P1, retired")).toBeDefined();
+    const teams = within(screen.getByRole("table", { name: "Constructors' standings" }));
+    expect(teams.getByText("573")).toBeDefined();
+    expect(teams.getByText("VER 213 · LAW 14")).toBeDefined();            // who scored them
+    expect(screen.getByText(/after 14 Grands Prix and 5 sprints, the latest the Azerbaijan Grand Prix sprint/)).toBeDefined();
+    expect(screen.getByText(/the feed sent no points/)).toBeDefined();
+
+    fireEvent.click(drivers.getByText("VER"));
+    expect(onSelect).toHaveBeenCalledWith(3);
+
+    fireEvent.click(screen.getByRole("radio", { name: "After it" }));
+    expect(await screen.findByText(/after 15 Grands Prix/)).toBeDefined();
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/sessions/2026_15_R/standings?moment=after");
+  });
+});

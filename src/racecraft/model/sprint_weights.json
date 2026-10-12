@@ -1,0 +1,24 @@
+{
+  "scale": {
+    "quali_gap_s": 0.8398,
+    "long_run_s": 0.1836,
+    "form_s": 0.6427
+  },
+  "noise_sd": {
+    "quali_gap_s": 0.6003,
+    "long_run_s": 0.8993,
+    "form_s": 0.4009
+  },
+  "prior_sd": 0.708,
+  "inflate": 1.2019,
+  "rows": {
+    "quali_gap_s": 294,
+    "long_run_s": 174,
+    "form_s": 274
+  },
+  "fitted_on": [
+    "2023",
+    "2024",
+    "2025"
+  ]
+}

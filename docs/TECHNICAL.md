@@ -1143,6 +1143,82 @@ What it cannot see:
 It is honest about the parts that are chance: retirements and safety cars are
 drawn at random, and its percentages say so.
 
+### Sprint prediction
+
+The sprint is predicted the same way, once sprint qualifying is in
+(`predict.sprint`, `weekend.sprint_evidence`):
+
+- **What it reads:** only sessions that ran before the sprint started. That is
+  FP1 and sprint qualifying (the 2023 "shootout"). In 2023 the Grand Prix's
+  qualifying came first too, but it is not read; from 2024 it comes after.
+- **The signals:** the sprint qualifying gap, FP1 long runs and recent race pace,
+  as for the race. There is no sprint signal, since the sprint is the answer.
+- **The grid:** the sprint's own published grid, else sprint qualifying's order.
+- **The simulation:** the sprint's scheduled laps (before it is in the lake, the
+  fewest laps over 100 km, from the race's), one stint on whichever tyre costs
+  least over that distance, and the circuit's passing and safety-car rates per
+  lap from its Grand Prix history. Retirements are the season's Grand Prix rate
+  scaled by distance, at least 1%. Points mean the top eight.
+- **Saved** once, as `predictions/<year>_<round>_S.json`, and scored after the
+  sprint against its grid, like the race.
+
+**What a sprint showed each driver's pace to be** needed its own measure. The
+lap-effects fit used for races failed in half the sprints: with nobody
+stopping, a driver alone on a compound leaves nothing to separate the tyre
+from the driver. In China 2024 Russell was the only car on softs and the fit put
+him 101.7 s a lap off the field; 56 of 392 drivers came out beyond ±2.5 s. A
+sprint's pace is instead each clean lap against the field's median on that same
+lap (taking out fuel and the track), the driver's median over at least five
+such laps (`weekend.sprint_pace`). 3 of 402 drivers fall beyond ±2.5 s that way.
+The tyre a driver chose stays part of their sprint.
+
+What each signal is worth, measured on the sprints of 2023 to 2025
+(`model/sprint_weights.json`):
+
+| Signal | Scale | Noise (s) | Rows |
+|---|---|---|---|
+| Sprint qualifying gap | 0.84 | 0.60 | 294 |
+| Recent race pace | 0.64 | 0.40 | 274 |
+| FP1 long runs | 0.18 | 0.90 | 174 |
+
+Close to the race model's, with FP1 worth even less than practice in general:
+FP1 on a sprint weekend has few runs of six laps or more.
+
+The replay (`racecraft-analyse predict-backtest --sprint`), each sprint
+predicted from what was known before it, each season before 2026 with weights
+measured on the other seasons, 2026 held out:
+
+| Season | Sprints | Order: model / grid / form | Winner: model / grid | Podium places named: model / grid |
+|---|---|---|---|---|
+| 2023 | 6 | 0.81 / 0.82 / 0.74 | 67% / 67% | 2.67 / 2.67 |
+| 2024 | 6 | 0.82 / 0.81 / 0.67 | 50% / 50% | 2.50 / 2.33 |
+| 2025 | 6 | 0.64 / 0.63 / 0.47 | 67% / 67% | 2.33 / 2.33 |
+| **2026, held out** | 5 | 0.87 / 0.88 / 0.78 | 80% / 80% | 2.20 / 2.20 |
+| 2023–2025 | 18 | 0.76 / 0.75 / 0.64 | 61% / 61% | 2.50 / 2.44 |
+
+| Season | Win chances (Brier): model / grid | Podium chances (Brier): model / grid |
+|---|---|---|
+| 2023 | **0.46** / 0.52 | **0.59** / 0.69 |
+| 2024 | **0.70** / 0.72 | **0.81** / 1.10 |
+| 2025 | **0.44** / 0.53 | 1.18 / **1.14** |
+| **2026, held out** | **0.38** / 0.39 | **1.18** / 1.27 |
+| 2023–2025 | **0.53** / 0.59 | **0.86** / 0.98 |
+
+On the order it ties the grid, and names as many winners: a sprint is a third
+of the distance with no stops, so the field mostly finishes where it started.
+What it adds is honest chances, better than each grid slot's own history in
+every season but 2025's podiums. The grid baseline's chances come from sprints
+too, in the same seasons the weights were measured on.
+
+Two sprints ran wet (Spa 2023, Miami 2025) and have no clean laps to measure
+pace on. They are left out of the weights but still predicted and scored.
+
+**Known, and not changed here:** the race model's own `sprint_s` signal still
+comes from the lap-effects fit, so on a weekend like China 2024 one driver's
+sprint reading is held at the ±2.5 s limit rather than measured. Moving it to
+`sprint_pace` means refitting the race weights and replaying every race, which
+is a change to the race model of its own.
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

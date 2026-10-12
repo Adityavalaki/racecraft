@@ -2088,6 +2088,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 /* ---- prediction */
 .prediction { display: flex; flex-direction: column; gap: 12px; }
 .prediction-basis { border-bottom: 0; padding: 0; }
+.prediction-kind { align-self: flex-start; }
 .prediction-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .favourite, .podium-card, .score-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
 .favourite-name { display: flex; align-items: center; gap: 10px; }
@@ -2126,3 +2127,68 @@ button.prediction-row:hover { background: var(--panel-2); }
   .chance-bar i, .podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span, .pit-lane-bar .done,
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
+
+/* ---------------------------------------------------------------- standings */
+.standings-basis { margin: 0; font-size: 0.8rem; color: var(--ink-soft); }
+.standings-basis b { color: var(--ink); font-weight: 600; }
+.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 12px; align-items: start; }
+.standings-panel { padding: 14px 0 6px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.standings-panel > .card-label { margin: 0; padding: 0 16px; }
+.standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 7.4rem; }
+.standings-table.is-teams { --st-cols: 2rem 4px minmax(7rem, 1fr) 3.2rem 3.2rem 2.6rem minmax(7rem, 1.2fr); }
+.standings-row {
+  display: grid;
+  grid-template-columns: var(--st-cols);
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: 2.3rem;
+  padding: 0.25rem 16px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid #1b222a;
+  color: inherit;
+  text-align: left;
+  font-size: 0.92rem;
+}
+.standings-row.is-head {
+  min-height: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+button.standings-row:hover { background: var(--panel-2); }
+.standings-row.is-selected { background: #1f2a35; box-shadow: inset 2px 0 0 var(--signal); }
+.standings-row:focus-visible { outline: 1px solid var(--signal); outline-offset: -1px; }
+.standings-row .num { text-align: right; }
+.standings-row .pos { color: var(--ink-soft); }
+.standings-row .points { font-weight: 700; color: var(--ink); }
+.standings-row .gap { color: var(--ink-soft); font-size: 0.8rem; }
+.standings-row .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.standings-row .who b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standings-row .who .code { font-family: var(--font-display); font-style: italic; font-size: 1.05rem; letter-spacing: 0.03em; }
+.standings-row .who small { color: var(--ink-soft); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standings-row .share { display: block; height: 3px; margin-top: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.standings-row .share i { display: block; height: 100%; opacity: 0.8; }
+.standings-row .split { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change { font-family: var(--font-mono); font-size: 0.68rem; }
+.change.is-up { color: var(--green); }
+.change.is-down { color: var(--red); }
+.form { display: flex; gap: 3px; }
+.finish {
+  width: 1.3rem;
+  height: 1.3rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-style: normal;
+}
+.finish.is-points { color: var(--ink); background: #20262d; }
+.finish.is-podium { color: var(--ink); background: #3a2a52; }
+.finish.is-win { color: #fff; background: var(--signal); }

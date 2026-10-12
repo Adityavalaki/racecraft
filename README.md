@@ -48,7 +48,10 @@ It runs as a Windows desktop app, or as a local web app in any browser.
   the odds that stopping first wins a place.
 - **Predicts the race** from practice, qualifying, the sprint and recent form,
   as each driver's chance to win, reach the podium and score, checked against
-  every race since 2023.
+  every race since 2023. On a sprint weekend it **predicts the sprint** too,
+  from sprint qualifying, checked against every sprint since 2023.
+- **Keeps the championships**: drivers' and constructors' points, as they stood
+  at any session of the season, matching F1's published tables.
 - **Explains race control**: every steward's verdict and track message in plain
   words, with what it means for the result.
 - **Follows a session live** from F1's own timing feed (no subscription needed).
@@ -75,8 +78,9 @@ on a second monitor.
 | **Pedals and speed**: one driver's lap against another's by distance: the time between them, speed, throttle, brake and gear, the corners marked, a cursor through every trace and the pedal map, and each brake zone side by side. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
 | **Strategy**: each car's pit window and most likely stop lap, the undercut watch (chance that stopping first gets the place) and a stint map. *What if* holds the cheapest plans, with safety cars and raced in places. | ![Strategy](docs/screenshots/strategy.png) |
 | **Tyres**: the wear curve per compound with every car placed on it, the race's own tyres as optional hindsight, and every car's sets through the weekend. | ![Tyres](docs/screenshots/tyres.png) |
-| **Race prediction**: the favourite, the podium chances, the full predicted order with each driver's likely range, and after the race the result beside it, scored against the grid. | ![Race prediction](docs/screenshots/race-prediction.png) |
+| **Race prediction**: the favourite, the podium chances, the full predicted order with each driver's likely range, and after the race the result beside it, scored against the grid. On a sprint weekend, switch between the Grand Prix and the sprint. | ![Race prediction](docs/screenshots/race-prediction.png) |
 | **Stewards**: every race control message explained (what it is, its status, its effect on the race) and the flags and safety cars across the race. | ![Stewards](docs/screenshots/stewards.png) |
+| **Standings**: the drivers' and constructors' championships as they stood going into the session (so a race is not spoiled) or after it: points, gap to the leader, wins, podiums, the last five Grand Prix finishes, places gained since the last weekend, and who scored each team's points. | ![Standings](docs/screenshots/standings.png) |
 | **Settings**: units, row density, the header clock, the map's names and overtake rings, and refreshing the data. | ![Settings](docs/screenshots/settings.png) |
 
 ---
@@ -144,6 +148,20 @@ Each is described in full, with the measurements behind it, in
   It beats "everyone finishes where they started" every season, by a small
   margin; the grid already holds most of what is knowable on Saturday night.
   On naming the winner it ties pole.
+- **Sprint prediction.** The same, made once sprint qualifying is in: each
+  driver's pace from the sprint qualifying gap, FP1 long runs and recent race
+  pace, weighted by how well each predicted past sprints, then the sprint
+  simulated 1,000 times over its own distance with no stops. Replayed over every
+  sprint since 2023:
+
+  | | Finishing order (rank correlation) | Win chances (Brier, lower is better) |
+  |---|---|---|
+  | 2023 to 2025, 18 sprints | 0.76 model, 0.75 grid | **0.53** model, 0.59 grid |
+  | 2026 (never trained on), 5 sprints | 0.87 model, 0.88 grid | **0.38** model, 0.39 grid |
+
+  On the order it ties the grid: a sprint is short, nobody stops, and the
+  field mostly finishes where it started. Its chances are the more honest,
+  for the win and the podium alike.
 - **Overtake mode (2026).** The feed never says when a driver used it, so a car
   is shown as *eligible* when race control has it switched on and the car was
   within a second of the one ahead at the last timing line. An estimate, and
@@ -301,6 +319,8 @@ need is not in it.
 | `racecraft-analyse race Baku --grid 8` | Plans for one car, raced against the field, in places. |
 | `racecraft-analyse predict 2025_04_Q` | The weekend's race, predicted from before it started. |
 | `racecraft-analyse predict-backtest` | Every race since 2023 predicted and scored against the grid. |
+| `racecraft-analyse predict 2025_06_SQ --sprint` | The weekend's sprint, predicted from sprint qualifying. |
+| `racecraft-analyse predict-backtest --sprint` | Every sprint since 2023 predicted and scored against the grid. |
 | `racecraft-live record` / `status` / `read` | Record F1's live timing feed, and read it back. |
 
 Session keys look like `2025_04_R`: season, round, session (`FP1`, `FP2`,

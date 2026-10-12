@@ -19,9 +19,10 @@ datas = [
     (str(REPO / "web" / "dist"), "web/dist"),     # the built interface
     (str(REPO / "src" / "racecraft" / "app" / "racecraft.ico"), "racecraft/app"),
     (str(REPO / "src" / "racecraft" / "app" / "racecraft.png"), "racecraft/app"),
-    # Read from beside their modules: compound nominations, and the prediction's signal weights.
+    # Read from beside their modules: compound nominations, and the predictions' signal weights.
     (str(REPO / "src" / "racecraft" / "model" / "pirelli_compounds.csv"), "racecraft/model"),
     (str(REPO / "src" / "racecraft" / "model" / "prediction_weights.json"), "racecraft/model"),
+    (str(REPO / "src" / "racecraft" / "model" / "sprint_weights.json"), "racecraft/model"),
 ]
 binaries = []
 hiddenimports = [

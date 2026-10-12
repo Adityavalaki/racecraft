@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Prediction, PredictionDriver } from "../api";
-import { PredictionBoard, percent } from "./PredictionBoard";
+import type { Prediction, PredictionDriver, WeekendInfo } from "../api";
+import { PredictionBoard, openingKind, percent, signalRanking } from "./PredictionBoard";
 
 /**
  * The prediction board shows chances, not a call. What it must get right on
@@ -42,11 +42,23 @@ function rowButton(codes: HTMLElement[]): HTMLElement {
   return codes.map((el) => el.closest("button.prediction-row")).find((el): el is HTMLElement => el !== null)!;
 }
 
-function mock(body: Prediction | { detail: string }, ok = true) {
-  const fetchMock = vi.fn(async (_url: string) =>
-    ({ ok, statusText: "Unprocessable", json: async () => body }) as Response);
+const RACE_WEEKEND: WeekendInfo = { sessions: ["FP1", "FP2", "FP3", "Q", "R"], sprint: false };
+
+/** The weekend lookup answers `weekend`; every prediction request answers `body` (or `sprint` for the sprint). */
+function mock(body: Prediction | { detail: string }, ok = true, weekend: WeekendInfo = RACE_WEEKEND,
+              sprint?: Prediction | { detail: string }) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith("/weekend")) return { ok: true, json: async () => weekend } as Response;
+    const answer = url.includes("kind=sprint") && sprint ? sprint : body;
+    return ({ ok: ok || answer === sprint, statusText: "Unprocessable", json: async () => answer }) as Response;
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+/** The URLs asked for, weekend lookups left out. */
+function predictionCalls(fetchMock: ReturnType<typeof mock>): string[] {
+  return fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => !url.endsWith("/weekend"));
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -62,7 +74,8 @@ describe("PredictionBoard", () => {
     const fetchMock = mock(answer());
     const { container } = render(<PredictionBoard sessionKey="2025_04_Q" selected={[]} onSelect={vi.fn()} />);
     await screen.findAllByText("PIA");
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_04_Q/prediction");
+    expect(predictionCalls(fetchMock)).toEqual(["/api/sessions/2025_04_Q/prediction"]);
+    expect(screen.queryByRole("radiogroup", { name: "Which race" })).toBeNull();    // no sprint here
 
     const rows = Array.from(container.querySelectorAll("button.prediction-row"));
     expect(rows.map((r) => r.querySelector(".code")?.textContent)).toEqual(["PIA", "LEC", "RUS", "STR"]);
@@ -123,6 +136,50 @@ describe("PredictionBoard", () => {
     mock({ detail: "the prediction is made once qualifying is in" }, false);
     render(<PredictionBoard sessionKey="2026_17_FP1" selected={[]} onSelect={vi.fn()} />);
     expect(await screen.findByText(/once qualifying is in/)).toBeDefined();
+  });
+
+  it("offers the sprint on a sprint weekend, and opens on it before the Grand Prix's qualifying", async () => {
+    const sprintAnswer = answer({
+      race_key: "2026_17_S", kind: "sprint", event_name: "Singapore Grand Prix",
+      basis: { ...answer().basis, sessions: ["FP1", "SQ"], grid_source: "qualifying", laps: 21, retire_rate: 0.065,
+               calibration: { fitted_on: ["2023", "2024", "2025"], scale: { quali_gap_s: 0.84, long_run_s: 0.18, form_s: 0.64 },
+                              noise_sd: { quali_gap_s: 0.6, long_run_s: 0.9, form_s: 0.4 } } },
+    });
+    const fetchMock = mock({ detail: "the race prediction is made once qualifying is in" }, false,
+                           { sessions: ["FP1", "SQ"], sprint: true }, sprintAnswer);
+    render(<PredictionBoard sessionKey="2026_17_FP1" selected={[]} onSelect={vi.fn()} />);
+    await screen.findAllByText("PIA");
+    expect(predictionCalls(fetchMock)).toEqual(["/api/sessions/2026_17_FP1/prediction?kind=sprint"]);
+    expect(screen.getByRole("radio", { name: "Sprint" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(/made before the sprint/i)).toBeDefined();
+    expect(screen.getByText(/FP1, sprint qualifying and 3 earlier races/)).toBeDefined();
+    expect(screen.getByText(/sprint qualifying, penalties not applied/)).toBeDefined();
+    expect(screen.getByText(/simulated sprints of 21 laps, with no stops/)).toBeDefined();
+    expect(screen.getByText(/Wins 72% of 1,000 simulated sprints/)).toBeDefined();
+    expect(screen.getByText(/recent race pace counts most, then sprint qualifying; FP1 long runs least/)).toBeDefined();
+
+    // The Grand Prix is one click away, and says why it is not there yet.
+    fireEvent.click(screen.getByRole("radio", { name: "Grand Prix" }));
+    expect(await screen.findByText(/once qualifying is in/)).toBeDefined();
+    expect(predictionCalls(fetchMock).at(-1)).toBe("/api/sessions/2026_17_FP1/prediction");
+    expect(screen.getByRole("radio", { name: "Sprint" })).toBeDefined();        // and back again
+  });
+
+  it("opens on the sprint from its own sessions, and on the Grand Prix once its qualifying has run", () => {
+    const sprintWeekend = { sessions: ["FP1", "SQ", "S", "Q", "R"], sprint: true };
+    expect(openingKind("2025_06_SQ", sprintWeekend)).toBe("sprint");
+    expect(openingKind("2025_06_S", sprintWeekend)).toBe("sprint");
+    expect(openingKind("2025_06_Q", sprintWeekend)).toBe("race");
+    expect(openingKind("2026_17_FP1", { sessions: ["FP1", "SQ"], sprint: true })).toBe("sprint");
+    expect(openingKind("2025_04_Q", RACE_WEEKEND)).toBe("race");
+  });
+
+  it("names the signals in the order the measured weights rank them", () => {
+    const ranked = signalRanking(answer({ basis: { ...answer().basis, calibration: {
+      fitted_on: ["2023"], scale: { quali_gap_s: 0.77, long_run_s: 0.38, form_s: 0.69 },
+      noise_sd: { quali_gap_s: 0.69, long_run_s: 0.78, form_s: 0.38 } } } }), "race");
+    expect(ranked).toBe("recent race pace counts most, then qualifying; practice long runs least");
+    expect(signalRanking(answer(), "race")).toBeNull();                     // saved before the weights were sent
   });
 
   it("writes chances so that rare is not shown as impossible", () => {

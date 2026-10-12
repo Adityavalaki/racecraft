@@ -5,6 +5,7 @@ import { PredictionBoard } from "../panels/PredictionBoard";
 import { ScreenHeader } from "../shell/ScreenHeader";
 import { PedalsScreen } from "./PedalsScreen";
 import { TowerScreen } from "./TowerScreen";
+import { StandingsScreen } from "./StandingsScreen";
 import { StewardsScreen } from "./StewardsScreen";
 import { StrategyScreen } from "./StrategyScreen";
 import { TraceScreen } from "./TraceScreen";
@@ -76,5 +77,7 @@ export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<Sc
       );
     case "stewards":
       return <StewardsScreen ctx={ctx} header={header} />;
+    case "standings":
+      return <StandingsScreen ctx={ctx} header={header} />;
   }
 });

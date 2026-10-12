@@ -336,3 +336,93 @@ def test_after_the_race_the_result_and_scores_come_with_it(client):
 def test_a_bad_or_unknown_session_is_refused(client):
     assert client.get("/api/sessions/1999_01_R/prediction").status_code == 404
     assert client.get("/api/sessions/live/prediction").status_code == 422
+
+
+# ------------------------------------------------------------------ the sprint
+
+def _sprint_weekend(tmp_path):
+    """
+    Monza 2024 as a sprint weekend, on Saturday night: FP1, sprint qualifying,
+    the sprint, then the Grand Prix's qualifying; the race not yet run.
+    """
+    race_day = pd.Timestamp("2024-09-01 13:00", tz="UTC")
+    friday, saturday = race_day - pd.Timedelta(days=2), race_day - pd.Timedelta(days=1)
+    _session(tmp_path, 2024, 4, "FP1", "Monza", friday, lambda k: _laps(k, 60, laps=14))
+    _session(tmp_path, 2024, 4, "SQ", "Monza", friday + pd.Timedelta(hours=4), lambda k: _laps(k, 61, laps=6),
+             lambda k: _results(k, quali=True))
+    _session(tmp_path, 2024, 4, "S", "Monza", saturday - pd.Timedelta(hours=4), lambda k: _laps(k, 62, laps=14),
+             _results)
+    _session(tmp_path, 2024, 4, "Q", "Monza", saturday, lambda k: _laps(k, 63, laps=6),
+             lambda k: _results(k, quali=True))
+    return connect()
+
+
+def test_the_sprint_is_read_from_sprint_qualifying_and_fp1_only(con, tmp_path):
+    ev = weekend.sprint_evidence(_sprint_weekend(tmp_path), "2024_04_Q")
+    assert ev.race_key == "2024_04_S" and ev.race_in_lake
+    assert ev.sessions_used == ["FP1", "SQ"]                  # not the Grand Prix's qualifying, after it
+    assert ev.form_races == ["Sakhir Grand Prix", "Baku Grand Prix", "Jeddah Grand Prix"]
+    assert ev.grid_source == "race"                          # the sprint's own published grid
+    assert ev.table["sprint_s"].isna().all()                  # the sprint is the answer, not a reading
+    assert ev.table.loc[1, "quali_gap_s"] < ev.table.loc[5, "quali_gap_s"]
+
+
+def test_a_weekend_without_a_sprint_has_none_to_predict(con):
+    with pytest.raises(weekend.NotSprintWeekend):
+        weekend.sprint_evidence(con, "2024_02_R")
+    assert not weekend.is_sprint_weekend(weekend.sessions_of(con, "2024_02_R"))
+
+
+def test_the_sprint_runs_its_own_distance_with_no_stops(con, tmp_path):
+    fresh = _sprint_weekend(tmp_path)
+    result = predict.sprint(fresh, "2024_04_SQ", runs=200, calibration=_calibration())
+    assert result.kind == "sprint" and result.race_key == "2024_04_S"
+    assert result.drivers[0]["driver_number"] == 1 and result.drivers[0]["win"] > 0.5
+    assert sum(d["win"] for d in result.drivers) == pytest.approx(1.0, abs=0.01)
+    assert sum(d["points"] for d in result.drivers) == pytest.approx(8.0, abs=0.05)    # eight score in a sprint
+    for d in result.drivers:
+        assert d["win"] <= d["podium"] <= d["points"]
+    assert result.basis["laps"] == 14                         # 40 race laps: the fewest over 100 km
+    assert ">" not in result.basis["reference_plan"]          # one stint
+    assert result.basis["retire_rate"] < predict.retire_rate(fresh, 2024, 4)
+
+
+def test_a_sprint_is_the_fewest_laps_over_100_km():
+    assert predict.one_stint(20, {"SOFT": 0.2, "MEDIUM": 0.05}, {"SOFT": 0.0, "MEDIUM": 0.6}).stints == (("MEDIUM", 20),)
+    assert predict.one_stint(5, {"SOFT": 0.2, "MEDIUM": 0.05}, {"SOFT": 0.0, "MEDIUM": 0.6}).stints == (("SOFT", 5),)
+
+
+def test_sprint_pace_is_not_thrown_by_a_driver_alone_on_a_compound():
+    """China 2024: Russell on the only softs, and a lap-effects fit put him 100 s a lap off."""
+    laps = _laps("2024_05_S", 70, laps=14)
+    laps.loc[laps["driver_number"] == 4, "compound"] = "SOFT"
+    pace = weekend.sprint_pace(laps)
+    assert pace.abs().max() < 3.0
+    assert pace[1] < pace[4] < pace[10]                       # the order the cars were set up in
+
+
+def test_the_shipped_sprint_calibration_was_measured_on_sprints_before_2026():
+    cal = predict.load_calibration(predict.SPRINT_CALIBRATION_FILE)
+    assert cal.fitted_on and all(int(year) < 2026 for year in cal.fitted_on)
+    assert {"quali_gap_s", "form_s"} <= set(cal.scale)
+    assert "sprint_s" not in cal.scale
+
+
+def test_the_sprint_is_predicted_saved_and_scored_through_the_api(client, tmp_path):
+    _sprint_weekend(tmp_path)
+    assert client.get("/api/sessions/2024_04_FP1/weekend").json() == {"sessions": ["FP1", "SQ", "S", "Q"], "sprint": True}
+    body = client.get("/api/sessions/2024_04_SQ/prediction", params={"kind": "sprint"}).json()
+    assert body["kind"] == "sprint" and body["race_key"] == "2024_04_S"
+    assert any("rebuilt after the sprint" in note for note in body["basis"]["notes"])
+    assert body["result"]["finish"]["1"] == 1
+    assert (tmp_path / "data" / "predictions" / "2024_04_S.json").exists()
+    race = client.get("/api/sessions/2024_04_SQ/prediction").json()      # Saturday night: the race is next
+    assert race["race_key"] == "2024_04_R" and race["kind"] == "race" and race["before_race"] is True
+
+
+def test_a_sprint_is_refused_where_there_is_none(client):
+    response = client.get("/api/sessions/2024_02_R/prediction", params={"kind": "sprint"})
+    assert response.status_code == 422 and "no sprint" in response.json()["detail"]
+    assert client.get("/api/sessions/2024_02_R/prediction", params={"kind": "qualifying"}).status_code == 422
+    assert client.get("/api/sessions/live/weekend").status_code == 422
+    assert client.get("/api/sessions/1999_01_R/weekend").status_code == 404

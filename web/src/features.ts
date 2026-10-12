@@ -10,12 +10,13 @@
  */
 
 export type ScreenId =
-  | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "settings";
+  | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "standings"
+  | "settings";
 
 /** The screens that can have a window of their own. */
 export type FeatureId = Exclude<ScreenId, "replay" | "settings">;
 
-export type ScreenGroup = "Race" | "Plan" | "Control";
+export type ScreenGroup = "Race" | "Plan" | "Control" | "Season";
 
 export interface Screen {
   id: ScreenId;
@@ -36,10 +37,11 @@ export const SCREENS: readonly Screen[] = [
   { id: "tyres", title: "Tyres", hint: "How fast each compound fades, and where every car sits on that curve.", group: "Plan", poppable: true },
   { id: "prediction", title: "Race prediction", hint: "The race, called from Friday and Saturday. Chances, not certainties.", group: "Plan", poppable: true },
   { id: "stewards", title: "Stewards", hint: "Every race control message, with what it means for the result.", group: "Control", poppable: true },
+  { id: "standings", title: "Standings", hint: "The drivers' and constructors' championships, as they stood.", group: "Season", poppable: true },
   { id: "settings", title: "Settings", hint: "How Racecraft looks, and where its data comes from.", group: null, poppable: false },
 ];
 
-export const RAIL_GROUPS: readonly ScreenGroup[] = ["Race", "Plan", "Control"];
+export const RAIL_GROUPS: readonly ScreenGroup[] = ["Race", "Plan", "Control", "Season"];
 
 export function screenById(id: string | null | undefined): Screen | undefined {
   return SCREENS.find((screen) => screen.id === id);

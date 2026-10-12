@@ -25,12 +25,19 @@ score, and where they are expected to finish.
 `backtest` replays every race since 2023 this way, each from what was known
 before it, and scores the predictions against what happened beside two
 baselines: the grid, which is hard to beat, and form.
+
+**The sprint** (`sprint`) is predicted the same way once sprint qualifying is
+in, with signals weighed on past sprints rather than races (a third of the
+distance, and no stops): its own calibration, its own replay
+(`backtest(kind="sprint")`), and a single stint on the tyre that suits the
+distance.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +53,14 @@ log = logging.getLogger(__name__)
 
 SIGNALS = weekend.SIGNALS
 CALIBRATION_FILE = Path(__file__).with_name("prediction_weights.json")
+SPRINT_CALIBRATION_FILE = Path(__file__).with_name("sprint_weights.json")
+# A sprint is the fewest laps over 100 km, a Grand Prix the fewest over 305 km:
+# with no sprint distance published yet, the race's laps give it.
+SPRINT_KM, RACE_KM = 100.0, 305.0
+# The least a car's chance of not finishing a sprint is put at.
+SPRINT_RETIRE_FLOOR = 0.01
+# Places that score: ten in a Grand Prix, eight in a sprint.
+POINTS_PLACES = {"race": 10, "sprint": 8}
 DEFAULT_RUNS = 1000
 # Field draws: stop laps are spread around the reference plan and redrawn this
 # many times, so no prediction leans on one arbitrary set of stop laps.
@@ -168,9 +183,10 @@ class Prediction:
     drivers: list[dict]
     basis: dict
     made_at: str
+    kind: str = "race"              # or "sprint"
 
     def as_dict(self) -> dict:
-        return {"race_key": self.race_key, "event_name": self.event_name, "year": self.year,
+        return {"race_key": self.race_key, "kind": self.kind, "event_name": self.event_name, "year": self.year,
                 "round": self.round, "drivers": self.drivers, "basis": self.basis, "made_at": self.made_at}
 
 
@@ -216,6 +232,102 @@ def race(con, session_key: str, *, runs: int = DEFAULT_RUNS, calibration: Calibr
             positions[driver].extend(int(p) for p in finishes)
             retired[driver].extend(bool(r) for r in result.retired[driver])
 
+    drivers = _summarise(order, table, positions, retired, POINTS_PLACES["race"])
+    basis = {
+        "sessions": ev.sessions_used,
+        "form_races": ev.form_races,
+        "grid_source": ev.grid_source,
+        "retire_rate": round(rate, 3),
+        "runs": per_draw * FIELD_DRAWS,
+        "reference_plan": str(reference),
+        "calibration": cal.as_dict(),
+        "notes": ev.notes + inputs.notes,
+    }
+    return Prediction(race_key=race_key, event_name=ev.event_name, year=ev.year, round=ev.round,
+                      drivers=drivers, basis=basis, made_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
+def sprint(con, session_key: str, *, runs: int = DEFAULT_RUNS, calibration: Calibration | None = None,
+           seed: int = 7) -> Prediction:
+    """
+    Predict the sprint of the weekend `session_key` belongs to, from what was
+    known before it started: sprint qualifying, FP1, and the season so far.
+
+    The circuit's texture (overtaking, safety cars, tyre wear) is the Grand
+    Prix's, from races before this weekend; passes and safety cars are a rate
+    per lap, so they carry to a third of the distance as they are. Nobody
+    stops in a sprint, so every car runs one stint on the tyre that costs least
+    over the distance. Retirements are the season's rate for a Grand Prix,
+    scaled to the sprint's length.
+    """
+    cal = calibration or load_calibration(SPRINT_CALIBRATION_FILE)
+    ev = weekend.sprint_evidence(con, session_key)
+    if ev.table["grid"].lt(weekend.BACK_OF_GRID).sum() < 2:
+        raise race_inputs.NotEnoughData("no grid yet: a sprint prediction is made once sprint qualifying is in")
+    paces = combine(ev.table, cal)
+    race_key = weekend.race_key_of(ev.year, ev.round)
+    race_in_lake = con.execute("select count(*) from sessions where session_key = ?", [race_key]).fetchone()[0] > 0
+    inputs = race_inputs.build(con, ev.location, ev.year, session_key=race_key if race_in_lake else None,
+                               lenient=True, weekend=(ev.year, ev.round))
+    laps = sprint_laps(con, ev.race_key, inputs.total_laps)
+    rate = float(np.clip(retire_rate(con, ev.year, ev.round) * laps / inputs.total_laps,
+                         SPRINT_RETIRE_FLOOR, RETIRE_CAP))
+    plan = one_stint(laps, inputs.degradation, inputs.compound_offset_s)
+
+    table = ev.table.join(paces)
+    order = table.sort_values("grid").index.tolist()
+    quickest = float(table["pace"].min())
+    rng = np.random.default_rng(seed)
+    cars = [race_model.Car(driver_number=int(d), abbreviation=str(table.at[d, "abbreviation"]),
+                           pace_s=inputs.quickest_lap_s + float(table.at[d, "pace"]) - quickest,
+                           grid=slot, plan=plan)
+            for slot, d in enumerate(order, start=1)]
+    result = race_model.simulate(cars, laps, inputs.degradation, inputs.pit_loss_s,
+                                 inputs.neutralisation, inputs.passes_per_lap,
+                                 compound_offset_s=inputs.compound_offset_s, runs=runs, rng=rng,
+                                 following=inputs.following_table,
+                                 pace_sd={int(d): float(table.at[d, "sd"]) for d in order},
+                                 retire_rate=rate)
+    positions = {int(d): [int(p) for p in result.positions[int(d)]] for d in order}
+    retired = {int(d): [bool(r) for r in result.retired[int(d)]] for d in order}
+    basis = {
+        "sessions": ev.sessions_used,
+        "form_races": ev.form_races,
+        "grid_source": ev.grid_source,
+        "retire_rate": round(rate, 3),
+        "runs": runs,
+        "laps": laps,
+        "reference_plan": str(plan),
+        "calibration": cal.as_dict(),
+        "notes": ev.notes + inputs.notes,
+    }
+    return Prediction(race_key=ev.race_key, event_name=ev.event_name, year=ev.year, round=ev.round,
+                      drivers=_summarise(order, table, positions, retired, POINTS_PLACES["sprint"]),
+                      basis=basis, kind="sprint",
+                      made_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
+def sprint_laps(con, sprint_key: str, race_laps: int) -> int:
+    """The sprint's scheduled laps; before it is in the lake, the fewest laps over 100 km."""
+    row = con.execute("select total_laps from sessions where session_key = ?", [sprint_key]).fetchone()
+    if row is not None and row[0] is not None and not pd.isna(row[0]) and int(row[0]) > 0:
+        return int(row[0])
+    return max(1, math.ceil(race_laps * SPRINT_KM / RACE_KM))
+
+
+def one_stint(laps: int, degradation: dict[str, float], offsets: dict[str, float]) -> strategy.Plan:
+    """No stops: the whole distance on whichever compound costs least over it."""
+    compounds = [c for c in degradation if c in offsets] or list(degradation) or ["MEDIUM"]
+
+    def cost(compound: str) -> float:
+        return offsets.get(compound, 0.0) * laps + degradation.get(compound, 0.0) * laps * (laps - 1) / 2
+
+    return strategy.Plan(stints=((min(compounds, key=cost), laps),))
+
+
+def _summarise(order, table: pd.DataFrame, positions: dict[int, list[int]],
+               retired: dict[int, list[bool]], points_places: int) -> list[dict]:
+    """Each driver's chances and likely finish from the simulated races, favourite first."""
     drivers = []
     for d in order:
         finishes = np.array(positions[int(d)])
@@ -229,7 +341,7 @@ def race(con, session_key: str, *, runs: int = DEFAULT_RUNS, calibration: Calibr
             "grid": int(table.at[d, "grid"]),
             "win": round(float((finishes == 1).mean()), 4),
             "podium": round(float((finishes <= 3).mean()), 4),
-            "points": round(float((finishes <= 10).mean()), 4),
+            "points": round(float((finishes <= points_places).mean()), 4),
             "expected": round(float(finishes.mean()), 2),
             "dnf": round(float(out.mean()), 4),
             # The likely range if the car finishes; retiring is the separate chance above.
@@ -241,18 +353,7 @@ def race(con, session_key: str, *, runs: int = DEFAULT_RUNS, calibration: Calibr
             "signals": {s: (None if pd.isna(table.at[d, s]) else round(float(table.at[d, s]), 3)) for s in SIGNALS},
         })
     drivers.sort(key=lambda row: row["expected"])
-    basis = {
-        "sessions": ev.sessions_used,
-        "form_races": ev.form_races,
-        "grid_source": ev.grid_source,
-        "retire_rate": round(rate, 3),
-        "runs": per_draw * FIELD_DRAWS,
-        "reference_plan": str(reference),
-        "calibration": cal.as_dict(),
-        "notes": ev.notes + inputs.notes,
-    }
-    return Prediction(race_key=race_key, event_name=ev.event_name, year=ev.year, round=ev.round,
-                      drivers=drivers, basis=basis, made_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    return drivers
 
 
 # ------------------------------------------------------------------ scoring
@@ -317,10 +418,11 @@ def grid_score(grid: pd.Series, finish: pd.Series, chances: dict[int, tuple[floa
     }
 
 
-def slot_chances(con, years: list[int]) -> dict[int, tuple[float, float]]:
-    """How often each grid slot won and reached the podium, in the given seasons (smoothed)."""
+def slot_chances(con, years: list[int], kind: str = "race") -> dict[int, tuple[float, float]]:
+    """How often each grid slot won and reached the podium, in the given seasons' races or sprints (smoothed)."""
+    code = "S" if kind == "sprint" else "R"
     df = con.execute(f"""select r.grid_position g, r.position p from results r join sessions s using (session_key)
-                         where s."session" = 'R' and s.year in ({",".join(str(int(y)) for y in years)})
+                         where s."session" = '{code}' and s.year in ({",".join(str(int(y)) for y in years)})
                          and r.grid_position > 0""").df()
     out = {}
     for slot in range(1, 23):
@@ -332,21 +434,34 @@ def slot_chances(con, years: list[int]) -> dict[int, tuple[float, float]]:
 
 # ------------------------------------------------------------------ replay
 
-def race_keys(con, years: list[int] | None = None) -> list[str]:
-    """Every race in the lake that has a result, in calendar order."""
-    df = con.execute("""select distinct s.session_key, s.year, s.round from sessions s join results r using (session_key)
-                        where s."session" = 'R' order by s.year, s.round""").df()
+def race_keys(con, years: list[int] | None = None, kind: str = "race") -> list[str]:
+    """Every race (or sprint) in the lake that has a result, in calendar order."""
+    code = "S" if kind == "sprint" else "R"
+    df = con.execute(f"""select distinct s.session_key, s.year, s.round from sessions s join results r using (session_key)
+                         where s."session" = '{code}' order by s.year, s.round""").df()
     if years:
         df = df[df["year"].isin(years)]
     return df["session_key"].tolist()
 
 
-def training_rows(con, keys: list[str]) -> pd.DataFrame:
-    """One row per driver per race: the weekend's signals, and the pace they actually showed."""
+def sprint_keys(con, years: list[int] | None = None) -> list[str]:
+    return race_keys(con, years, kind="sprint")
+
+
+def _evidence_for(kind: str):
+    return weekend.sprint_evidence if kind == "sprint" else weekend.evidence
+
+
+def calibration_file(kind: str) -> Path:
+    return SPRINT_CALIBRATION_FILE if kind == "sprint" else CALIBRATION_FILE
+
+
+def training_rows(con, keys: list[str], kind: str = "race") -> pd.DataFrame:
+    """One row per driver per race (or sprint): the weekend's signals, and the pace they actually showed."""
     frames = []
     for key in keys:
         try:
-            ev = weekend.evidence(con, key)
+            ev = _evidence_for(kind)(con, key)
         except Exception as exc:                 # a weekend the lake cannot read is skipped, not fatal
             log.warning("no evidence for %s: %s", key, exc)
             continue
@@ -383,23 +498,24 @@ def form_score(evidence_table: pd.DataFrame, finish: pd.Series) -> dict | None:
 
 
 def backtest(con, *, runs: int = 500, holdout: int = 2026, progress=None,
-             seasons: list[int] | None = None) -> list[RaceScore]:
+             seasons: list[int] | None = None, kind: str = "race") -> list[RaceScore]:
     """
-    Predict every race from what was known before it, and score it.
+    Predict every race (or every sprint) from what was known before it, and score it.
 
     Each season before `holdout` is predicted with the signals' worth measured
     on the other seasons before `holdout`; `holdout` itself with all of them.
     `seasons` predicts only those, with the same calibrations.
     """
-    keys = race_keys(con)
-    rows = training_rows(con, keys)
+    keys = race_keys(con, kind=kind)
+    rows = training_rows(con, keys, kind)
+    predictor = sprint if kind == "sprint" else race
     in_lake = sorted(int(y) for y in rows["year"].unique())
     train_years = [y for y in in_lake if y < holdout]
     calibrations = {}
     for year in in_lake:
         fit_years = [y for y in train_years if y != year] if year in train_years else train_years
         calibrations[year] = fit_calibration(rows[rows["year"].isin(fit_years)], [str(y) for y in fit_years])
-        chances = slot_chances(con, fit_years)
+        chances = slot_chances(con, fit_years, kind)
         calibrations[year].chances = chances    # the grid baseline sees the same seasons
     scores = []
     if seasons:
@@ -408,8 +524,8 @@ def backtest(con, *, runs: int = 500, holdout: int = 2026, progress=None,
         year = int(key[:4])
         finish = actual_finish(con, key)
         try:
-            prediction = race(con, key, runs=runs, calibration=calibrations[year])
-            ev = weekend.evidence(con, key)
+            prediction = predictor(con, key, runs=runs, calibration=calibrations[year])
+            ev = _evidence_for(kind)(con, key)
         except (race_inputs.NotEnoughData, ValueError, KeyError) as exc:
             scores.append(RaceScore(key, year, {}, {}, None, skipped=str(exc)))
             continue
