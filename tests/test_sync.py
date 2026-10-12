@@ -292,3 +292,17 @@ def test_a_busy_session_that_lands_meanwhile_is_counted_present(quiet, monkeypat
     syncer.start()
     syncer.wait(5)
     assert syncer.status()["items"][0]["state"] == "present"
+
+
+def test_a_session_once_in_the_lake_leaves_nothing_behind_in_fastf1s_cache(quiet, monkeypatch):
+    """The app's sync used to keep every download: 1.9 GB on a nearly full system drive."""
+    monkeypatch.setattr(sync, "plan", _plan((2026, 15, "FP2", "Azerbaijan", "Practice 2")))
+    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: False)
+    calls, compacted = [], []
+    monkeypatch.setattr(sync.cli, "ingest_with_limits", lambda *a, **k: calls.append(k) or "written")
+    monkeypatch.setattr(sync.cli, "compact_http_cache", lambda: compacted.append(True) or 0.0)
+    syncer = sync.Syncer()
+    syncer.start()
+    syncer.wait(5)
+    assert calls and all(k["prune"] is True for k in calls)
+    assert compacted == [True]

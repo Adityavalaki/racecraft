@@ -305,3 +305,22 @@ def test_the_desktop_build_bundles_every_data_file_the_package_reads():
     assert shipped
     missing = [p.name for p in shipped if p.name not in spec]
     assert not missing, f"not in packaging/Racecraft.spec: {missing}"
+
+
+def test_importing_racecraft_keeps_numpy_to_one_thread():
+    """
+    numpy's and scipy's OpenBLAS reserve memory for every processor thread as
+    they load: about 700 MB on a 12-thread machine, for linear algebra too small
+    to use them. Racecraft's package sets one thread before anything imports numpy.
+    """
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_NUM_THREADS")}
+    code = "import racecraft, numpy, os; print(os.environ['OPENBLAS_NUM_THREADS'])"
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "1"
+    env["OPENBLAS_NUM_THREADS"] = "4"                     # an environment that chose its own keeps it
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "4"

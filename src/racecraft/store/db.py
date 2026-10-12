@@ -76,7 +76,7 @@ Signature = tuple[int, float]
 
 
 MEMORY_LIMIT = "1GB"
-THREADS = 4
+THREADS = 1
 
 
 class _Lake:

@@ -173,8 +173,11 @@ class Syncer:
                 with self._lock:
                     item.state = "ingesting"
                 try:
+                    # Pruned: once a session is in the lake, FastF1's copy of
+                    # it (about 80 MB with telemetry) is never read again, and
+                    # kept it filled 1.9 GB of a full system drive.
                     result = cli.ingest_with_limits(item.season, item.round, item.ident, item.name,
-                                                    telemetry=telemetry, force=False, prune=False)
+                                                    telemetry=telemetry, force=False, prune=True)
                 except Exception as error:          # one session must not stop the rest
                     result, detail = "failed", f"{type(error).__name__}: {error}"
                 else:
@@ -198,6 +201,11 @@ class Syncer:
                 if item.state == "busy" and lake.is_ingested(item.season, item.round, item.ident):
                     with self._lock:
                         item.state, item.detail = "present", ""
+            if wrote:
+                try:
+                    cli.compact_http_cache()        # pruned responses only free space once compacted
+                except Exception:                   # noqa: BLE001 - a cache that cannot shrink is not a failed sync
+                    log.warning("could not compact the FastF1 HTTP cache", exc_info=True)
 
             with self._lock:
                 self._job.state = "done"
