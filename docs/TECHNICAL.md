@@ -1219,6 +1219,62 @@ sprint reading is held at the ±2.5 s limit rather than measured. Moving it to
 `sprint_pace` means refitting the race weights and replaying every race, which
 is a change to the race model of its own.
 
+## Standings and title odds
+
+`model/standings.py` adds up every Grand Prix and sprint result: the feed's own
+points, so penalties and the 2023-2024 fastest-lap point are as awarded. It
+reproduces the published 2023, 2024 and 2025 final tables exactly, including
+the count-back that puts Alonso ahead of Leclerc on 206 in 2023. A result sent
+without points (the 2026 Singapore sprint) is scored from its classified
+positions, and says so. 2026's results name teams inconsistently (an id of
+"nan", an id and no name, neither); each row is matched to one team.
+
+`model/title.py` plays the season out from the standings at any session:
+
+- **Pace:** each driver's recent race form (`weekend.form`, with last season's
+  early on) through the race prediction's calibration.
+- **Two kinds of uncertainty, measured on 2023-2025 race pace** (`title.measure`,
+  1,266 driver-races): a driver's pace strays **0.40 s a lap** race to race
+  around their own season average, and form misses that average by **0.24 s**,
+  about half (52%) of the uncertainty a single race's prediction states. The
+  first is drawn every simulated race; the second once per simulated season.
+  The two add back up to the single-race error (0.43 s), as they should.
+- **Each race:** the field ordered by pace plus that race's draw, retirements
+  at the season's rate (a third of it for a sprint), F1's points, ties broken
+  on wins. No grid and no circuit: over a season they even out.
+- **Calendar:** what is left comes from the lake and, for the season in
+  progress, FastF1's schedule (cached, so one download).
+
+An earlier version fitted one per-race randomness on single races. That cannot
+tell lasting uncertainty from race-to-race luck, put nearly all of it on the
+lasting side (0.2 s per race), and so let whichever driver drew the better car
+win every remaining race. Measured as above, nothing is tuned on titles.
+
+The replay (`racecraft-analyse title-backtest`): every season from each round to
+the last, the uncertainty measured on the other seasons, scored on the chance
+given to the eventual champion, beside the same simulation with every driver's
+pace equal (what the points alone say):
+
+| Season | Chance given to the champion: model / points only | Brier over every driver: model / points only |
+|---|---|---|
+| 2023 (Verstappen) | **0.87** / 0.65 | **0.10** / 0.29 |
+| 2024 (Verstappen) | **0.79** / 0.55 | **0.09** / 0.35 |
+| 2025 (Norris) | **0.35** / 0.30 | 0.78 / **0.71** |
+| All 67 checkpoints | **0.66** / 0.49 | **0.33** / 0.45 |
+
+| How far into the season | Model | Points only |
+|---|---|---|
+| First quarter | **0.55** | 0.10 |
+| Second quarter | **0.66** | 0.39 |
+| Third quarter | 0.60 | **0.67** |
+| Last quarter | 0.86 | 0.87 |
+
+It knows most where the points know least, early on. Where they tell the story
+it adds nothing, and in 2025's close finish (Piastri leading for much of the
+year, Norris the champion by two points) form pointed the wrong way more
+often than the points did. Three seasons are few to judge it on, two of them
+runaways.
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

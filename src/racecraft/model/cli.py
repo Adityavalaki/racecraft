@@ -11,6 +11,8 @@ Run the models over the lake: `racecraft-analyse`.
     racecraft-analyse predict-backtest     # every race since 2023, predicted and scored
     racecraft-analyse predict 2025_06_SQ --sprint   # the sprint, from sprint qualifying
     racecraft-analyse predict-backtest --sprint     # every sprint since 2023, the same way
+    racecraft-analyse title 2026                    # each driver's and team's chance of the title
+    racecraft-analyse title-backtest --save         # 2023-2025 replayed from every round
 
 Every number the README quotes comes from these commands, so anyone can
 reproduce them rather than taking them on trust.
@@ -552,6 +554,68 @@ def cmd_predict_backtest(args) -> int:
     return 0
 
 
+def cmd_title(args) -> int:
+    import logging
+
+    from racecraft.model import title
+
+    logging.getLogger("racecraft").setLevel(logging.ERROR)
+    con = connect()
+    result = title.odds(con, args.season, runs=args.runs)
+    left = ", ".join(f"{e['event_name'].replace(' Grand Prix', '')}{' sprint' if e['session'] == 'sprint' else ''}"
+                     for e in result.remaining)
+    print(f"{args.season}: {len(result.remaining)} to run ({left or 'none'}), {result.runs:,} simulated seasons, "
+          f"race to race {result.race_noise_s} s, lasting {result.lasting_share:.0%} of a race's uncertainty")
+    print(f"\n{'driver':<7}{'points':>7}{'title':>8}{'expected':>10}{'likely':>12}{'most':>6}")
+    for d in result.drivers:
+        if d["title"] < 0.0005 and not d["alive"]:
+            continue
+        print(f"{d['abbreviation']:<7}{d['points']:>7}{d['title']:>8.1%}{d['expected_points']:>10.0f}"
+              f"{d['p10']:>6}-{d['p90']:<5}{d['max_points']:>6}{'' if d['alive'] else '  out'}")
+    print(f"\n{'team':<18}{'points':>7}{'title':>8}{'expected':>10}")
+    for t in result.constructors:
+        print(f"{t['team']:<18}{t['points']:>7}{t['title']:>8.1%}{t['expected_points']:>10.0f}{'' if t['alive'] else '  out'}")
+    for note in result.notes:
+        print(f"  note: {note}")
+    return 0
+
+
+def cmd_title_backtest(args) -> int:
+    import logging
+
+    from racecraft.model import predict, title
+
+    logging.getLogger("racecraft").setLevel(logging.ERROR)
+    con = connect()
+    years = args.season or [2023, 2024, 2025]
+
+    def progress(year, after):
+        print(f"  {year} after round {after}", file=sys.stderr, flush=True)
+
+    checkpoints, noise_for = title.backtest(con, years, runs=args.runs, progress=progress)
+    table = pd.DataFrame([c.__dict__ for c in checkpoints])
+    table["stage"] = pd.cut(table["after_round"] / table["rounds"], [0, 0.25, 0.5, 0.75, 1.0],
+                            labels=["first quarter", "second quarter", "third quarter", "last quarter"])
+    pd.set_option("display.width", 200)
+    print("\nUncertainty measured on the other seasons:",
+          {y: (n["race_noise_s"], n["lasting_share"]) for y, n in noise_for.items()})
+    print("\nChance given to the eventual champion, by season (higher is better)")
+    print(table.groupby("year")[["model", "points_only"]].mean().round(3).to_string())
+    print("\n...and by how far into the season (all seasons)")
+    print(table.groupby("stage", observed=True)[["model", "points_only"]].mean().round(3).to_string())
+    print("\nBrier over every driver (lower is better)")
+    print(table.groupby("year")[["model_brier", "points_brier"]].mean().round(3).to_string())
+    print(f"\nall {len(table)} checkpoints: model {table['model'].mean():.3f} vs points only "
+          f"{table['points_only'].mean():.3f}; Brier {table['model_brier'].mean():.3f} vs {table['points_brier'].mean():.3f}")
+    if args.out:
+        table.to_csv(args.out, index=False)
+    if args.save:
+        split = title.measure(con, years, predict.load_calibration())
+        title.save_uncertainty(split)
+        print(f"\nsaved {split} to {title.WEIGHTS_FILE.name}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -624,6 +688,18 @@ def main(argv: list[str] | None = None) -> int:
     backtest_parser.add_argument("--save", action="store_true", help="save the signals' worth for predictions")
     backtest_parser.add_argument("--sprint", action="store_true", help="every sprint instead of every race")
     backtest_parser.set_defaults(handler=cmd_predict_backtest)
+
+    title_parser = commands.add_parser("title", help="each driver's and team's chance of the championship")
+    title_parser.add_argument("season", type=int)
+    title_parser.add_argument("--runs", type=int, default=10_000)
+    title_parser.set_defaults(handler=cmd_title)
+
+    title_bt_parser = commands.add_parser("title-backtest", help="past seasons replayed from every round")
+    title_bt_parser.add_argument("--season", type=int, action="append", help="replay only this season (repeatable)")
+    title_bt_parser.add_argument("--runs", type=int, default=4_000)
+    title_bt_parser.add_argument("--out", help="write every checkpoint here as CSV")
+    title_bt_parser.add_argument("--save", action="store_true", help="save the race noise fitted on these seasons")
+    title_bt_parser.set_defaults(handler=cmd_title_backtest)
 
     args = parser.parse_args(argv)
     return args.handler(args)

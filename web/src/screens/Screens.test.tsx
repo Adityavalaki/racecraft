@@ -5,6 +5,7 @@ import { sentence, tone } from "../panels/RaceControl";
 import { DEFAULT_SETTINGS, speedIn } from "../settings";
 import { ScreenView, type ScreenContext } from "./ScreenView";
 import { SettingsScreen } from "./SettingsScreen";
+import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
 import { seriesFor } from "./TraceScreen";
 import { ageAtLost, lostAt } from "./TyresScreen";
@@ -297,17 +298,30 @@ describe("StandingsScreen", () => {
     notes: ["Singapore Grand Prix sprint: the feed sent no points, so they are worked out from the classified positions"],
   });
 
+  const odds = {
+    year: 2026, moment: "before", runs: 10000, notes: [],
+    remaining: [{ round: 16, event_name: "Bahrain Grand Prix", session: "Grand Prix" },
+                { round: 17, event_name: "Singapore Grand Prix", session: "sprint" }],
+    drivers: [{ abbreviation: "RUS", driver_number: 63, points: 238, title: 0.82, expected_points: 270, p10: 250, p90: 290, max_points: 271, alive: true },
+              { abbreviation: "VER", driver_number: 3, points: 213, title: 0, expected_points: 230, p10: 215, p90: 245, max_points: 246, alive: true }],
+    constructors: [{ team: "Mercedes", points: 573, title: 0.999, expected_points: 610, max_points: 631, alive: true },
+                   { team: "Red Bull Racing", points: 324, title: 0, expected_points: 350, max_points: 382, alive: false }],
+  };
+
   it("shows both championships as they stood going into the session, and after it on request", async () => {
     const fetchMock = vi.fn(async (url: string) =>
-      ({ ok: true, json: async () => table(url.endsWith("moment=after") ? "after" : "before") }) as Response);
+      ({ ok: true, json: async () => (url.includes("/title") ? { ...odds, moment: url.endsWith("moment=after") ? "after" : "before" } : table(url.endsWith("moment=after") ? "after" : "before")) }) as Response);
     vi.stubGlobal("fetch", fetchMock);
     const onSelect = vi.fn();
     render(<ScreenView id="standings" ctx={context({ onSelect })} />);
 
     const drivers = within(await screen.findByRole("table", { name: "Drivers' standings" }));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/standings?moment=before");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/standings?moment=before");
     expect(drivers.getByText("RUS")).toBeDefined();
     expect(drivers.getByText("238")).toBeDefined();
+    expect(await drivers.findByText("82%")).toBeDefined();                // RUS's title chance
+    expect(within(screen.getByRole("table", { name: "Constructors' standings" })).getByText("out")).toBeDefined();
+    expect(screen.getByText(/the 1 Grand Prix and 1 sprint still to run simulated 10,000 times from these standings, up to 33 points/)).toBeDefined();
     expect(drivers.getByText("−25")).toBeDefined();                       // VER's gap to the leader
     expect(drivers.getByLabelText("up 1 since the last weekend")).toBeDefined();
     expect(drivers.getByLabelText("Latest finishes: P1, retired")).toBeDefined();
@@ -322,6 +336,14 @@ describe("StandingsScreen", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "After it" }));
     expect(await screen.findByText(/after 15 Grands Prix/)).toBeDefined();
-    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/sessions/2026_15_R/standings?moment=after");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/standings?moment=after");
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/title?moment=after");
   });
+});
+
+it("calls a title certain only once nobody else can reach the leader", () => {
+  expect(titleChance(0.999, false)).toBe(">99%");
+  expect(titleChance(1, false)).toBe(">99%");
+  expect(titleChance(1, true)).toBe("100%");
+  expect(titleChance(0.42, false)).toBe("42%");
 });

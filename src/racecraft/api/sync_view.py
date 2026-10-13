@@ -22,13 +22,14 @@ log = logging.getLogger(__name__)
 
 def forget_models() -> None:
     """Drop every cached fit and answer built from the lake."""
-    from racecraft.api import insight, places_view, tyre_sets_view
+    from racecraft.api import insight, places_view, title_view, tyre_sets_view
     from racecraft.model import race_inputs, tyre_sets
 
     for cache in (insight._tables_cache, insight._circuit_cache, insight._season_cache,
                   places_view._cache, tyre_sets_view._cache, tyre_sets_view._weekends,
                   tyre_sets._weekend_cache, race_inputs._race_cache):
         cache.clear()
+    title_view.forget()
     log.info("new sessions in the lake: cached model fits dropped")
 
 

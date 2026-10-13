@@ -309,6 +309,28 @@ def session_standings(session_key: str,
     return body
 
 
+@app.get("/api/sessions/{session_key}/title")
+def session_title(session_key: str,
+                  moment: str = Query("before", pattern="^(before|after)$",
+                                      description="from the standings before this session started, or after it")) -> dict:
+    """
+    Each driver's and constructor's chance of the championship, the rest of
+    the season simulated from the standings at this session. A few seconds the
+    first time for a season, then from memory.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for the title odds")
+    _safe(session_key)
+    from racecraft.api import title_view
+
+    try:
+        return title_view.for_session(session_key, moment)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+    except title_view.NotAvailable as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
 @app.get("/api/sessions/{session_key}/weekend")
 def session_weekend(session_key: str) -> dict:
     """The weekend's sessions in the lake, in running order, and whether it has a sprint."""

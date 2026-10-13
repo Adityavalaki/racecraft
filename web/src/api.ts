@@ -622,6 +622,19 @@ export interface Standings {
   notes: string[];
 }
 
+/** The rest of the season simulated from the standings: each driver's and team's chance of the title. */
+export interface TitleOdds {
+  year: number;
+  moment: StandingsMoment;
+  drivers: { abbreviation: string; driver_number: number; points: number; title: number; expected_points: number;
+             p10: number; p90: number; max_points: number; alive: boolean }[];
+  constructors: { team: string; points: number; title: number; expected_points: number; max_points: number;
+                  alive: boolean }[];
+  remaining: { round: number; event_name: string; session: string }[];
+  runs: number;
+  notes: string[];
+}
+
 /** A weekend's sessions in the lake, in running order, and whether it has a sprint. */
 export interface WeekendInfo {
   sessions: string[];
@@ -800,6 +813,9 @@ export const api = {
   /** The season's championships, from results before this session (or with it, `after`). */
   standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
+  /** A few seconds the first time for a season: the rest of it is simulated. */
+  title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),
   /** Points live at the newest recording. Attaching again to the same one changes nothing. */
   liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
   /** Starts a sync of the latest race weekends, or reports the one running. */

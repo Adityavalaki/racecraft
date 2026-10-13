@@ -51,7 +51,8 @@ It runs as a Windows desktop app, or as a local web app in any browser.
   every race since 2023. On a sprint weekend it **predicts the sprint** too,
   from sprint qualifying, checked against every sprint since 2023.
 - **Keeps the championships**: drivers' and constructors' points, as they stood
-  at any session of the season, matching F1's published tables.
+  at any session of the season, matching F1's published tables, and **each
+  driver's and team's chance of the title**, the rest of the season simulated.
 - **Explains race control**: every steward's verdict and track message in plain
   words, with what it means for the result.
 - **Follows a session live** from F1's own timing feed (no subscription needed).
@@ -80,7 +81,7 @@ on a second monitor.
 | **Tyres**: the wear curve per compound with every car placed on it, the race's own tyres as optional hindsight, and every car's sets through the weekend. | ![Tyres](docs/screenshots/tyres.png) |
 | **Race prediction**: the favourite, the podium chances, the full predicted order with each driver's likely range, and after the race the result beside it, scored against the grid. On a sprint weekend, switch between the Grand Prix and the sprint. | ![Race prediction](docs/screenshots/race-prediction.png) |
 | **Stewards**: every race control message explained (what it is, its status, its effect on the race) and the flags and safety cars across the race. | ![Stewards](docs/screenshots/stewards.png) |
-| **Standings**: the drivers' and constructors' championships as they stood going into the session (so a race is not spoiled) or after it: points, gap to the leader, wins, podiums, the last five Grand Prix finishes, places gained since the last weekend, and who scored each team's points. | ![Standings](docs/screenshots/standings.png) |
+| **Standings**: the drivers' and constructors' championships as they stood going into the session (so a race is not spoiled) or after it: points, gap to the leader, wins, podiums, the last five Grand Prix finishes, places gained since the last weekend, and who scored each team's points; and each driver's and team's chance of the title, or "out" once they can no longer reach the leader. | ![Standings](docs/screenshots/standings.png) |
 | **Settings**: units, row density, the header clock, the map's names and overtake rings, and refreshing the data. | ![Settings](docs/screenshots/settings.png) |
 
 ---
@@ -162,6 +163,15 @@ Each is described in full, with the measurements behind it, in
   On the order it ties the grid: a sprint is short, nobody stops, and the
   field mostly finishes where it started. Its chances are the more honest,
   for the win and the podium alike.
+- **Title odds.** The rest of the season simulated 10,000 times from the
+  standings: each driver's pace from recent race form, uncertain in two
+  measured parts (how far form misses a driver's level, drawn once a season,
+  and how much their pace strays race to race, drawn every race), with
+  retirements at the season's rate and F1's points. Replayed over 2023 to 2025
+  from every round, it gave the eventual champion a 66% chance on average,
+  against 49% for the same simulation knowing only the points (Brier 0.33 vs
+  0.45), most clearly early in a season. In 2025's close three-way finish it
+  did slightly worse than the points alone.
 - **Overtake mode (2026).** The feed never says when a driver used it, so a car
   is shown as *eligible* when race control has it switched on and the car was
   within a second of the one ahead at the last timing line. An estimate, and
@@ -321,6 +331,8 @@ need is not in it.
 | `racecraft-analyse predict-backtest` | Every race since 2023 predicted and scored against the grid. |
 | `racecraft-analyse predict 2025_06_SQ --sprint` | The weekend's sprint, predicted from sprint qualifying. |
 | `racecraft-analyse predict-backtest --sprint` | Every sprint since 2023 predicted and scored against the grid. |
+| `racecraft-analyse title 2026` | Each driver's and team's chance of the championship. |
+| `racecraft-analyse title-backtest` | 2023 to 2025 replayed from every round, scored against the points alone. |
 | `racecraft-live record` / `status` / `read` | Record F1's live timing feed, and read it back. |
 
 Session keys look like `2025_04_R`: season, round, session (`FP1`, `FP2`,

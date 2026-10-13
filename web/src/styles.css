@@ -2131,16 +2131,17 @@ button.prediction-row:hover { background: var(--panel-2); }
 /* ---------------------------------------------------------------- standings */
 .standings-basis { margin: 0; font-size: 0.8rem; color: var(--ink-soft); }
 .standings-basis b { color: var(--ink); font-weight: 600; }
-.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 12px; align-items: start; }
+.standings { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1240px) { .standings { grid-template-columns: minmax(0, 1fr); } }
 .standings-panel { padding: 14px 0 6px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .standings-panel > .card-label { margin: 0; padding: 0 16px; }
-.standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 7.4rem; }
-.standings-table.is-teams { --st-cols: 2rem 4px minmax(7rem, 1fr) 3.2rem 3.2rem 2.6rem minmax(7rem, 1.2fr); }
+.standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 3.2rem 7.4rem; }
+.standings-table.is-teams { --st-cols: 2rem 4px minmax(6rem, 1fr) 3rem 3.2rem 2.4rem 3rem minmax(5rem, 1.2fr); }
 .standings-row {
   display: grid;
   grid-template-columns: var(--st-cols);
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.45rem;
   width: 100%;
   min-height: 2.3rem;
   padding: 0.25rem 16px;
@@ -2192,3 +2193,7 @@ button.standings-row:hover { background: var(--panel-2); }
 .finish.is-points { color: var(--ink); background: #20262d; }
 .finish.is-podium { color: var(--ink); background: #3a2a52; }
 .finish.is-win { color: #fff; background: var(--signal); }
+.title-odds { color: var(--ink-mid); }
+.title-odds.is-favourite { color: var(--ink); font-weight: 700; }
+.title-odds.is-out { color: var(--ink-soft); font-size: 0.72rem; }
+.title-odds.is-waiting { color: var(--ink-soft); }
