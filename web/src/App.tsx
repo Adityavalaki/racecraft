@@ -71,7 +71,8 @@ export default function App() {
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data), clock.speed);
   const state = useStateAt(sessionKey, info, clock.t);
-  const { stewards, trackLog } = useMessagesAt(sessionKey, info, clock.t);
+  // Race control is shown on the replay and the stewards' screen only; elsewhere it is not asked for.
+  const { stewards, trackLog } = useMessagesAt(sessionKey, info, clock.t, screen === "replay" || screen === "stewards");
   const driverCodes = useMemo(() => {
     const out: Record<number, string> = {};
     for (const driver of info?.drivers ?? []) {

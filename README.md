@@ -53,6 +53,8 @@ It runs as a Windows desktop app, or as a local web app in any browser.
 - **Keeps the championships**: drivers' and constructors' points, as they stood
   at any session of the season, matching F1's published tables, and **each
   driver's and team's chance of the title**, the rest of the season simulated.
+- **Ranks the pit crews**: which teams turn a car round fastest, from every
+  green-flag stop of the season, measured against each race's typical stop.
 - **Explains race control**: every steward's verdict and track message in plain
   words, with what it means for the result.
 - **Follows a session live** from F1's own timing feed (no subscription needed).
@@ -82,6 +84,7 @@ on a second monitor.
 | **Race prediction**: the favourite, the podium chances, the full predicted order with each driver's likely range, and after the race the result beside it, scored against the grid. On a sprint weekend, switch between the Grand Prix and the sprint. | ![Race prediction](docs/screenshots/race-prediction.png) |
 | **Stewards**: every race control message explained (what it is, its status, its effect on the race) and the flags and safety cars across the race. | ![Stewards](docs/screenshots/stewards.png) |
 | **Standings**: the drivers' and constructors' championships as they stood going into the session (so a race is not spoiled) or after it: points, gap to the leader, wins, podiums, the last five Grand Prix finishes, places gained since the last weekend, and who scored each team's points; and each driver's and team's chance of the title, or "out" once they can no longer reach the leader. | ![Standings](docs/screenshots/standings.png) |
+| **Pit crews**: every team's crew ranked by its typical stop against the race's typical stop, with how consistent it is and how often a stop went slow; below, this session's stops up to the replay clock, each saying why if it is not counted (a safety car, a penalty, a red flag). | ![Pit crews](docs/screenshots/crews.png) |
 | **Settings**: units, row density, the header clock, the map's names and overtake rings, and refreshing the data. | ![Settings](docs/screenshots/settings.png) |
 
 ---
@@ -172,6 +175,14 @@ Each is described in full, with the measurements behind it, in
   against 49% for the same simulation knowing only the points (Brier 0.33 vs
   0.45), most clearly early in a season. In 2025's close three-way finish it
   did slightly worse than the points alone.
+- **Pit crews.** The feed gives when a car crossed the pit-lane entry and exit
+  lines, not how long it stood still, so a stop is its pit-lane time against the
+  same race's typical stop: the lane is the same for everyone there. Only
+  green-flag stops with new tyres count; safety cars (the lane runs 3 to 4 s
+  quicker under one at Monaco and Baku), red flags, penalties and trips to the
+  garage are left out and counted. A team's figure in one half of a season's
+  races predicts the other half closely (split-half correlation 0.80 to 0.91),
+  so the order is the crews', not chance.
 - **Overtake mode (2026).** The feed never says when a driver used it, so a car
   is shown as *eligible* when race control has it switched on and the car was
   within a second of the one ahead at the last timing line. An estimate, and

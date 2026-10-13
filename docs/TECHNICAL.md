@@ -1275,6 +1275,47 @@ year, Norris the champion by two points) form pointed the wrong way more
 often than the points did. Three seasons are few to judge it on, two of them
 runaways.
 
+## Pit crews
+
+`model/pit_crews.py` ranks each team's crew from its stops. The public timing
+has `pit_in_t` and `pit_out_t`, the moments a car crossed the pit-lane entry
+and exit lines, and nothing about how long it stood still. A stop is therefore
+**pit-lane time**, line to line, against the median green-flag stop of the same
+race. The lane, its speed limit and its length are the same for everyone at a
+race, so what differs is the crew's work, and a car queued behind its
+team-mate, which is the team's doing too.
+
+Left out of a crew's figure, and counted on screen:
+
+| Left out | Why | 2026 so far |
+|---|---|---|
+| Under a safety car or VSC | the lane runs 3 to 4 s quicker under one at Monaco and Baku, and double-stacking is common | 321 |
+| Red flags | every car waits in the lane; the time is the stoppage | 57 |
+| Penalties | served at the stop, or a drive-through or stop/go of its own (`api.penalties.penalised_stops`, the pit-loss rule) | 29 |
+| Over a minute | taken into the garage | 19 |
+| No new tyres | not a pit stop | rare |
+
+A team's figure is the median of its stops against the race's, with the middle
+half (spread) and the share more than 2 s slow. Teams with fewer than eight
+stops are listed last and marked: not yet a pattern.
+
+**Is it the crews?** Split each season into odd and even rounds and compute every
+team's figure from each half: the two halves agree closely.
+
+| Season | Split-half correlation | Quickest crew | Slowest |
+|---|---|---|---|
+| 2023 | 0.86 | Red Bull −0.50 s | Alfa Romeo +0.41 s |
+| 2024 | 0.85 | Red Bull −0.37 s | Haas +0.36 s |
+| 2025 | 0.80 | Ferrari −0.23 s | Haas +0.34 s |
+| 2026 so far | 0.91 | Mercedes −0.61 s | Cadillac +1.14 s |
+
+Two choices were made on these numbers. Safety-car stops were first compared
+with green-flag ones; leaving them out raised 2025's agreement from 0.64 to
+0.80 and removed nearly every stop that came out implausibly fast. And the
+team's best single stop was dropped from the table: one timing glitch (17.0 s
+in a lane whose stops take 23) decides it, where the median and spread shrug
+it off.
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultSession, lapStartTime, useSession } from "./sessionData";
+import type { SessionInfo } from "./api";
+import { defaultSession, lapStartTime, useMessagesAt, useSession } from "./sessionData";
 
 /**
  * The shared reading of a session, tested on its own. The replay window and
@@ -125,5 +126,36 @@ describe("helpers", () => {
     expect(lapStartTime(1, crossings, 1000)).toBe(1000);   // no lap 0 crossing: the start
     expect(lapStartTime(9, crossings, 1000)).toBe(1000);   // never completed: the start
     expect(lapStartTime(3, null, 1000)).toBe(1000);
+  });
+});
+
+describe("useMessagesAt", () => {
+  const info = { t_start: 0, t_end: 6000, drivers: [] } as unknown as SessionInfo;
+
+  it("asks once while the clock stands still, and again when it moves", async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      calls.push(url);
+      return { ok: true, json: async () => [] } as unknown as Response;
+    }));
+    const { rerender } = renderHook(({ t }) => useMessagesAt("2024_01_R", info, t), { initialProps: { t: 3000 } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });     // ten seconds paused
+    expect(calls).toHaveLength(2);                                              // one pair: stewards and track
+    rerender({ t: 3010 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(calls).toHaveLength(4);
+    expect(calls.at(-1)).toContain("until=3010.00");
+    vi.useRealTimers();
+  });
+
+  it("asks nothing where race control is not shown", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => [] }) as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    renderHook(() => useMessagesAt("2024_01_R", info, 3000, false));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

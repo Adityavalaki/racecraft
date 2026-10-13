@@ -3,6 +3,7 @@ import type { Insight, LapSeries, RaceControlEvent, SessionInfo, SessionState } 
 import { screenById, type ScreenId } from "../features";
 import { PredictionBoard } from "../panels/PredictionBoard";
 import { ScreenHeader } from "../shell/ScreenHeader";
+import { CrewsScreen } from "./CrewsScreen";
 import { PedalsScreen } from "./PedalsScreen";
 import { TowerScreen } from "./TowerScreen";
 import { StandingsScreen } from "./StandingsScreen";
@@ -79,5 +80,7 @@ export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<Sc
       return <StewardsScreen ctx={ctx} header={header} />;
     case "standings":
       return <StandingsScreen ctx={ctx} header={header} />;
+    case "crews":
+      return <CrewsScreen ctx={ctx} header={header} />;
   }
 });

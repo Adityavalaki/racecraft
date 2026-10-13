@@ -635,6 +635,45 @@ export interface TitleOdds {
   notes: string[];
 }
 
+/** One team's pit crew over the season: its stops against each race's typical stop, in seconds. */
+export interface CrewStanding {
+  position: number;
+  team: string;
+  team_color: string | null;
+  stops: number;
+  typical_s: number;
+  spread_s: number;
+  q1_s: number;
+  q3_s: number;
+  slow_share: number;
+  /** Too few stops yet to be a pattern: ranked last. */
+  thin: boolean;
+}
+
+/** One trip down the pit lane in this session. `excluded` says why it is not a crew's stop. */
+export interface PitLaneTrip {
+  t: number;
+  lap: number;
+  driver_number: number;
+  abbreviation: string | null;
+  team: string | null;
+  team_color: string | null;
+  lane_s: number;
+  vs_typical_s: number | null;
+  excluded: string | null;
+}
+
+export interface PitCrews {
+  year: number;
+  moment: StandingsMoment;
+  teams: CrewStanding[];
+  stops: number;
+  races: number;
+  excluded: Record<string, number>;
+  notes: string[];
+  session_stops: PitLaneTrip[];
+}
+
 /** A weekend's sessions in the lake, in running order, and whether it has a sprint. */
 export interface WeekendInfo {
   sessions: string[];
@@ -813,6 +852,8 @@ export const api = {
   /** The season's championships, from results before this session (or with it, `after`). */
   standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
+  pitCrews: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<PitCrews>(`/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),

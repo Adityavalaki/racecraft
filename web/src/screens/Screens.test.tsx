@@ -347,3 +347,36 @@ it("calls a title certain only once nobody else can reach the leader", () => {
   expect(titleChance(1, true)).toBe("100%");
   expect(titleChance(0.42, false)).toBe("42%");
 });
+
+describe("CrewsScreen", () => {
+  const crews = {
+    year: 2026, moment: "before", stops: 312, races: 20, notes: [],
+    excluded: { "safety car": 321, "red flag": 57, penalty: 29 },
+    teams: [
+      { position: 1, team: "Mercedes", team_color: "00D7B6", stops: 30, typical_s: -0.61, spread_s: 1.1, q1_s: -1.0, q3_s: 0.1, slow_share: 0.11, thin: false },
+      { position: 2, team: "Cadillac", team_color: "909090", stops: 31, typical_s: 1.14, spread_s: 2.7, q1_s: 0.2, q3_s: 2.9, slow_share: 0.38, thin: false },
+    ],
+    session_stops: [
+      { t: 2000, lap: 18, driver_number: 63, abbreviation: "RUS", team: "Mercedes", team_color: "00D7B6", lane_s: 23.6, vs_typical_s: -0.4, excluded: null },
+      { t: 2500, lap: 22, driver_number: 11, abbreviation: "PER", team: "Cadillac", team_color: "909090", lane_s: 21.0, vs_typical_s: -3.0, excluded: "safety car" },
+      { t: 9000, lap: 40, driver_number: 3, abbreviation: "VER", team: "Red Bull Racing", team_color: "4781D7", lane_s: 24.0, vs_typical_s: 0.0, excluded: null },
+    ],
+  };
+
+  it("ranks the crews and lists this session's stops up to the clock", async () => {
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => crews }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ScreenView id="crews" ctx={context({ t: 3000 })} />);
+
+    const ranking = within(await screen.findByRole("table", { name: "Pit crew ranking" }));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/pit-crews?moment=before");
+    expect(ranking.getByText("−0.61 s")).toBeDefined();
+    expect(ranking.getByText("+1.14 s")).toBeDefined();
+    expect(screen.getByText(/312 green-flag stops in 20 races and sprints; left out: 321 under a safety car or VSC, 57 in red flags, 29 serving penalties/)).toBeDefined();
+
+    const stops = within(screen.getByRole("table", { name: "Stops in this session" }));
+    expect(screen.getByText(/This session's stops so far: 2 of 3/)).toBeDefined();   // VER's, at t=9000, not yet
+    expect(stops.queryByText("VER")).toBeNull();
+    expect(stops.getByText(/not counted: under a safety car or VSC/)).toBeDefined();
+  });
+});

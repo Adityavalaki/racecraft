@@ -10,7 +10,7 @@
  */
 
 export type ScreenId =
-  | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "standings"
+  | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "standings" | "crews"
   | "settings";
 
 /** The screens that can have a window of their own. */
@@ -38,6 +38,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "prediction", title: "Race prediction", hint: "The race, called from Friday and Saturday. Chances, not certainties.", group: "Plan", poppable: true },
   { id: "stewards", title: "Stewards", hint: "Every race control message, with what it means for the result.", group: "Control", poppable: true },
   { id: "standings", title: "Standings", hint: "The drivers' and constructors' championships, as they stood.", group: "Season", poppable: true },
+  { id: "crews", title: "Pit crews", hint: "Which teams turn a car round fastest, from every green-flag stop.", group: "Season", poppable: true },
   { id: "settings", title: "Settings", hint: "How Racecraft looks, and where its data comes from.", group: null, poppable: false },
 ];
 

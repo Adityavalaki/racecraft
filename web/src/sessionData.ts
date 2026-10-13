@@ -356,6 +356,10 @@ export function useStateAt(sessionKey: string | null, info: SessionInfo | null, 
  * requests, because the limit applies after the filter: each list gets its own
  * newest rather than sharing one budget. The PEN column does not depend on
  * this — it arrives with the running order, at the same `t`.
+ *
+ * Asked again only when the clock has moved: a paused replay asks once, not
+ * twice a second for the same answer (an hour paused used to be 9,000
+ * requests). And only where the messages are shown (`enabled`).
  */
 export function useMessagesAt(sessionKey: string | null, info: SessionInfo | null, t: number, enabled = true) {
   const [stewards, setStewards] = useState<RaceControlEvent[]>([]);
@@ -371,10 +375,13 @@ export function useMessagesAt(sessionKey: string | null, info: SessionInfo | nul
     if (!sessionKey || !info || !enabled) return;
     let active = true;
     let inFlight = false;
+    let asked: { key: string; t: number } | null = null;
     const pull = () => {
       if (inFlight || !active) return;
       const { key, t: now } = latest.current;
       if (!key) return;
+      if (asked && asked.key === key && asked.t === now) return;     // nothing has moved
+      asked = { key, t: now };
       inFlight = true;
       Promise.all([
         api.messages(key, now, 60, "stewards"),
@@ -386,7 +393,9 @@ export function useMessagesAt(sessionKey: string | null, info: SessionInfo | nul
           setStewards(Array.isArray(verdicts) ? verdicts : []);
           setTrackLog(Array.isArray(log) ? log : []);
         })
-        .catch(() => undefined)
+        .catch(() => {
+          asked = null;                                              // a failed ask is asked again
+        })
         .finally(() => {
           inFlight = false;
         });

@@ -331,6 +331,35 @@ def session_title(session_key: str,
         raise HTTPException(status_code=422, detail=str(error)) from None
 
 
+@app.get("/api/sessions/{session_key}/pit-crews")
+def session_pit_crews(session_key: str,
+                      moment: str = Query("before", pattern="^(before|after)$",
+                                          description="the season's stops before this session started, or with it")) -> dict:
+    """
+    Every team's pit crew this season, ranked: their typical stop against the
+    race's typical stop, how consistent, how often slow; and this session's
+    own stops, each with its time so the interface can follow the clock.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for the pit crews")
+    _safe(session_key)
+    import pandas as pd
+
+    from racecraft.model import pit_crews
+
+    con = connect()
+    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
+    year, start = int(row[0]), pd.Timestamp(row[1])
+    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
+    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    body = pit_crews.ranking(con, year, as_of).as_dict()
+    body["moment"] = moment
+    body["session_stops"] = pit_crews.session_stops(con, session_key)
+    return body
+
+
 @app.get("/api/sessions/{session_key}/weekend")
 def session_weekend(session_key: str) -> dict:
     """The weekend's sessions in the lake, in running order, and whether it has a sprint."""
