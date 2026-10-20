@@ -145,7 +145,8 @@ def test_a_first_visit_has_no_pit_lane_to_measure(lake_dir):
     out = insight.for_session(f"{YEAR - 1}_01_R")
     assert out["pit_loss"] is None
     assert out["plans"] == []
-    assert out["plans_unavailable"] == "no earlier race at Sakhir to measure its pit lane from"
+    # The lake's first race has nothing before it: no tyre wear either, which is said first.
+    assert out["plans_unavailable"] == "no fittable race before this one to measure degradation from"
 
 
 def test_degradation_put_in_comes_back_out(lake_dir):
@@ -157,17 +158,20 @@ def test_degradation_put_in_comes_back_out(lake_dir):
     assert measured["SOFT"] > measured["MEDIUM"] > measured["HARD"]
 
 
-def test_the_race_being_viewed_is_left_out_of_its_own_fit(lake_dir):
-    """The whole point of the split: the curve predicts this race, it does not describe it."""
-    out = insight.for_session(f"{YEAR}_01_R")
+def test_a_race_is_fitted_only_on_the_races_before_it(lake_dir):
+    """The curve predicts this race from what was known before it: not itself, not later races."""
+    out = insight.for_session(f"{YEAR}_03_R")
     assert out["held_out"] is True
-    assert out["fitted_on_count"] == 2
-    assert "Sakhir Grand Prix" not in out["fitted_on"]
-    assert set(out["fitted_on"]) == {"Jeddah Grand Prix", "Melbourne Grand Prix"}
+    assert out["fitted_on"] == ["Sakhir Grand Prix", "Jeddah Grand Prix"]
 
-    # A different race is fitted on a different pair, so the numbers must differ.
-    other = insight.for_session(f"{YEAR}_02_R")
-    assert "Jeddah Grand Prix" not in other["fitted_on"]
+    middle = insight.for_session(f"{YEAR}_02_R")
+    assert middle["fitted_on"] == ["Sakhir Grand Prix"]
+
+
+def test_the_seasons_first_race_borrows_the_end_of_the_last(lake_dir):
+    out = insight.for_session(f"{YEAR}_01_R")
+    assert out["fitted_on"] == [f"{name} {YEAR - 1}"
+                                for name in ("Sakhir Grand Prix", "Jeddah Grand Prix", "Melbourne Grand Prix")]
 
 
 def test_pit_loss_is_measured_from_the_races(lake_dir):

@@ -149,8 +149,8 @@ def session_insight(session_key: str,
     risk and the cheapest plans.
 
     The first call for a season fits every race in it and takes about fifteen
-    seconds; later calls are served from that fit. The race being viewed is
-    held out of its own degradation figure.
+    seconds; later calls are served from that fit. Degradation comes from the
+    season's races before this one (a first race: the end of last season).
     """
     if session_key == live_store.SESSION_KEY:
         try:

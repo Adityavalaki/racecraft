@@ -74,9 +74,16 @@ class SeasonFits:
     names: dict[str, str]
     fuel_s_per_lap: float
 
-    def combined(self, exclude: str | None = None) -> tuple[dict[str, float], dict[str, float], list[str]]:
-        """Degradation and compound offsets from every race but `exclude`."""
-        used = [key for key in self.by_session if key != exclude]
+    def combined(self, before_round: int | None = None,
+                 latest: int | None = None) -> tuple[dict[str, float], dict[str, float], list[str]]:
+        """
+        Degradation and compound offsets from the races before `before_round`
+        (every race, if None), only the `latest` of them if given.
+        """
+        # Keys are lake keys, YYYY_RR_R, and by_session is filled in round order.
+        used = [key for key in self.by_session
+                if before_round is None or int(key.split("_")[1]) < before_round]
+        used = used[-latest:] if latest else used
         models = [self.by_session[key] for key in used]
         if not models:
             return {}, {}, []
@@ -133,8 +140,14 @@ def _for_session(session_key: str, scale: float) -> dict:
     # The scheduled distance was known in advance; the median of past races is a fallback.
     total_laps = _int_or_none(row["total_laps"]) or constants["laps"].get(name)
 
+    # Only races before this one, as every other model here: a later race is
+    # hindsight. The season's first race borrows the end of the season before,
+    # the same fallback race_inputs uses for the simulator.
     fits = _season_fits(year)
-    measured, offsets, fitted_on = fits.combined(exclude=session_key)
+    measured, offsets, fitted_on = fits.combined(before_round=int(row["round"]))
+    if not fitted_on:
+        measured, offsets, fitted_on = _season_fits(year - 1).combined(latest=race_inputs_model.LADDER_RACES)
+        fitted_on = [f"{name} {year - 1}" for name in fitted_on]
     is_race = str(row["session"]) == "R"
 
     out: dict = {
@@ -479,7 +492,7 @@ def _stop_laps(plan: strategy_model.Plan) -> list[int]:
 def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
                   circuit: str = "this circuit", held_out: bool = False) -> str:
     if not measured:
-        return "no fittable races in this season to measure degradation from"
+        return "no fittable race before this one to measure degradation from"
     if loss is None:
         if held_out:
             return f"no earlier race at {circuit} to measure its pit lane from"
