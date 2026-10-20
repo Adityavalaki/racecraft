@@ -507,6 +507,9 @@ _tables_cache: dict[tuple[str, int], dict] = {}
 _circuit_cache: OrderedDict[tuple, dict] = OrderedDict()
 _season_cache: OrderedDict[tuple, SeasonFits] = OrderedDict()
 _lock = threading.Lock()
+# One season fit at a time per key: the main window, a pop-out and the pit
+# windows ask together when a race opens, and each fit takes about 15 s.
+_computing: dict[tuple, threading.Event] = {}
 
 
 def _lake() -> tuple[str, int]:
@@ -603,11 +606,31 @@ def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = No
 def _season_fits(year: int) -> SeasonFits:
     """Every race in a season, fitted separately so any one can be left out."""
     key = (_lake(), year)
-    with _lock:
-        if key in _season_cache:
-            _season_cache.move_to_end(key)
-            return _season_cache[key]
+    while True:
+        with _lock:
+            if key in _season_cache:
+                _season_cache.move_to_end(key)
+                return _season_cache[key]
+            waiting = _computing.get(key)
+            if waiting is None:
+                _computing[key] = threading.Event()
+                break
+        waiting.wait(timeout=300)
 
+    try:
+        fits = _fit_season(year)
+        with _lock:
+            _season_cache[key] = fits
+            _season_cache.move_to_end(key)
+            while len(_season_cache) > MAX_CACHED_SEASONS:
+                _season_cache.popitem(last=False)
+        return fits
+    finally:
+        with _lock:
+            _computing.pop(key).set()
+
+
+def _fit_season(year: int) -> SeasonFits:
     con = connect()
     races = con.sql(f"""select session_key, total_laps, event_name from sessions
                         where year = {int(year)} and session = 'R' order by round""").df()
@@ -639,13 +662,7 @@ def _season_fits(year: int) -> SeasonFits:
     if not np.isfinite(fuel):
         fuel = 0.0
 
-    fits = SeasonFits(year=year, by_session=by_session, names=names, fuel_s_per_lap=fuel)
-    with _lock:
-        _season_cache[key] = fits
-        _season_cache.move_to_end(key)
-        while len(_season_cache) > MAX_CACHED_SEASONS:
-            _season_cache.popitem(last=False)
-    return fits
+    return SeasonFits(year=year, by_session=by_session, names=names, fuel_s_per_lap=fuel)
 
 
 def circuits() -> list[dict]:

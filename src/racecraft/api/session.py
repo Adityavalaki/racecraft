@@ -635,21 +635,34 @@ def _drivers_from(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
 # different lake, and handing back the wrong one would be silent and wrong.
 _cache: OrderedDict[tuple[str, str], SessionData] = OrderedDict()
 _lock = threading.Lock()
+# One load per session at a time: opening a session fires info, laps, state and
+# messages together, and each would otherwise load its 800,000 samples itself.
+_loading: dict[tuple[str, str], threading.Event] = {}
 
 
 def load(session_key: str) -> SessionData:
     key = (str(config.LAKE_DIR.resolve()), session_key)
-    with _lock:
-        if key in _cache:
+    while True:
+        with _lock:
+            if key in _cache:
+                _cache.move_to_end(key)
+                return _cache[key]
+            waiting = _loading.get(key)
+            if waiting is None:
+                _loading[key] = threading.Event()
+                break
+        waiting.wait(timeout=300)
+    try:
+        data = SessionData(session_key)      # loaded outside the lock: it takes about a second
+        with _lock:
+            _cache[key] = data
             _cache.move_to_end(key)
-            return _cache[key]
-    data = SessionData(session_key)          # loaded outside the lock: it takes about a second
-    with _lock:
-        _cache[key] = data
-        _cache.move_to_end(key)
-        while len(_cache) > MAX_CACHED_SESSIONS:
-            _cache.popitem(last=False)
-    return data
+            while len(_cache) > MAX_CACHED_SESSIONS:
+                _cache.popitem(last=False)
+        return data
+    finally:
+        with _lock:
+            _loading.pop(key).set()
 
 
 def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -> tuple[list, list]:
