@@ -83,7 +83,6 @@ def client(tmp_path, monkeypatch):
         }, YEAR, ROUND, code, lake=tmp_path)
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
     tyre_sets_view._cache.clear()
-    tyre_sets_view._weekends.clear()
     return TestClient(app, base_url="http://127.0.0.1")
 
 

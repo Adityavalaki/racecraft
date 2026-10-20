@@ -13,9 +13,8 @@ from collections import OrderedDict
 
 import pandas as pd
 
-from racecraft import config
 from racecraft.model import title
-from racecraft.store.db import connect
+from racecraft.store.db import connect, lake_key
 
 MAX_ANSWERS = 8
 
@@ -37,7 +36,7 @@ def for_session(session_key: str, moment: str = "before") -> dict:
     year, start = int(row[0]), pd.Timestamp(row[1])
     start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
     as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
-    key = (str(config.LAKE_DIR.resolve()), year, as_of.isoformat())
+    key = (lake_key(), year, as_of.isoformat())
     with _lock:
         if key in _answers:
             _answers.move_to_end(key)

@@ -24,9 +24,8 @@ import logging
 import threading
 from collections import OrderedDict
 
-from racecraft import config
 from racecraft.model import places, race_inputs
-from racecraft.store.db import connect
+from racecraft.store.db import connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ def for_session(session_key: str, grid: int, runs: int = places.DEFAULT_RUNS,
         # the sets that have been run. Kept answers would go stale silently.
         return _compute(session_key, grid, runs, live, tyres, live_status)
 
-    key = (str(config.LAKE_DIR.resolve()), session_key, grid, runs, tyres)
+    key = (lake_key(), session_key, grid, runs, tyres)
     while True:
         with _lock:
             if key in _cache:

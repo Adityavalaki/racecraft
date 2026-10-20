@@ -121,13 +121,10 @@ def plan(weekends: int = DEFAULT_WEEKENDS, now: datetime | None = None) -> tuple
 class Syncer:
     """One sync at a time, in a background thread, with its progress readable."""
 
-    def __init__(self, on_written=None) -> None:
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._job = Job()
         self._thread: threading.Thread | None = None
-        # Called once after a sync that wrote anything, so whatever has cached
-        # the lake can let go of it. The API uses this to drop its model fits.
-        self._on_written = on_written
 
     def status(self) -> dict:
         with self._lock:
@@ -216,8 +213,3 @@ class Syncer:
         finally:
             with self._lock:
                 self._job.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            if wrote and self._on_written is not None:
-                try:
-                    self._on_written()
-                except Exception:                   # a stale cache is not worth a crash
-                    log.exception("sync: could not refresh cached models")

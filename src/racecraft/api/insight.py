@@ -36,7 +36,6 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from racecraft import config
 from racecraft.model import circuit as circuit_model
 from racecraft.model import compounds as compounds_model
 from racecraft.model import race_inputs as race_inputs_model
@@ -44,7 +43,7 @@ from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
 from racecraft.api import penalties
 from racecraft.api import tyre_sets_view
-from racecraft.store.db import connect
+from racecraft.store.db import connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -502,18 +501,20 @@ def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
 
 # ---------------------------------------------------------------- caches
 
-_tables_cache: dict[str, dict] = {}
+# Every key starts with `_lake()`, the lake's path and version: a new ingest
+# changes it, and nothing fitted on the old files is served again.
+_tables_cache: dict[tuple[str, int], dict] = {}
 _circuit_cache: OrderedDict[tuple, dict] = OrderedDict()
-_season_cache: OrderedDict[tuple[str, int], SeasonFits] = OrderedDict()
+_season_cache: OrderedDict[tuple, SeasonFits] = OrderedDict()
 _lock = threading.Lock()
 
 
-def _lake() -> str:
-    return str(config.LAKE_DIR.resolve())
+def _lake() -> tuple[str, int]:
+    return lake_key()
 
 
 def _race_tables() -> dict:
-    """Every race's laps, sessions and track status, read once per lake."""
+    """Every race's laps, sessions and track status, read once per lake version."""
     key = _lake()
     with _lock:
         if key in _tables_cache:
@@ -528,6 +529,7 @@ def _race_tables() -> dict:
         "race_control": _race_control(con),
     }
     with _lock:
+        _tables_cache.clear()                  # one slot: every race's laps, never held twice
         _tables_cache[key] = value
     return value
 
