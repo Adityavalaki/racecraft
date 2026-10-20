@@ -26,7 +26,6 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -53,15 +52,9 @@ WEB_DIST = (resources.bundle_dir() / "web" / "dist" if resources.frozen()
 # their scripts from a CDN that the content security policy refuses.
 app = FastAPI(title="Racecraft", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
-# The Vite dev server runs on another port during development.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
-# Added last, so it is outermost: every request is checked and every response
-# carries the headers, the CORS preflight and the 404s included. See guard.py.
+# No CORS: the Vite dev server proxies /api and the interface uses relative
+# paths, so every request is same-origin. Every request is checked and every
+# response carries the headers, the 404s included. See guard.py.
 app.add_middleware(guard.Guard)
 
 
