@@ -102,6 +102,21 @@ def _resolve_teams(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def as_of(con, session_key: str, moment: str = "before") -> tuple[int, pd.Timestamp]:
+    """
+    (season, cut-off in UTC) for a session: its start for "before", so opening a
+    race does not give its result away, or a second past it for "after", which
+    takes in this session and nothing later the same weekend. KeyError if the
+    session is not in the lake.
+    """
+    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
+    if row is None:
+        raise KeyError(session_key)
+    start = pd.Timestamp(row[1])
+    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
+    return int(row[0]), start if moment == "before" else start + pd.Timedelta(seconds=1)
+
+
 def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
     """The championships of `year`, counting results from sessions that started before `as_of` (all, if None)."""
     df = results(con, year)

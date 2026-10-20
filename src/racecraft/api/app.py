@@ -292,18 +292,10 @@ def session_standings(session_key: str,
     if session_key == live_store.SESSION_KEY:
         raise HTTPException(status_code=422, detail="open a session from the session list for its standings")
     _safe(session_key)
-    import pandas as pd
-
     from racecraft.model import standings
 
     con = connect()
-    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
-    year, start = int(row[0]), pd.Timestamp(row[1])
-    start = start.tz_localize("UTC") if start.tzinfo is None else start
-    # A second past the start takes in this session and nothing after it on the same weekend.
-    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    year, as_of = _as_of(con, session_key, moment)
     body = standings.standings(con, year, as_of=as_of).as_dict()
     body["moment"] = moment
     return body
@@ -343,17 +335,10 @@ def session_pit_crews(session_key: str,
     if session_key == live_store.SESSION_KEY:
         raise HTTPException(status_code=422, detail="open a session from the session list for the pit crews")
     _safe(session_key)
-    import pandas as pd
-
     from racecraft.model import pit_crews
 
     con = connect()
-    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
-    year, start = int(row[0]), pd.Timestamp(row[1])
-    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
-    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    year, as_of = _as_of(con, session_key, moment)
     body = pit_crews.ranking(con, year, as_of).as_dict()
     body["moment"] = moment
     body["session_stops"] = pit_crews.session_stops(con, session_key)
@@ -489,6 +474,16 @@ def _load(session_key: str):
     _safe(session_key)                         # a key goes straight into SQL; refuse a bad one here
     try:
         return session_store.load(session_key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+
+
+def _as_of(con, session_key: str, moment: str):
+    """The session's season and cut-off (`standings.as_of`), or a 404."""
+    from racecraft.model import standings
+
+    try:
+        return standings.as_of(con, session_key, moment)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
 
