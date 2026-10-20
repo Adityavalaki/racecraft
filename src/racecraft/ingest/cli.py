@@ -446,8 +446,7 @@ def watch(args, log_file) -> int:
     often and nothing to lose from looking at all — a pass with nothing to do
     costs one schedule request.
     """
-    path = config.LOG_DIR / "watch.lock" if hasattr(config, "LOG_DIR") else \
-        config.LAKE_DIR.parent / "logs" / "watch.lock"
+    path = config.DATA_DIR / "logs" / "watch.lock"   # beside the session and app locks
     lock = take_lock(path)
     if lock is None:
         log.info("another watcher is already running (%s); nothing to do here", path)
