@@ -3,6 +3,11 @@
 The two projects Racecraft grew out of, kept because their mistakes are the
 reason it is built the way it is.
 
+Their code was removed from the working tree on 2026-10-20; the write-ups stay
+here. The code is in git history at commit `177e8e5`:
+`git checkout 177e8e5 -- legacy` brings it back, or browse the repository at
+that commit.
+
 ## `f1-strategy-engine/`
 
 The first attempt: FastF1 into CSVs, a tyre degradation fit, a pit-window
@@ -53,4 +58,4 @@ Racecraft onto F1's own timing feed instead.
 A portfolio that shows only the finished thing hides the part worth reading.
 Both leaks above looked like good results, and the second was found only
 because the feature importances were checked when the score seemed too good.
-That is the habit these two folders exist to demonstrate.
+That is the habit these two write-ups exist to demonstrate.
