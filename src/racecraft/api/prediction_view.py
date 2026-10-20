@@ -32,7 +32,7 @@ import pandas as pd
 
 from racecraft import config
 from racecraft.model import predict, race_inputs, weekend
-from racecraft.store.db import connect
+from racecraft.store.db import check_key, connect
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def for_session(session_key: str, kind: str = "race") -> dict:
     The prediction for the race (or the sprint) of the weekend `session_key`
     belongs to, with the result if there is one.
     """
-    _safe(session_key)
+    check_key(session_key)
     con = connect()
     try:
         # KeyError for a session not in the lake
@@ -78,7 +78,7 @@ def for_session(session_key: str, kind: str = "race") -> dict:
 
 def weekend_of(session_key: str) -> dict:
     """The weekend's sessions in the lake, and whether it has a sprint."""
-    _safe(session_key)
+    check_key(session_key)
     codes = weekend.sessions_of(connect(), session_key)       # KeyError for a session not in the lake
     return {"sessions": codes, "sprint": weekend.is_sprint_weekend(codes)}
 
@@ -175,9 +175,3 @@ def _write_once(path: Path, body: dict) -> None:
         os.replace(tmp, path)
     finally:
         Path(tmp).unlink(missing_ok=True)
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").isalnum():
-        raise KeyError(value)
-    return value

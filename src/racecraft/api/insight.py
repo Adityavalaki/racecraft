@@ -43,7 +43,7 @@ from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
 from racecraft.api import penalties
 from racecraft.api import tyre_sets_view
-from racecraft.store.db import connect, lake_key
+from racecraft.store.db import check_key, connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def _for_session(session_key: str, scale: float) -> dict:
     con = connect()
     meta = con.sql(
         "select session_key, year, round, session, event_name, location, total_laps, date_utc "
-        f"from sessions where session_key = '{_safe(session_key)}'"
+        f"from sessions where session_key = '{check_key(session_key)}'"
     ).df()
     if meta.empty:
         raise KeyError(session_key)
@@ -177,7 +177,7 @@ def _for_session(session_key: str, scale: float) -> dict:
     # is not a strategy. The modelled line below still holds, because it is
     # fitted on races and belongs to the season rather than to this session; the
     # observed side of it does not, and is withheld rather than drawn.
-    laps = con.sql(f"select * from laps where session_key = '{_safe(session_key)}'").df()
+    laps = con.sql(f"select * from laps where session_key = '{check_key(session_key)}'").df()
     out["degradation_curve"] = _degradation_curve(laps, measured, scale, observed=is_race)
     out["stints"] = _observed_stints(laps) if is_race else []
     if not is_race:
@@ -677,12 +677,6 @@ def circuits() -> list[dict]:
             "safety_car": constants["safety_car"].get(name),
         })
     return out
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").replace("-", "").isalnum():
-        raise KeyError(value)
-    return value
 
 
 def _int_or_none(value) -> int | None:

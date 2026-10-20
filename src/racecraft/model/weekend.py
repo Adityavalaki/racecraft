@@ -40,7 +40,7 @@ import pandas as pd
 
 from racecraft.model import pace as pace_model
 from racecraft.model import race_inputs
-from racecraft.store.db import partition
+from racecraft.store.db import check_key, partition
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def _weekend(con, race_key: str) -> pd.DataFrame:
 
 
 def _laps(con, session_key: str) -> pd.DataFrame:
-    return con.sql(f"select * from laps where session_key = '{race_inputs._safe(session_key)}'"
+    return con.sql(f"select * from laps where session_key = '{check_key(session_key)}'"
                    f"{partition(session_key)}").df()
 
 

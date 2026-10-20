@@ -25,7 +25,7 @@ import threading
 from collections import OrderedDict
 
 from racecraft.model import places, race_inputs
-from racecraft.store.db import connect, lake_key
+from racecraft.store.db import check_key, connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ def _compute(session_key: str, grid: int, runs: int, live, tyres: str = "car",
             live_round = session.get("round")
     else:
         rows = con.sql(f"""select location, year, "session" from sessions
-                           where session_key = '{_safe(session_key)}'""").df()
+                           where session_key = '{check_key(session_key)}'""").df()
         if rows.empty:
             raise KeyError(session_key)
         location, year = str(rows.iloc[0]["location"]), int(rows.iloc[0]["year"])
@@ -162,7 +162,7 @@ def _grid_drivers(con, race_key: str | None, year: int | None = None,
     import duckdb
 
     if race_key is not None:
-        where = f"session_key = '{_safe(race_key)}' and grid_position is not null"
+        where = f"session_key = '{check_key(race_key)}' and grid_position is not null"
         column = "grid_position"
     elif year and live_round:
         where = (f"year = {int(year)} and round = {int(live_round)} "
@@ -191,9 +191,3 @@ def _year(meta: dict) -> int | None:
         except (ValueError, TypeError):
             continue
     return None
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").replace("-", "").isalnum():
-        raise KeyError(value)
-    return value

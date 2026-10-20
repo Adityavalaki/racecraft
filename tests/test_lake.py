@@ -188,3 +188,23 @@ def test_the_database_keeps_no_copy_of_the_files_it_reads(tmp_path):
     assert cursor.sql("select current_setting('enable_external_file_cache')").fetchone()[0] is False
     limit = cursor.sql("select current_setting('memory_limit')").fetchone()[0]
     assert limit.endswith("GiB") or limit.endswith("MiB")          # a ceiling, not 80% of the machine
+
+
+@pytest.mark.parametrize("key", ["2024_01_R", "2024_01_FP1", "live", "FP1"])
+def test_a_plain_session_key_passes_the_check(key):
+    from racecraft.store.db import check_key
+    assert check_key(key) == key
+
+
+@pytest.mark.parametrize("key", ["2024_01_R'--", "2024-01-R", "２０２４_01_R", "2024_01_R²", "", "a b"])
+def test_anything_else_never_reaches_sql(key):
+    """isalnum() let other scripts' letters and digits through; the one check does not."""
+    from racecraft.store.db import check_key, partition
+    with pytest.raises(KeyError):
+        check_key(key)
+    assert partition(key) == ""
+
+
+def test_a_session_key_names_its_partition():
+    from racecraft.store.db import partition
+    assert partition("2024_01_R") == " and year = 2024 and round = 1 and session = 'R'"

@@ -36,6 +36,7 @@ from racecraft.model import pace as pace_model
 from racecraft.model import race as race_model
 from racecraft.model import traffic
 from racecraft.model.simulate import Neutralisation
+from racecraft.store.db import check_key
 
 log = logging.getLogger(__name__)
 
@@ -365,7 +366,7 @@ def _wet_share(con, session_key: str) -> float:
     """How much of a race ran on intermediates or wets."""
     rows = con.sql(f"""
         select avg(case when compound in ('INTERMEDIATE', 'WET') then 1.0 else 0.0 end)
-        from laps where session_key = '{_safe(session_key)}'""").fetchone()
+        from laps where session_key = '{check_key(session_key)}'""").fetchone()
     return float(rows[0] or 0.0)
 
 
@@ -379,12 +380,6 @@ def mandatory_stops(circuit: str, season: int) -> int:
         if circuit == where and first <= season <= last:
             return stops
     return 0
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").isalnum():
-        raise ValueError(f"bad session key '{value}'")
-    return value
 
 
 @dataclass
@@ -423,7 +418,7 @@ def field_stock(con, session_key: str | None = None, *, year: int | None = None,
 
     if session_key is not None:
         rows = con.sql(f"""select year, round from sessions
-                           where session_key = '{_safe(session_key)}'""").df()
+                           where session_key = '{check_key(session_key)}'""").df()
         if rows.empty:
             return {}
         year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])
@@ -500,7 +495,7 @@ def tyre_stock(con, session_key: str | None = None, *, grid: int | None = None,
 
     if session_key is not None:
         rows = con.sql(f"""select year, round from sessions
-                           where session_key = '{_safe(session_key)}'""").df()
+                           where session_key = '{check_key(session_key)}'""").df()
         if rows.empty:
             return None
         year, rnd = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"])

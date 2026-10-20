@@ -42,7 +42,7 @@ from racecraft.api import sync_view
 from racecraft.api import telemetry
 from racecraft.api import tyre_sets_view
 from racecraft.api import penalties
-from racecraft.store.db import connect, has_table
+from racecraft.store.db import check_key, connect, has_table
 
 log = logging.getLogger(__name__)
 
@@ -494,9 +494,10 @@ def _load(session_key: str):
 
 
 def _safe(value: str) -> str:
-    if not value.replace("_", "").isalnum():
-        raise HTTPException(status_code=400, detail=f"bad session code '{value}'")
-    return value
+    try:
+        return check_key(value)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"bad session code '{value}'") from None
 
 
 # The built interface, when there is one. Mounted last so /api wins.

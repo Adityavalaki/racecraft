@@ -48,6 +48,7 @@ at most once every `RECHECK_S` rather than on every request.
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -209,6 +210,21 @@ def has_table(cursor: duckdb.DuckDBPyConnection, name: str) -> bool:
     return bool(found and found[0])
 
 
+# A lake session key (2024_01_R), a session code (FP1) or the live key. Keys are
+# put straight into SQL text, so this is the one rule for what may reach it:
+# ASCII letters, digits and underscores, nothing else (str.isalnum() would let
+# any script's letters and digits through).
+_KEY = re.compile(r"[A-Za-z0-9_]+")
+_PARTITION = re.compile(r"([0-9]{4})_([0-9]{1,2})_([A-Za-z0-9]+)")
+
+
+def check_key(value: str) -> str:
+    """`value` if it is a safe session key or code; KeyError (a session that is not there) if not."""
+    if not isinstance(value, str) or not _KEY.fullmatch(value):
+        raise KeyError(value)
+    return value
+
+
 def partition(session_key: str) -> str:
     """
     The partition filter for one session, so a telemetry read opens one file.
@@ -216,7 +232,8 @@ def partition(session_key: str) -> str:
     `2024_01_R` is `year = 2024 and round = 1 and session = 'R'`. Anything that
     is not a lake session key gives no filter rather than a wrong one.
     """
-    parts = str(session_key).split("_", 2)
-    if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit() or not parts[2].isalnum():
+    match = _PARTITION.fullmatch(str(session_key))
+    if match is None:
         return ""
-    return f" and year = {int(parts[0])} and round = {int(parts[1])} and session = '{parts[2]}'"
+    year, rnd, code = match.groups()
+    return f" and year = {int(year)} and round = {int(rnd)} and session = '{code}'"

@@ -49,7 +49,8 @@ Date: 2026-10-20   Model: Claude Opus 5.5 (claude-opus-5-5)
 Context: Six copies of `_safe` with two different rules (some allowed `-`; all used `isalnum()`,
 which accepts non-ASCII), plus a regex in `session.py`. They guard SQL built with f-strings.
 Options:   1) Parameterise every query.  2) One check, `store.db.check_key`, ASCII letters,
-digits and `_`, each module keeping its own error type.
+digits and `_`, raising KeyError (a bad key is a session that is not there); the API's
+`_safe` turns that into a 400. `db.partition` uses the same ASCII rule.
 Chosen: 2.
 Why: Smallest change that makes the rule single; parameterising ~25 queries is a larger diff for
 no gain once the one check is strict.
