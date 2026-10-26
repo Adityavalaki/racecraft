@@ -340,7 +340,7 @@ def test_a_circuit_with_no_neutralisation_history_still_ranks_plans(lake_dir):
 def client(lake_dir):
     from fastapi.testclient import TestClient
     from racecraft.api.app import app
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_the_endpoint_serves_what_the_interface_expects(client):

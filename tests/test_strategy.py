@@ -74,3 +74,40 @@ def test_a_race_can_demand_more_than_one_stop():
     assert any(plan.stops == 1 for plan in free)
     assert monaco and all(plan.stops == 2 for plan in monaco)
     assert set(monaco) <= set(free)
+
+
+# ---- in the race: when to stop, and whether the undercut works
+
+RACE_DEG = {"SOFT": 0.09, "MEDIUM": 0.06, "HARD": 0.03}
+RACE_OFFSETS = {"SOFT": 0.0, "MEDIUM": 0.35, "HARD": 0.75}
+
+
+def test_an_old_set_brings_the_stop_forward():
+    fresh = strategy.stop_window(51, 16, "MEDIUM", 4, RACE_DEG, 21.0, RACE_OFFSETS, {"MEDIUM"})
+    worn = strategy.stop_window(51, 16, "MEDIUM", 24, RACE_DEG, 21.0, RACE_OFFSETS, {"MEDIUM"})
+    assert worn.most_likely_lap < fresh.most_likely_lap
+    assert worn.first_lap <= worn.most_likely_lap <= worn.last_lap
+
+
+def test_a_car_on_its_only_compound_must_change_compound():
+    window = strategy.stop_window(51, 16, "HARD", 10, {"HARD": 0.03, "MEDIUM": 0.06}, 21.0,
+                                  {"HARD": 0.0, "MEDIUM": 0.5}, {"HARD"})
+    assert window.next_compound == "MEDIUM"          # even though staying on hards would be cheaper
+    assert not window.no_stop
+
+
+def test_a_car_that_has_met_the_rules_may_run_to_the_flag():
+    window = strategy.stop_window(51, 45, "HARD", 10, RACE_DEG, 21.0, RACE_OFFSETS, {"MEDIUM"})
+    assert window.no_stop and window.most_likely_lap == 51
+
+
+def test_nothing_to_decide_with_the_flag_in_sight():
+    assert strategy.stop_window(51, 49, "SOFT", 20, RACE_DEG, 21.0, RACE_OFFSETS, {"SOFT"}) is None
+
+
+def test_the_undercut_needs_the_gain_to_beat_the_gap():
+    gain = strategy.undercut_gain("SOFT", 20, "MEDIUM", RACE_DEG, RACE_OFFSETS)
+    assert gain == pytest.approx(0.09 * 21 - (0.06 + 0.35))
+    assert strategy.undercut_chance(0.2, gain, 0.5) > 0.5 > strategy.undercut_chance(3.0, gain, 0.5)
+    # A pit lane that scatters more makes it a coin toss either way.
+    assert abs(strategy.undercut_chance(0.2, gain, 3.0) - 0.5) < abs(strategy.undercut_chance(0.2, gain, 0.2) - 0.5)

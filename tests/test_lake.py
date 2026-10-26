@@ -63,6 +63,36 @@ def test_schema_violation_names_the_column_and_writes_nothing(tables, tmp_path):
     assert not any(tmp_path.rglob("*.parquet"))
 
 
+def test_a_write_that_fails_leaves_no_temp_file(tables, tmp_path, monkeypatch):
+    def full_disk(table, where, **kwargs):
+        with open(where, "wb") as f:
+            f.write(b"PAR1 half")              # what a crash mid-write leaves
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(lake.pq, "write_table", full_disk)
+    with pytest.raises(OSError, match="no space"):
+        lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    assert not any(tmp_path.rglob("*.tmp")), "a failed write left its temp file"
+    assert not any(tmp_path.rglob("*.parquet"))
+
+
+def test_every_write_uses_a_temp_file_of_its_own(tables, tmp_path, monkeypatch):
+    """Two writers sharing `data.parquet.tmp` could rename each other's file."""
+    used = []
+    real = lake.pq.write_table
+
+    def record(table, where, **kwargs):
+        used.append(str(where))
+        return real(table, where, **kwargs)
+
+    monkeypatch.setattr(lake.pq, "write_table", record)
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    lake.write_session(tables, 2024, 1, "R", lake=tmp_path)
+    assert len(set(used)) == len(used)
+    assert all(u.endswith(".tmp") for u in used)
+    assert not any(tmp_path.rglob("*.tmp"))
+
+
 def test_partial_ingest_is_not_counted_as_ingested(tables, tmp_path):
     # Simulate a crash after laps were written but before sessions.
     lake.write_session({"laps": tables["laps"]}, 2024, 1, "R", lake=tmp_path)
@@ -148,3 +178,13 @@ def test_partition_filter(key, clause):
     from racecraft.store.db import partition
 
     assert partition(key) == clause
+
+
+def test_the_database_keeps_no_copy_of_the_files_it_reads(tmp_path):
+    """DuckDB's external file cache held 311 MB for the small tables alone; the lake is local, so it stays off."""
+    from racecraft.store.db import connect
+
+    cursor = connect(tmp_path)
+    assert cursor.sql("select current_setting('enable_external_file_cache')").fetchone()[0] is False
+    limit = cursor.sql("select current_setting('memory_limit')").fetchone()[0]
+    assert limit.endswith("GiB") or limit.endswith("MiB")          # a ceiling, not 80% of the machine

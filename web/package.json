@@ -9,6 +9,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/titillium-web": "5.3.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
@@ -16,10 +19,10 @@
     "@testing-library/react": "16.0.1",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
-    "@vitejs/plugin-react": "4.3.4",
+    "@vitejs/plugin-react": "5.2.0",
     "jsdom": "25.0.1",
     "typescript": "5.6.3",
-    "vite": "5.4.11",
-    "vitest": "2.1.8"
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
   }
 }

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -71,8 +72,9 @@ def write_session(tables: dict[str, pd.DataFrame], year: int, round_number: int,
                   lake: Path | None = None) -> dict[str, dict]:
     """
     Write every table for one session. Returns {table: {rows, bytes}}.
-    Each file is written to a temp name and renamed into place, so readers
-    never see a half-written Parquet file.
+    Each file is written to a temp name of its own and renamed into place, so
+    readers never see a half-written Parquet file and no other writer shares
+    the temp file. A failed write leaves no temp file behind.
     """
     # Convert everything before writing anything: a schema error in the last
     # table shouldn't leave the first nine on disk.
@@ -84,9 +86,14 @@ def write_session(tables: dict[str, pd.DataFrame], year: int, round_number: int,
         target_dir = partition_dir(name, year, round_number, session, lake)
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / FILE_NAME
-        tmp = target_dir / (FILE_NAME + ".tmp")
-        pq.write_table(arrow_tables[name], tmp, compression="zstd", compression_level=6)
-        os.replace(tmp, target)
+        handle, tmp = tempfile.mkstemp(prefix=FILE_NAME + ".", suffix=".tmp", dir=target_dir)
+        os.close(handle)
+        try:
+            pq.write_table(arrow_tables[name], tmp, compression="zstd", compression_level=6)
+            os.replace(tmp, target)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
         report[name] = {"rows": arrow_tables[name].num_rows, "bytes": target.stat().st_size}
     touch()
     return report

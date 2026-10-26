@@ -35,7 +35,6 @@ from pathlib import Path
 import pandas as pd
 
 from racecraft import config
-from racecraft.ingest import fastf1_source
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +173,7 @@ def tables_from_recording(path: Path, session: LiveSession,
                           telemetry: bool = False) -> dict[str, pd.DataFrame]:
     """Parse a recording into the lake's table shapes."""
     import fastf1
+    from fastf1.exceptions import DataNotLoadedError
     from fastf1.livetiming.data import LiveTimingData
 
     _use_project_cache()
@@ -188,6 +188,26 @@ def tables_from_recording(path: Path, session: LiveSession,
     ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
     return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
                                  t0=live_t0(livedata, path))
+    try:
+        # Not cached, and this is the whole reason live works at all. FastF1
+        # caches a parse by the session's API path, so the first read of a
+        # recording — taken minutes into a session, before anyone has completed
+        # a lap — is served back for every later read no matter how much the
+        # recording has grown. The session would sit at zero laps all afternoon.
+        with fastf1.Cache.disabled():
+            ses.load(laps=True, telemetry=telemetry, weather=True, messages=True,
+                     livedata=livedata)
+        # Imported here: it brings FastF1, which only live timing needs, not the app's start.
+        from racecraft.ingest import fastf1_source
+
+        return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
+                                     t0=live_t0(livedata, path))
+    except DataNotLoadedError as error:
+        # The recorder is connected and the feed is arriving, but nobody has
+        # completed a timed lap yet, so FastF1 has nothing to hand over. That is
+        # the first ten minutes of every session, not a fault.
+        raise NotRecording("no timed lap in the recording yet; the session has "
+                           f"not produced one ({error})") from None
 
 
 @dataclass

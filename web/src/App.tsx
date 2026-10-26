@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LIVE_KEY, api, type Insight, type LapSeries, type RaceControlEvent, type SessionInfo, type SessionState, type SessionSummary } from "./api";
+import { LIVE_KEY } from "./api";
 import { useClock } from "./clock";
+import { openFeature, screenById, type FeatureId, type ScreenId } from "./features";
+import { useLayout } from "./layout";
 import { usePositions } from "./positions";
 import { BestSectors } from "./panels/BestSectors";
 import { ClockBar } from "./panels/ClockBar";
@@ -12,215 +14,75 @@ import { TimingTower } from "./panels/TimingTower";
 import { TrackMap } from "./panels/TrackMap";
 import { TyreModel } from "./panels/TyreModel";
 import { TyreSets } from "./panels/TyreSets";
+import { ClockBar, SPEEDS } from "./panels/ClockBar";
+import { MAX_FOLLOWED } from "./panels/DriverCards";
+import { ReplayScreen } from "./screens/ReplayScreen";
+import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
+import { SettingsScreen } from "./screens/SettingsScreen";
+import { lapStartTime, useMessagesAt, useSession, useSessionList, useStateAt, type ListState } from "./sessionData";
+import { useSettings } from "./settings";
+import { Rail } from "./shell/Rail";
+import { SessionPicker } from "./shell/ScreenHeader";
+import { useShortcuts } from "./shortcuts";
+import { useReplayBroadcast } from "./sync";
 
-/** How often the tower refreshes while playing. Positions animate separately and far more often. */
-const STATE_INTERVAL_MS = 400;
+const SCREEN_KEY = "racecraft:screen";
+
+/** The screen last on show, so the app opens where it was left. */
+function loadScreen(): ScreenId {
+  try {
+    return screenById(localStorage.getItem(SCREEN_KEY))?.id ?? "replay";
+  } catch {
+    return "replay";
+  }
+}
 
 /**
- * How often a live session is re-read. The server re-parses its recording at
- * the same cadence, and a lap takes over a minute, so this is far finer than
- * the data changes and far coarser than re-parsing on every poll would be.
+ * The main window: the navigation rail on the left, the screen it picks
+ * beside it, and the playback bar along the foot of every screen that follows
+ * the clock.
+ *
+ * This window owns the clock. Every screen here reads it, and every screen
+ * popped out into a window of its own follows it (see sync.ts): its controls
+ * are requests to this window, so every window always agrees.
  */
-const LIVE_INTERVAL_MS = 10_000;
-
-/** The lower-right panel shows one of these at a time. */
-const TABS = [
-  { id: "trace", label: "Race trace", hint: "gap to the lap leader · click to jump" },
-  { id: "tyres", label: "Tyre model", hint: "modelled wear against what this race did" },
-  { id: "strategy", label: "Strategy", hint: "cheapest plans, and what they ignore" },
-  { id: "sets", label: "Tyre sets", hint: "every car's sets · follows the clock · click a car" },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
-
 export default function App() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [sessionKey, setSessionKey] = useState<string | null>(null);
-  const [info, setInfo] = useState<SessionInfo | null>(null);
-  const [state, setState] = useState<SessionState | null>(null);
-  const [laps, setLaps] = useState<LapSeries[]>([]);
-  const [crossings, setCrossings] = useState<{ laps: number[]; t: number[] } | null>(null);
+  const { sessions, listState, sessionKey, setSessionKey, reloadSessions } = useSessionList();
+  const [screen, setScreenState] = useState<ScreenId>(loadScreen);
   const [selected, setSelected] = useState<number[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>("trace");
-  const [insight, setInsight] = useState<Insight | null>(null);
-  const [stewards, setStewards] = useState<RaceControlEvent[]>([]);
-  const [trackLog, setTrackLog] = useState<RaceControlEvent[]>([]);
-  const [insightError, setInsightError] = useState<string | null>(null);
   // A live session grows while it is being watched. Following means the clock
   // rides the newest lap; scrubbing back stops following, because someone
   // looking at lap 12 does not want to be yanked to lap 40 a second later.
   const [following, setFollowing] = useState(true);
+  const { settings, update: updateSettings } = useSettings();
   const isLive = sessionKey === LIVE_KEY;
+  // How wide the timing tower is and how tall the cards: the user's to drag, remembered.
+  const { layout, setLayout, reset: resetLayout, customised } = useLayout();
 
-  useEffect(() => {
-    api.sessions()
-      .then((all) => {
-        setSessions(all);
-        // Live first when there is one: a recording exists only because someone
-        // started it, which is as clear a statement of intent as the interface
-        // is going to get. Otherwise the newest race.
-        const opening = all.find((s) => s.session_key === LIVE_KEY)
-          ?? all.find((s) => s.session === "R")
-          ?? all[0];
-        if (opening) setSessionKey(opening.session_key);
-      })
-      .catch((e) => setError(String(e.message ?? e)));
+  const setScreen = useCallback((next: ScreenId) => {
+    setScreenState(next);
+    try {
+      localStorage.setItem(SCREEN_KEY, next);
+    } catch {
+      // Not remembered, which is all that is lost.
+    }
   }, []);
 
+  // Only the tyre and strategy screens need the season's model fit, which is slow the first time.
+  const { info, laps, crossings, error, waiting, insight, insightError } =
+    useSession(sessionKey, NEEDS_INSIGHT.has(screen));
+
+  // A new session starts with nobody followed, riding the live edge if it has one.
   useEffect(() => {
-    if (!sessionKey) return;
-    const controller = new AbortController();
-    setInfo(null);
-    setState(null);
-    setLaps([]);
-    setCrossings(null);
-    setStewards([]);
-    setTrackLog([]);
     setSelected([]);
-    setError(null);
-    setInsight(null);
-    setInsightError(null);
     setFollowing(true);
-    api.info(sessionKey, controller.signal).then(setInfo).catch(reportUnlessAborted(setError));
-    api
-      .laps(sessionKey, controller.signal)
-      .then((chart) => {
-        setLaps(chart.drivers);
-        setCrossings(chart.leader_crossings);
-      })
-      .catch(reportUnlessAborted(setError));
-    return () => controller.abort();
   }, [sessionKey]);
 
-  // Fitting a season costs seconds, so it is asked for only once a tab that
-  // needs it is opened, and then kept for as long as the session is loaded.
-  // The sets tab uses it only to check plans against a car's tyres, and shows
-  // the sets themselves without waiting for it.
-  const wantsInsight = tab === "tyres" || tab === "strategy" || tab === "sets";
-  useEffect(() => {
-    if (!sessionKey || !wantsInsight || insight || insightError) return;
-    const controller = new AbortController();
-    api
-      .insight(sessionKey, controller.signal)
-      .then(setInsight)
-      .catch(reportUnlessAborted(setInsightError));
-    return () => controller.abort();
-  }, [sessionKey, wantsInsight, insight, insightError]);
-
-  // A historic session is fetched once. A live one has to be asked again: its
-  // end moves every lap, and the lap chart gains a row.
-  useEffect(() => {
-    if (!isLive || !sessionKey) return;
-    let active = true;
-    const pull = () => {
-      api.info(sessionKey).then((next) => active && setInfo(next)).catch(() => undefined);
-      api.laps(sessionKey)
-        .then((chart) => {
-          if (!active) return;
-          setLaps(chart.drivers);
-          setCrossings(chart.leader_crossings);
-        })
-        .catch(() => undefined);
-      // Dropping the models makes the open tab refetch them; a closed one pays
-      // nothing, which is why this clears rather than fetches.
-      setInsight(null);
-      setInsightError(null);
-    };
-    const timer = setInterval(pull, LIVE_INTERVAL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [isLive, sessionKey]);
-
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
-  const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data));
-
-  // The tower is polled on a timer rather than on every clock tick: it only
-  // changes when a car crosses the line, and a request per frame would be waste.
-  const latest = useRef({ key: sessionKey, t: clock.t });
-  latest.current = { key: sessionKey, t: clock.t };
-  useEffect(() => {
-    if (!sessionKey || !info) return;
-    let active = true;
-    let inFlight = false;
-    let lastT: number | null = null;
-    const fetchState = () => {
-      if (inFlight || !active) return;
-      const { key, t } = latest.current;
-      if (!key) return;
-      if (lastT !== null && Math.abs(t - lastT) < 0.05) return;   // paused and nothing moved
-      inFlight = true;
-      lastT = t;
-      api.state(key, t)
-        .then((next) => active && setState(next))
-        .catch(() => undefined)
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-    fetchState();
-    const timer = setInterval(fetchState, STATE_INTERVAL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [sessionKey, info]);
-
-  // The stewards' panel is always on screen, so it is always polled — but half
-  // as often as the tower, because a verdict arrives a few times a race and the
-  // rows are a few dozen. Asked for with `stewards=true` so the limit applies
-  // after the filter: sixty of theirs, not sixty of everything of which twenty
-  // are theirs. The tower's PEN column does not depend on this — it arrives with
-  // the state above, at the same `t`.
-  useEffect(() => {
-    if (!sessionKey || !info) return;
-    let active = true;
-    let inFlight = false;
-    const pull = () => {
-      if (inFlight || !active) return;
-      const { key, t } = latest.current;
-      if (!key) return;
-      inFlight = true;
-      // Two requests, because the limit applies after the filter: each list gets
-      // its own newest rather than sharing one budget.
-      Promise.all([
-        api.messages(key, t, 60, "stewards"),
-        api.messages(key, t, 25, "track"),
-      ])
-        // An error body is JSON too, so the shape is checked rather than assumed.
-        .then(([verdicts, log]) => {
-          if (!active) return;
-          setStewards(Array.isArray(verdicts) ? verdicts : []);
-          setTrackLog(Array.isArray(log) ? log : []);
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-    pull();
-    const timer = setInterval(pull, STATE_INTERVAL_MS * 2);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [sessionKey, info]);
-
-  // Ride the leading edge while following. Reading clock.t here would make this
-  // fire on every tick, so it watches only where the session now ends.
-  const seekRef = useRef(clock.seek);
-  seekRef.current = clock.seek;
-  const liveEdge = isLive ? info?.t_end : undefined;
-  useEffect(() => {
-    if (following && liveEdge !== undefined) seekRef.current(liveEdge);
-  }, [following, liveEdge]);
-
-  const cars = positions.at(clock.t);
-  const actualStops = useMemo(() => {
-    const counts = laps.map((d) => d.pit_in.filter(Boolean).length);
-    return counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : null;
-  }, [laps]);
+  const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data), clock.speed);
+  const state = useStateAt(sessionKey, info, clock.t);
+  // Race control is shown on the replay and the stewards' screen only; elsewhere it is not asked for.
+  const { stewards, trackLog } = useMessagesAt(sessionKey, info, clock.t, screen === "replay" || screen === "stewards");
   const driverCodes = useMemo(() => {
     const out: Record<number, string> = {};
     for (const driver of info?.drivers ?? []) {
@@ -232,100 +94,80 @@ export default function App() {
     const times = laps.flatMap((d) => d.lap_time_s.filter((v): v is number => v !== null));
     return times.length ? Math.min(...times) : null;
   }, [laps]);
+  const actualStops = useMemo(() => {
+    const counts = laps.map((d) => d.pit_in.filter(Boolean).length);
+    return counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : null;
+  }, [laps]);
 
-  // Stable callbacks: the tower and the trace are memoised, and a new function
-  // on every frame would re-render them 60 times a second for nothing.
+  // Ride the leading edge while following. Reading clock.t here would make this
+  // fire on every tick, so it watches only where the session now ends.
+  const seekRef = useRef(clock.seek);
+  seekRef.current = clock.seek;
+  const liveEdge = isLive ? info?.t_end : undefined;
+  useEffect(() => {
+    if (following && liveEdge !== undefined) seekRef.current(liveEdge);
+  }, [following, liveEdge]);
+
+  const cars = positions.at(clock.t);
+
+  // Stable callbacks: the timing tower and the map are memoised, and a new
+  // function on every frame would re-render them 60 times a second for nothing.
   const toggleDriver = useCallback((driverNumber: number) => {
     setSelected((current) =>
       current.includes(driverNumber)
         ? current.filter((n) => n !== driverNumber)
-        : [...current, driverNumber].slice(-4),
+        : [...current, driverNumber].slice(-MAX_FOLLOWED),
     );
   }, []);
 
   // Any deliberate move of the clock stops following the live edge. Without
   // this, scrubbing back on a live session would snap forward a second later
   // and the scrubber would be unusable.
-  const stopFollowingAndSeek = useCallback(
-    (t: number) => {
-      setFollowing(false);
-      seekRef.current(t);
-    },
-    [],
-  );
+  const stopFollowingAndSeek = useCallback((t: number) => {
+    setFollowing(false);
+    seekRef.current(t);
+  }, []);
+  // The ±30 s buttons are a deliberate move too. Following is dropped first so
+  // the live edge cannot pull the clock back before the nudge lands.
+  const nudgeRef = useRef(clock.nudge);
+  nudgeRef.current = clock.nudge;
+  const stopFollowingAndNudge = useCallback((seconds: number) => {
+    setFollowing(false);
+    nudgeRef.current(seconds);
+  }, []);
   const handClock = useMemo(
-    () => ({ ...clock, seek: stopFollowingAndSeek }),
-    [clock, stopFollowingAndSeek],
+    () => ({ ...clock, seek: stopFollowingAndSeek, nudge: stopFollowingAndNudge }),
+    [clock, stopFollowingAndSeek, stopFollowingAndNudge],
   );
-
-  // Jumping to a lap means the moment that lap began, which is the leader's
-  // crossing of the lap before it.
-  const seek = stopFollowingAndSeek;
   const seekToLap = useCallback(
-    (lap: number) => {
-      if (!crossings || !info) return;
-      const index = crossings.laps.indexOf(lap - 1);
-      seek(index === -1 ? info.t_start : crossings.t[index] ?? info.t_start);
-    },
-    [crossings, info, seek],
+    (lap: number) => info && stopFollowingAndSeek(lapStartTime(lap, crossings, info.t_start)),
+    [crossings, info, stopFollowingAndSeek],
   );
 
-  return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">RACECRAFT</div>
-        <select
-          className="session-select"
-          value={sessionKey ?? ""}
-          onChange={(event) => setSessionKey(event.target.value)}
-        >
-          {sessions.map((s) => (
-            <option key={s.session_key} value={s.session_key}>
-              {s.year} · R{String(s.round).padStart(2, "0")} · {s.event_name} · {s.session_name}
-            </option>
-          ))}
-        </select>
-        {isLive && (
-          <div className="live-flag">
-            <span className={following ? "live-dot is-following" : "live-dot"} />
-            {following ? "LIVE" : "PAUSED"}
-            {!following && (
-              <button type="button" className="go-live" onClick={() => setFollowing(true)}>
-                Go live
-              </button>
-            )}
-          </div>
-        )}
-        {info && (
-          <div className="session-meta">
-            {info.session.location} · {info.drivers.length} cars
-            {!info.has_position_data && <span className="warn"> · no position data</span>}
-          </div>
-        )}
-        {error && <div className="error">{error}</div>}
-      </header>
+  // Every pop-out window follows this clock, and asks it to move.
+  useReplayBroadcast(
+    sessionKey && info
+      ? { session: sessionKey, t: clock.t, playing: clock.playing, speed: clock.speed, following, selected }
+      : null,
+    { seek: stopFollowingAndSeek, toggle: clock.toggle, select: toggleDriver },
+  );
 
-      {info ? (
-        <main className="grid">
-          <section className="panel panel-tower">
-            <h2>Timing tower</h2>
-            <TimingTower
-              drivers={state?.drivers ?? []}
-              selected={selected}
-              onSelect={toggleDriver}
-              sessionBest={sessionBest}
-            />
-            <BestSectors
-              sectors={state?.best_sectors ?? []}
-              idealLap={state?.ideal_lap_s ?? null}
-              fastestLap={sessionBest}
-            />
-          </section>
-
-          <section className="panel panel-map">
-            <h2>Track map</h2>
-            <TrackMap info={info} cars={cars} drivers={info.drivers} selected={selected} />
-          </section>
+  const changeSpeed = (direction: 1 | -1) => {
+    const index = SPEEDS.indexOf(clock.speed);
+    const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (index === -1 ? 0 : index) + direction))];
+    if (next !== undefined) clock.setSpeed(next);
+  };
+  const toggleNames = useCallback(() => updateSettings({ names: !settings.names }), [settings.names, updateSettings]);
+  const toggleRings = useCallback(() => updateSettings({ rings: !settings.rings }), [settings.rings, updateSettings]);
+  useShortcuts({
+    toggle: clock.toggle,
+    nudge: stopFollowingAndNudge,
+    faster: () => changeSpeed(1),
+    slower: () => changeSpeed(-1),
+    toStart: () => info && stopFollowingAndSeek(info.t_start),
+    toggleNames,
+    toggleDrs: toggleRings,
+  }, Boolean(info));
 
           <section className="panel panel-stewards">
             <h2>
@@ -401,26 +243,130 @@ export default function App() {
         </main>
       ) : (
         <main className="grid loading">{error ? "" : "Loading session…"}</main>
-      )}
+  const popOut = useCallback((feature: FeatureId) => {
+    if (sessionKey) void openFeature(feature, sessionKey);
+  }, [sessionKey]);
+  const openTower = useCallback(() => setScreen("tower"), [setScreen]);
 
-      {info && (
-        <ClockBar
-          clock={handClock}
-          start={info.t_start}
-          end={info.t_end}
-          leaderLap={state?.leader_lap ?? 0}
-          totalLaps={info.total_laps}
-          trackStatus={state?.track_status ?? null}
-          weather={state?.weather ?? null}
-          loading={positions.loading}
-        />
+  const picker = useMemo(() => <SessionPicker sessions={sessions} value={sessionKey} onChange={setSessionKey} />,
+                         [sessions, sessionKey, setSessionKey]);
+  const liveFlag = useMemo(() => (isLive ? (
+    <div className="live-flag">
+      <span className={following ? "live-dot is-following" : "live-dot"} />
+      {following ? "LIVE" : "PAUSED"}
+      {!following && (
+        <button type="button" className="go-live" onClick={() => setFollowing(true)}>Go live</button>
       )}
+      {waiting && info && <span className="live-waiting">waiting for live data</span>}
+    </div>
+  ) : null), [isLive, following, waiting, info]);
+  const status = (
+    <>
+      {liveFlag}
+      {info && !info.has_position_data && <span className="session-warn">No position data in this session</span>}
+      {customised && screen === "replay" && (
+        <button type="button" className="reset-layout" onClick={resetLayout}
+                title="Put the timing tower and the driver cards back to their default size">
+          Reset layout
+        </button>
+      )}
+      {error && <span className="error">{error}</span>}
+    </>
+  );
+
+  // The screens other than the replay change with the timing, a few times a
+  // second, not with every animation frame: they are given the state's own
+  // time, and a context that changes only when something they show does, so
+  // the full timing tower is not redrawn sixty times a second.
+  const coarseT = state?.t ?? info?.t_start ?? 0;
+  const screenContext = useMemo(() => (info && sessionKey ? {
+    session: sessionKey, t: coarseT, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
+    insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker,
+    onPopOut: screen === "replay" || screen === "settings" ? undefined : () => popOut(screen), extra: liveFlag,
+  } : null), [sessionKey, coarseT, info, state, laps, crossings, selected, toggleDriver, seekToLap, insight, insightError,
+              actualStops, sessionBest, stewards, trackLog, driverCodes, picker, screen, popOut, liveFlag]);
+
+  const body = () => {
+    if (screen === "settings") {
+      return <SettingsScreen settings={settings} update={updateSettings} picker={picker} onSynced={reloadSessions} />;
+    }
+    if (!info || !sessionKey) {
+      // The picker stays on screen while a session loads, or fails to: another can always be chosen.
+      return (
+        <div className="screen">
+          {sessions.length > 0 && <header className="session-bar">{picker}{status}</header>}
+          <main className="grid loading">
+            <Placeholder list={listState} empty={sessions.length === 0} waiting={waiting} error={error} />
+          </main>
+        </div>
+      );
+    }
+    if (screen === "replay") {
+      return (
+        <ReplayScreen sessionKey={sessionKey} info={info} state={state} t={clock.t} cars={cars} selected={selected}
+                      onSelect={toggleDriver} settings={settings} onToggleNames={toggleNames} onToggleRings={toggleRings}
+                      stewards={stewards} trackLog={trackLog} codes={driverCodes} onOpenTower={openTower}
+                      layout={layout} onLayout={setLayout} picker={picker} status={status}
+                      playbackSpeed={clock.speed} />
+      );
+    }
+    return (
+      <ScreenView id={screen} ctx={screenContext!} />
+    );
+  };
+
+  return (
+    <div className={`app density-${settings.density}`}>
+      <Rail screen={screen} onScreen={setScreen} onSynced={reloadSessions} />
+      <div className="shell-main">
+        {body()}
+        {info && screen !== "settings" && (
+          <ClockBar
+            clock={handClock}
+            start={info.t_start}
+            end={info.t_end}
+            trackStatus={state?.track_status ?? null}
+            loading={positions.loading}
+            statuses={info.track_status}
+            crossings={crossings}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
-function reportUnlessAborted(setError: (message: string) => void) {
-  return (error: Error) => {
-    if (error.name !== "AbortError") setError(String(error.message ?? error));
-  };
+/** What fills the page before a session is on it: each case says what to do next. */
+function Placeholder({ list, empty, waiting, error }: {
+  list: ListState;
+  empty: boolean;
+  waiting: boolean;
+  error: string | null;
+}) {
+  if (list.status === "failed") {
+    return (
+      <div className="placeholder">
+        <p>Could not read the session list.</p>
+        <p className="placeholder-error">{list.message}</p>
+      </div>
+    );
+  }
+  if (list.status === "loading") return <>Loading sessions…</>;
+  if (empty) {
+    return (
+      <div className="placeholder">
+        <p>No sessions yet.</p>
+        <p className="placeholder-hint">Refresh data, at the foot of the rail, downloads the latest race weekends.</p>
+      </div>
+    );
+  }
+  if (waiting) {
+    return (
+      <div className="placeholder">
+        <p>Waiting for live data…</p>
+        <p className="placeholder-hint">The recording has nothing to show yet. This checks again every few seconds.</p>
+      </div>
+    );
+  }
+  return <>{error ? "" : "Loading session…"}</>;
 }

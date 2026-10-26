@@ -84,7 +84,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
     tyre_sets_view._cache.clear()
     tyre_sets_view._weekends.clear()
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def _car(body, number):

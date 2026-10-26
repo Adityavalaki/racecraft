@@ -1,0 +1,12 @@
+{
+  "race_noise_s": 0.4,
+  "lasting_share": 0.52,
+  "lasting_sd_s": 0.236,
+  "stated_sd_s": 0.454,
+  "rows": 1266,
+  "fitted_on": [
+    "2023",
+    "2024",
+    "2025"
+  ]
+}

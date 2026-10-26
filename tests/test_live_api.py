@@ -19,11 +19,13 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+from racecraft import config
 from racecraft.api import live_store
 from racecraft.api import session as session_store
 from racecraft.api.app import app
 from racecraft.live import feed as feed_module
 from racecraft.live import recorder
+from racecraft.store import lake
 
 LAP = 92.0
 START = 100.0
@@ -156,6 +158,37 @@ def test_the_store_serves_a_session_and_keeps_it_until_it_goes_stale(store, monk
     assert store.session() is not first
 
 
+def test_attaching_again_to_the_same_recording_keeps_what_was_built(store, monkeypatch):
+    """The interface re-attaches while it waits; that must not throw a built session away."""
+    feed = _attach(store, monkeypatch)
+    built = store.session()
+    built_at = store._built_at
+
+    assert store.attach() is feed
+    assert store.session() is built
+    assert store._built_at == built_at
+
+
+def test_attaching_to_a_different_recording_starts_again(store, monkeypatch):
+    _attach(store, monkeypatch)
+    before = store.session()
+    other = recorder.LIVE_DIR / "baku-restart.txt"
+    other.write_text("['Heartbeat', {}, '2026-09-26T12:00:00.000Z']\n", encoding="utf-8")
+
+    feed = store.attach(other)
+    assert feed.path == other
+    assert store._built_at == 0.0
+    assert store.session() is not before
+
+
+def test_attaching_the_same_recording_as_another_session_starts_again(store, monkeypatch):
+    feed = _attach(store, monkeypatch)
+    store.session()
+    again = store.attach(feed.path, feed_module.LiveSession(2026, 17, "Qualifying"))
+    assert again is not feed
+    assert store._built_at == 0.0
+
+
 def test_a_recording_with_nothing_in_it_reads_as_not_ready(store, monkeypatch):
     _attach(store, monkeypatch, error=feed_module.NotRecording("is the recorder running?"))
     with pytest.raises(live_store.NotLive):
@@ -178,16 +211,34 @@ def test_status_never_raises_even_when_nothing_works(store):
 # --------------------------------------------------------------- the API
 
 @pytest.fixture
-def client(store):
-    return TestClient(app)
+def client(store, tmp_path, monkeypatch):
+    """
+    The API over an empty lake of its own. These tests are about live, and
+    used to read the machine's real lake for the rest of the list: one failed
+    in a full run while the desktop app had that lake open, and passed alone.
+    An empty lake lists nothing, so only live can be at the top.
+    """
+    empty = tmp_path / "lake"
+    empty.mkdir()
+    monkeypatch.setattr(config, "LAKE_DIR", empty)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_live_is_offered_in_the_session_list_once_something_is_recorded(client, store, monkeypatch):
-    assert all(s["session_key"] != "live" for s in client.get("/api/sessions").json())
+    # A race already in the lake, from this year: live must still come first.
+    lake.write_session({"sessions": pd.DataFrame({
+        "session_key": ["2026_15_R"], "event_name": ["Azerbaijan Grand Prix"], "country": ["Azerbaijan"],
+        "location": ["Baku"], "session_name": ["Race"],
+        "date_utc": [pd.Timestamp("2026-09-27 11:00", tz="UTC")],
+        "t0_utc": [pd.Timestamp("2026-09-27 10:03", tz="UTC")], "start_t": [0.0],
+        "total_laps": [51], "circuit_rotation_deg": [0.0], "fastf1_version": ["test"],
+        "ingested_at": [pd.Timestamp.now(tz="UTC")]})}, 2026, 15, "R", lake=config.LAKE_DIR)
+    before = client.get("/api/sessions").json()
+    assert [s["session_key"] for s in before] == ["2026_15_R"]
 
     _attach(store, monkeypatch)
     listed = client.get("/api/sessions").json()
-    assert listed[0]["session_key"] == "live", "live belongs at the top, not buried by date"
+    assert [s["session_key"] for s in listed] == ["live", "2026_15_R"], "live belongs at the top, not buried by date"
     assert listed[0]["session"] == "LIVE"
 
 
@@ -319,3 +370,31 @@ def test_an_empty_recording_is_not_offered_as_a_session(client, store, monkeypat
     monkeypatch.setattr(feed_module, "current_session",
                         lambda *_a, **_k: feed_module.LiveSession(2026, 17, "Race"))
     assert client.get("/api/sessions").json()[0]["session_key"] == "live"
+
+
+def test_a_recording_nobody_is_writing_any_more_is_not_offered_as_live(monkeypatch, tmp_path):
+    """
+    This morning's practice recording is still on disk this evening. Opening the
+    interface on it lands on "not attached" instead of on the sessions since.
+    """
+    import os
+    import time
+
+    from racecraft.api import app as app_module
+
+    stale = tmp_path / "baku-2026-fp1.txt"
+    stale.write_text("['Heartbeat', '{}', '']\n")
+    hours_ago = time.time() - 6 * 3600
+    os.utime(stale, (hours_ago, hours_ago))
+    assert app_module._recording_now(str(stale)) is False
+
+    fresh = tmp_path / "baku-2026-fp2.txt"
+    fresh.write_text("['Heartbeat', '{}', '']\n")
+    assert app_module._recording_now(str(fresh)) is True
+    assert app_module._recording_now(str(tmp_path / "missing.txt")) is False
+
+
+def test_the_newer_routes_answer_404_on_an_empty_lake_rather_than_failing(client):
+    """A fresh install has no races yet: asking about one is a missing session, not a server fault."""
+    for path in ("pit-windows?t=10", "lap?driver=1", "recent?driver=1&t=10", "compare?driver=1&ref=2"):
+        assert client.get(f"/api/sessions/2026_15_R/{path}").status_code == 404, path

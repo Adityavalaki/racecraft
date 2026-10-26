@@ -31,6 +31,15 @@ export interface SessionInfo {
   outline: [number, number][];
   bounds: { min_x: number; max_x: number; min_y: number; max_y: number } | Record<string, never>;
   has_position_data: boolean;
+  /** Every change of track status in the session: 1 clear, 2 yellow, 4 SC, 5 red, 6 VSC, 7 VSC ending. */
+  track_status?: { t: number; status: string; message: string }[];
+  /**
+   * Where DRS opens, as [first, last] indices into `outline` (first > last
+   * wraps past the start line). Empty for 2026 (no DRS) and for live.
+   */
+  drs_zones?: [number, number][];
+  /** 2026 on: race control switches overtake mode, the successor to DRS. */
+  has_overtake?: boolean;
 }
 
 /** The three kinds of race control message. */
@@ -116,6 +125,11 @@ export interface DriverTiming {
   sectors: SectorTime[];
   /** null when race control has said nothing about this car yet. */
   penalties: DriverPenalties | null;
+  /**
+   * Overtake mode (2026 on), estimated from the timing interval: null for a
+   * session without it.
+   */
+  overtake?: "eligible" | "not_eligible" | "disabled" | null;
 }
 
 export interface SectorTime {
@@ -150,7 +164,19 @@ export interface SessionState {
   drivers: DriverTiming[];
   cars: Record<string, CarState>;
   track_status: { status: string; message: string } | null;
-  weather: { air_temp: number | null; track_temp: number | null; rainfall: boolean | null } | null;
+  weather: {
+    air_temp: number | null;
+    track_temp: number | null;
+    rainfall: boolean | null;
+    wind_speed?: number | null;
+  } | null;
+  /**
+   * Where to draw the safety car while it is out: simulated, about 500 m ahead
+   * of the leader, because F1 publishes no position for it.
+   */
+  safety_car?: { x: number; y: number; simulated: true } | null;
+  /** Whether race control has overtake mode on; null for a session without it. */
+  overtake?: { enabled: boolean } | null;
 }
 
 export interface Frames {
@@ -435,6 +461,34 @@ export interface LiveStatus {
   error?: string | null;
 }
 
+/** One session a sync looked at. */
+export interface SyncItem {
+  key: string;
+  season: number;
+  round: number;
+  ident: string;
+  event: string;
+  name: string;
+  /** pending, ingesting, written, present (already in the lake), failed */
+  state: string;
+  detail: string;
+}
+
+/** Bringing the latest race weekends into the lake, from the interface. */
+export interface SyncStatus {
+  state: "idle" | "planning" | "running" | "done" | "failed";
+  weekends: string[];
+  items: SyncItem[];
+  counts: Record<string, number>;
+  /** Sessions that were not in the lake when the sync looked. */
+  to_fetch: number;
+  /** The session being ingested now, if any. */
+  current: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
 /** The one session key that is not in the lake. */
 export const LIVE_KEY = "live";
 
@@ -472,21 +526,274 @@ export interface Insight {
   tyre_sets?: { unavailable: string | null; cars: Record<string, CarPlanChecks> } | null;
 }
 
-async function post<T>(path: string): Promise<T> {
-  const response = await fetch(path, { method: "POST" });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(detail.detail ?? `request failed: ${response.status}`);
+/**
+ * A request the server answered with an error. `status` lets a caller tell
+ * "not ready yet" (409, live waiting for data) from something actually wrong.
+ */
+export class HttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
   }
+}
+
+/** One driver in a race prediction: chances, expected finish, and the readings behind them. */
+export interface PredictionDriver {
+  driver_number: number;
+  abbreviation: string;
+  team_name: string | null;
+  team_color: string | null;
+  grid: number;
+  win: number;
+  podium: number;
+  points: number;
+  dnf: number;
+  expected: number;
+  /** The likely range if the car finishes (10th to 90th percentile). */
+  p10: number;
+  /** The median finish, if the car finishes. */
+  p50: number;
+  p90: number;
+  pace_s: number;
+  pace_sd: number;
+  signals: Record<string, number | null>;
+}
+
+export interface PredictionScore {
+  rho: number;
+  winner_hit: boolean;
+  podium_hits: number;
+  brier_win: number;
+  brier_podium: number;
+  logloss_win: number;
+}
+
+/** The weekend's race, predicted from before it started; with the result once there is one. */
+/** One Grand Prix finish in a driver's form strip: the place, or why there was none ("R", "D", ...). */
+export interface StandingsFinish {
+  round: number;
+  event_name: string;
+  position: number | null;
+  status: string | null;
+}
+
+export interface DriverStanding {
+  position: number;
+  driver_number: number;
+  abbreviation: string;
+  full_name: string | null;
+  team_name: string | null;
+  team_color: string | null;
+  points: number;
+  gap: number;
+  wins: number;
+  podiums: number;
+  sprint_wins: number;
+  /** Places gained (+) or lost since before the latest weekend counted; null for a first appearance. */
+  change: number | null;
+  form: StandingsFinish[];
+}
+
+export interface ConstructorStanding {
+  position: number;
+  team: string;
+  team_color: string | null;
+  points: number;
+  gap: number;
+  wins: number;
+  podiums: number;
+  drivers: { abbreviation: string; points: number }[];
+}
+
+export type StandingsMoment = "before" | "after";
+
+/** The championships as they stood when a session started, or once it was over. */
+export interface Standings {
+  year: number;
+  moment: StandingsMoment;
+  drivers: DriverStanding[];
+  constructors: ConstructorStanding[];
+  races: number;
+  sprints: number;
+  last: { round: number; event_name: string; session: string } | null;
+  notes: string[];
+}
+
+/** The rest of the season simulated from the standings: each driver's and team's chance of the title. */
+export interface TitleOdds {
+  year: number;
+  moment: StandingsMoment;
+  drivers: { abbreviation: string; driver_number: number; points: number; title: number; expected_points: number;
+             p10: number; p90: number; max_points: number; alive: boolean }[];
+  constructors: { team: string; points: number; title: number; expected_points: number; max_points: number;
+                  alive: boolean }[];
+  remaining: { round: number; event_name: string; session: string }[];
+  runs: number;
+  notes: string[];
+}
+
+/** One team's pit crew over the season: its stops against each race's typical stop, in seconds. */
+export interface CrewStanding {
+  position: number;
+  team: string;
+  team_color: string | null;
+  stops: number;
+  typical_s: number;
+  spread_s: number;
+  q1_s: number;
+  q3_s: number;
+  slow_share: number;
+  /** Too few stops yet to be a pattern: ranked last. */
+  thin: boolean;
+}
+
+/** One trip down the pit lane in this session. `excluded` says why it is not a crew's stop. */
+export interface PitLaneTrip {
+  t: number;
+  lap: number;
+  driver_number: number;
+  abbreviation: string | null;
+  team: string | null;
+  team_color: string | null;
+  lane_s: number;
+  vs_typical_s: number | null;
+  excluded: string | null;
+}
+
+export interface PitCrews {
+  year: number;
+  moment: StandingsMoment;
+  teams: CrewStanding[];
+  stops: number;
+  races: number;
+  excluded: Record<string, number>;
+  notes: string[];
+  session_stops: PitLaneTrip[];
+}
+
+/** A weekend's sessions in the lake, in running order, and whether it has a sprint. */
+export interface WeekendInfo {
+  sessions: string[];
+  sprint: boolean;
+}
+
+export type PredictionKind = "race" | "sprint";
+
+export interface Prediction {
+  race_key: string;
+  /** The weekend's Grand Prix or its sprint; predictions saved before sprints were predicted say "race". */
+  kind?: PredictionKind;
+  event_name: string;
+  year: number;
+  round: number;
+  drivers: PredictionDriver[];
+  basis: {
+    sessions: string[];
+    form_races: string[];
+    grid_source: string;
+    retire_rate: number;
+    runs: number;
+    /** The sprint's distance; a race prediction leaves it out. */
+    laps?: number;
+    reference_plan: string;
+    calibration: { fitted_on: string[]; scale?: Record<string, number>; noise_sd?: Record<string, number> };
+    notes: string[];
+  };
+  made_at: string;
+  saved_at?: string;
+  /** Saved before the race started, rather than rebuilt from pre-race data afterwards. */
+  before_race: boolean;
+  /** The race's season was one the signals were weighed on. */
+  in_sample: boolean;
+  result: { finish: Record<string, number>; scores: { model: PredictionScore; grid: PredictionScore } } | null;
+}
+
+/** One lap of one car by distance, every five metres: the pedal map and the traces. */
+export interface LapTrace {
+  driver_number: number;
+  abbreviation: string | null;
+  lap: number;
+  lap_time_s: number | null;
+  compound: string | null;
+  tyre_life: number | null;
+  start_t: number;
+  length_m: number;
+  step_m: number;
+  distance: number[];
+  /** Seconds since the lap started. */
+  t: number[];
+  speed: number[];
+  throttle: number[];
+  /** On or off: the public feed never says how hard. */
+  brake: boolean[];
+  gear: number[];
+  x: (number | null)[];
+  y: (number | null)[];
+  brake_zones: { start_m: number; end_m: number; duration_s: number; entry_speed: number; min_speed: number }[];
+  corners: { number: number; letter: string | null; distance: number }[];
+  summary: { top_speed: number; min_speed: number; full_throttle_share: number; braking_share: number; brake_zones: number };
+}
+
+/** The last half-minute of one car, by time: t runs from -seconds to 0. */
+export interface RecentTrace {
+  driver_number: number;
+  seconds: number;
+  t: number[];
+  speed: (number | null)[];
+  throttle: (number | null)[];
+  brake: (boolean | null)[];
+  gear: (number | null)[];
+}
+
+export interface LapComparison {
+  subject: LapTrace;
+  reference: LapTrace;
+  /** Positive where the subject is behind. */
+  delta: { distance: number[]; delta_s: number[]; final_s: number | null };
+}
+
+/** When each car is best off stopping, and who can jump whom, at a moment in a race. */
+export interface PitWindows {
+  session_key: string;
+  t: number;
+  lap: number;
+  total_laps: number;
+  model: { degradation: Record<string, number>; compound_offset_s: Record<string, number>; pit_loss_s: number;
+           pit_spread_s: number; fitted_on_count: number | null; held_out: boolean | null };
+  cars: {
+    driver_number: number;
+    abbreviation: string | null;
+    team_color: string | null;
+    position: number | null;
+    status: string;
+    compound: string | null;
+    age: number | null;
+    laps_completed: number;
+    stops: number | null;
+    used: string[];
+    window: { laps_until: number; window: [number, number]; most_likely_lap: number; next_compound: string; no_stop: boolean } | null;
+  }[];
+  undercuts: { chaser: number; target: number; gap_s: number; gain_s: number; chance: number; fresh_compound: string }[];
+  notes: string[];
+}
+
+async function failure(response: Response): Promise<HttpError> {
+  const detail = await response.json().catch(() => ({ detail: response.statusText }));
+  return new HttpError(detail.detail ?? `request failed: ${response.status}`, response.status);
+}
+
+async function post<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { method: "POST", signal });
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(detail.detail ?? `request failed: ${response.status}`);
-  }
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
 }
 
@@ -522,7 +829,39 @@ export const api = {
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
     get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
-  liveAttach: () => post<LiveStatus>("/api/live/attach"),
+  /** Slow the first time for a season (the model is fitted), then quick. */
+  pitWindows: (key: string, t: number, signal?: AbortSignal) =>
+    get<PitWindows>(`/api/sessions/${key}/pit-windows?t=${t.toFixed(2)}`, signal),
+  /** One lap by distance: `lap`, or the latest finished by `t`. */
+  /** `orEarlier`: that lap, or the latest before it whose telemetry the feed did not break. */
+  lap: (key: string, driver: number, opts: { lap?: number; t?: number; orEarlier?: boolean }, signal?: AbortSignal) =>
+    get<LapTrace>(`/api/sessions/${key}/lap?driver=${driver}`
+      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : "")
+      + (opts.orEarlier ? "&or_earlier=true" : ""), signal),
+  recent: (key: string, driver: number, t: number, seconds = 30, signal?: AbortSignal) =>
+    get<RecentTrace>(`/api/sessions/${key}/recent?driver=${driver}&t=${t.toFixed(2)}&seconds=${Math.round(seconds)}`, signal),
+  compare: (key: string, driver: number, ref: number, opts: { lap?: number; refLap?: number; t?: number },
+            signal?: AbortSignal) =>
+    get<LapComparison>(`/api/sessions/${key}/compare?driver=${driver}&ref=${ref}`
+      + (opts.lap != null ? `&lap=${opts.lap}` : "") + (opts.refLap != null ? `&ref_lap=${opts.refLap}` : "")
+      + (opts.t != null ? `&t=${opts.t.toFixed(2)}` : ""), signal),
+  /** Twenty seconds the first time for a weekend, then saved for good. */
+  prediction: (key: string, kind: PredictionKind, signal?: AbortSignal) =>
+    get<Prediction>(`/api/sessions/${key}/prediction${kind === "sprint" ? "?kind=sprint" : ""}`, signal),
+  weekend: (key: string, signal?: AbortSignal) => get<WeekendInfo>(`/api/sessions/${key}/weekend`, signal),
+  /** The season's championships, from results before this session (or with it, `after`). */
+  standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
+  pitCrews: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<PitCrews>(`/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
+  /** A few seconds the first time for a season: the rest of it is simulated. */
+  title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),
+  /** Points live at the newest recording. Attaching again to the same one changes nothing. */
+  liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
+  /** Starts a sync of the latest race weekends, or reports the one running. */
+  sync: () => post<SyncStatus>("/api/sync"),
+  syncStatus: (signal?: AbortSignal) => get<SyncStatus>("/api/sync", signal),
 };
 
 /** 92.608 -> "1:32.608", the way lap times are always written. */
@@ -549,11 +888,11 @@ export function formatClock(seconds: number): string {
 }
 
 export const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: "#e8323c",
-  MEDIUM: "#f2c53d",
-  HARD: "#e9eaec",
-  INTERMEDIATE: "#43b047",
-  WET: "#2f7fd8",
+  SOFT: "#FF3B30",
+  MEDIUM: "#FFD60A",
+  HARD: "#F2F2F2",
+  INTERMEDIATE: "#3DD68C",
+  WET: "#3E8EF7",
 };
 
 /** Track status codes from the feed, as the flag bar shows them. */

@@ -1,183 +1,200 @@
 # Racecraft
 
-An F1 strategy workbench. It learns tyre, pace and pit behaviour from historic
-timing data, models the car state the public feed doesn't expose (tyre wear,
-fuel load), and simulates races to find strategy windows.
+**An F1 race replay and strategy workbench, built on public timing data.**
 
-The build plan lives at the published *Racecraft Build Plan* artifact. Phases
-0–5 are built: the replay panels answer *what happened*, two further panels
-answer *what the models make of it*, and live timing reads F1's own feed into
-the same session clock. What is left is a race weekend to prove live against, the
-write-up, and one piece of modelling — see **What is left** at the end.
+Racecraft replays any Formula 1 session since 2023 on a live track map, with
+every car's telemetry, the timing tower and race control. It also models what
+the public feed does not show: tyre wear, the cost of a pit stop, when each car
+is best off stopping, whether an undercut will work, and how the race is likely
+to finish, called from Friday and Saturday's running.
 
-## Setup
+It runs as a Windows desktop app, or as a local web app in any browser.
 
-```sh
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"     # Windows
-# .venv/bin/python -m pip install -e ".[dev]"       # macOS / Linux
-```
+![The replay: pedal map, followed drivers, timing tower and race control](docs/screenshots/replay.png)
 
-## Ingest
+---
 
-```sh
-racecraft-ingest --season 2024 --rounds 1 --sessions R   # one race
-racecraft-ingest --season 2026 --sessions FP2 Q          # one session type
-racecraft-ingest --prune-cache                           # everything, 2026 back to 2023
-```
+## Contents
 
-Every session type is ingested by default: `FP1`, `FP2`, `FP3`, `SQ` (sprint
-qualifying, called Sprint Shootout in 2023), `Q`, `S` and `R`. Practice long
-runs, FP2 above all, are the standard pre-race source for tyre degradation.
+- [What it does](#what-it-does)
+- [The screens](#the-screens)
+- [How it works](#how-it-works)
+- [The models, and how good they are](#the-models-and-how-good-they-are)
+- [Setup guide](#setup-guide)
+- [Using the app](#using-the-app)
+- [Command line](#command-line)
+- [Live timing](#live-timing)
+- [Building the Windows installer](#building-the-windows-installer)
+- [Development](#development)
+- [Project layout](#project-layout)
+- [Configuration](#configuration)
+- [Security](#security)
+- [Limits, and what the data cannot tell you](#limits-and-what-the-data-cannot-tell-you)
+- [Data, licences and credits](#data-licences-and-credits)
 
-Sessions already in the lake are skipped, so an interrupted backfill resumes
-by re-running the same command.
+---
 
-**Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
-folder per session (~80-160 MB) and a shared HTTP cache file that grows about
-20 MB per session. The flag deletes both for each session once it is safely
-in the lake, clears leftovers from earlier runs, and compacts the file at the
-end. Without it, a 2023-2026 backfill leaves several GB of cache behind.
+## What it does
 
-**Backfills take hours, and that is expected.** FastF1 allows 500 uncached
-requests per hour. The command checks the remaining budget before each
-session and sleeps until a whole session's requests fit, logging when it
-will resume. Leave it running: restarting resets FastF1's counter, but the
-limit protects F1's servers and FastF1 warns that ignoring it can get you
-blocked. A rejected request also counts against the limit, so retrying in a
-loop makes the wait longer, not shorter.
+- **Replays any session** from 2023 to now (practice, qualifying, sprint and
+  race; 430 sessions, 86 races) with the cars moving on a map drawn from their
+  own GPS positions, at 1x to 30x.
+- **Shows what each car is doing**: speed, gear, throttle, brake, DRS (or, from
+  2026, overtake mode), and the last 30 seconds of it as a trace.
+- **Compares two drivers' laps metre for metre**: where each brakes, how hard
+  they carry speed, where the time is gained.
+- **Works out strategy**: what wear and the pit lane cost at each circuit, the
+  cheapest plans with and without safety cars, when each car should stop, and
+  the odds that stopping first wins a place.
+- **Predicts the race** from practice, qualifying, the sprint and recent form,
+  as each driver's chance to win, reach the podium and score, checked against
+  every race since 2023. On a sprint weekend it **predicts the sprint** too,
+  from sprint qualifying, checked against every sprint since 2023.
+- **Keeps the championships**: drivers' and constructors' points, as they stood
+  at any session of the season, matching F1's published tables, and **each
+  driver's and team's chance of the title**, the rest of the season simulated.
+- **Ranks the pit crews**: which teams turn a car round fastest, from every
+  green-flag stop of the season, measured against each race's typical stop.
+- **Explains race control**: every steward's verdict and track message in plain
+  words, with what it means for the result.
+- **Follows a session live** from F1's own timing feed (no subscription needed).
+- **Keeps itself current**: the desktop app fetches the latest race weekends
+  while it is open.
 
-**Windows: run a long backfill through `scripts\backfill.ps1`.** It keeps
-the machine awake until ingest exits, then restores the normal setting. Idle
-sleep otherwise kills the process during a rate-limit wait and the backfill
-stops silently.
+Every model is held out: for a race that has happened, it is fitted only on
+races before it, so what you see is what it would have said at the time.
 
-```powershell
-.\scripts\backfill.ps1                      # everything, same defaults
-.\scripts\backfill.ps1 --season 2023 --prune-cache
-```
+---
 
-Closing the lid still sleeps the machine; change the lid action in Windows
-power settings if you need that too.
+## The screens
 
-Add `--verbose` to see full tracebacks for failed sessions.
+The app has a navigation rail on the left and a playback bar along the bottom.
+Every screen except the replay and settings can pop out into a window of its
+own (the ↗ button), which follows the main window's clock: put the timing tower
+on a second monitor.
 
-## Replay interface
-
-```powershell
-cd web; npm install; npm run build; cd ..     # once
-racecraft-serve                                # http://127.0.0.1:8000
-```
-
-Pick a session, scrub or play, click drivers in the tower to follow them on
-the map and in the trace. While developing the interface, run `npm run dev`
-in `web/` for hot reload; it proxies `/api` to the server on port 8000.
-
-Five panels, one clock. The lower-right panel carries three tabs: the race
-trace, and the two that show the models rather than the feed.
-
-- **Timing tower** — order, gap, interval, last lap, all three sector times,
-  tyre and age, stops. Purple marks the session's fastest, green a driver's
-  own best, for the lap and for each sector independently.
-- **Best sectors** — who holds each sector and the ideal lap they add up to,
-  which is a lap nobody has driven. The gap between it and the fastest real
-  lap is the time still on the table.
-- **Track map** — cars from GPS on the racing line of the fastest lap.
-  Positions are fetched at 10 Hz and drawn along a curve through the samples,
-  so cars follow the arc of a corner instead of cutting it in facets. The
-  curve passes exactly through the real samples, and reflects rather than
-  duplicates a missing neighbour, so a straight stays straight at the seam
-  between two fetched windows.
-- **Race trace** — every driver's gap to the lap leader, lap by lap, with pit
-  stops marked. Click to jump the clock to that lap.
-- **Tyre model** — modelled wear per compound against what this race's tyres
-  actually did. See below: the line is a prediction, not a description.
-- **Strategy** — measured pit loss and neutralisation risk for the circuit, the
-  cheapest plans ranked three ways, and the list of what the model cannot see,
-  shown beside the ranking rather than hidden behind it.
-
-  The first two rankings count seconds. *If green* is arithmetic: tyres
-  plus pit lane, no luck. *Expected* simulates races that can be neutralised,
-  where a stop costs 61% of a green one — which usually rewards a longer first
-  stint, because more laps remain in which a cheap stop can arrive.
-
-  What that is worth is measured, held out, over 32 dry races in 2025 and
-  2026 (`python scripts/validate_safety_car_timing.py`), against what the field
-  actually did:
-
-  | Ranking | Error in stop count | Error in first stop lap |
-  |---|---|---|
-  | If green | 0.516 stops | — |
-  | Expected, flat safety-car rate | 0.516 stops | 9.0 laps |
-  | Expected, measured timing | 0.516 stops | **8.2 laps** |
-
-  Two things to read there, and the first corrects an earlier claim in this
-  file. Allowing for safety cars does **not** pick a better stop count than the
-  green arithmetic: held out, both are 0.516 stops out. The figures once quoted
-  here — 0.57 against 0.43 — came from a version that was not held out, and they
-  did not survive being one. What survives is the direction of the bias: the
-  safety-car ranking under-stops by 0.20 against the green ranking's 0.27.
-
-  Where it does earn its place is *when* to stop, and only once the timing is
-  measured rather than assumed. A quarter of all neutralisations begin in the
-  opening tenth of a race, where a car has run too few laps for a cheap stop to
-  be worth taking; a flat rate promises a discount those cannot deliver and
-  holds the first stop too long for it. Shaping the rate by when they really
-  arrive moves the first stop in 9 of 32 races and closes the gap to the field
-  from 9.0 laps to 8.2, with the bias toward stopping late falling from +5.9 to
-  +4.9 laps.
-
-  None of it is good. The model still stops five laps later than the field, and
-  it is worst at Monaco and Barcelona, which is what a ranking with no traffic
-  and no track position should be expected to get wrong.
-
-  *In places* is the third, and it has both, and it races the tyres the car
-  actually has — *Its own tyres* against *New sets* is the difference between
-  the plan a car can run and the plan it would run in an ideal world. It races each shortlisted plan
-  against the whole field from a chosen grid slot and ranks by finishing
-  position — the race simulator below, on inputs taken only from races that
-  started before this one. Plans whose finishes cannot be told apart are marked
-  tied rather than ranked, and the headline is not a winner but the **price of
-  track position**: what the cheapest plan that is as good as the best costs in
-  seconds, against the cheapest plan outright. It takes about half a minute the
-  first time for a race and a grid slot, so it is only run when opened.
-
-- **Tyre sets** — every car's dry sets, following the replay clock: new sets
-  filled, used ones ringed with the laps on them, the set on the car
-  highlighted. Selecting a car ranks the strategy model's plans on the tyres it
-  actually had, and says which it could not run. See *Tyre sets* below.
-
-### The tyre model panel is a prediction, not a fit
-
-Degradation drawn over a race is combined from the season's **other** races.
-The race being watched is never in its own fit, so the line was not shown the
-laps the dots come from — a model fitted on the race it is drawn over hugs the
-data and tells you nothing. The panel names how many races went into it.
-
-The dots are that race's own partial residuals: lap time with driver, fuel and
-track evolution removed. Getting this right took three attempts, and the two
-failures are instructive enough to keep in `api/insight.py`:
-
-| Attempt | Result |
+| | |
 |---|---|
-| Each lap against the driver's own early-stint pace | Hard tyres 1 s/lap **faster** by age 22 — the track rubbering in, not the tyre |
-| Each lap against the field's median on that lap | Track evolution gone, but medium tyres flattened to zero: early in a stint the whole field shares a tyre age, so the median moves with them and the wear vanishes into it |
-| The regression's own partial residuals | Lap effects estimated *jointly* with the wear slope, so fuel and track come out while degradation stays in |
+| **Replay**: the pedal map (the circuit coloured by a followed car's last lap: green where the throttle was flat, red where it braked), cards for up to two followed drivers with their last 30 s of speed, throttle and brake, the timing tower and race control. | ![Replay](docs/screenshots/replay.png) |
+| **Timing tower**: every car's gap, interval, last and best lap, the three sectors in timing colours (purple fastest, green personal best, yellow slower), tyre and age, stops, overtake and penalties. Sort by race order, grid or best lap. | ![Timing tower](docs/screenshots/timing-tower.png) |
+| **Race trace**: gap to the leader, interval or lap time, lap by lap, drawn only up to the lap on the clock so nothing is spoiled. Safety-car laps are shaded; click to jump to a lap. | ![Race trace](docs/screenshots/race-trace.png) |
+| **Pedals and speed**: one driver's lap against another's by distance: the time between them, speed, throttle, brake and gear, the corners marked, a cursor through every trace and the pedal map, and each brake zone side by side. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
+| **Strategy**: each car's pit window and most likely stop lap, the undercut watch (chance that stopping first gets the place) and a stint map. *What if* holds the cheapest plans, with safety cars and raced in places. | ![Strategy](docs/screenshots/strategy.png) |
+| **Tyres**: the wear curve per compound with every car placed on it, the race's own tyres as optional hindsight, and every car's sets through the weekend. | ![Tyres](docs/screenshots/tyres.png) |
+| **Race prediction**: the favourite, the podium chances, the full predicted order with each driver's likely range, and after the race the result beside it, scored against the grid. On a sprint weekend, switch between the Grand Prix and the sprint. | ![Race prediction](docs/screenshots/race-prediction.png) |
+| **Stewards**: every race control message explained (what it is, its status, its effect on the race) and the flags and safety cars across the race. | ![Stewards](docs/screenshots/stewards.png) |
+| **Standings**: the drivers' and constructors' championships as they stood going into the session (so a race is not spoiled) or after it: points, gap to the leader, wins, podiums, the last five Grand Prix finishes, places gained since the last weekend, and who scored each team's points; and each driver's and team's chance of the title, or "out" once they can no longer reach the leader. | ![Standings](docs/screenshots/standings.png) |
+| **Pit crews**: every team's crew ranked by its typical stop against the race's typical stop, with how consistent it is and how often a stop went slow; below, this session's stops up to the replay clock, each saying why if it is not counted (a safety car, a penalty, a red flag). | ![Pit crews](docs/screenshots/crews.png) |
+| **Settings**: units, row density, the header clock, the map's names and overtake rings, and refreshing the data. | ![Settings](docs/screenshots/settings.png) |
 
-Two lines are drawn per compound: solid is the ×1.5 figure the plans are costed
-on, dashed is the raw measurement. The gap between them is the cliff nobody
-records. An adjusted number shown without its raw value is how a model starts
-lying quietly.
+---
 
-### Track map accuracy
+## How it works
 
-The outline is the median of the twelve fastest laps' position traces, each
-resampled at even distances around the lap. A single lap makes a poor outline:
-samples are spread by time, so straights are sparse, and any dropout becomes a
-chord cutting across a corner. Measured against published circuit lengths the
-result is consistently 1-2% short, which is what cutting the apexes costs:
+```
+ F1 timing feed ──► FastF1 ──► ingest ──► Parquet lake ──► DuckDB ──► models ──► FastAPI ──► React app
+ (historic + live)            (checks)   data/lake/           (queries)   (Python)   (JSON API)   in a desktop window
+                                          one file per                                            or a browser
+                                          table per session
+```
 
-| Circuit | Measured | Official |
+- **Ingest** (`racecraft-ingest`) pulls each session through
+  [FastF1](https://github.com/theOehrly/Fast-F1): laps, results, car telemetry
+  (speed, throttle, brake, gear, DRS, about four samples a second), GPS
+  positions, weather, race control and track status. It checks the data before
+  writing and stores it as Parquet, one file per table per session, in
+  `data/lake/` (about 1.5 GB for 2023 to 2026).
+- **DuckDB** reads the lake in place. The small tables are held in memory; the
+  telemetry stays on disk and is read one session at a time.
+- **The models** (Python, numpy and pandas) fit tyre wear, pace and pit loss
+  from earlier races, simulate races car by car, and predict results. See
+  below.
+- **The API** (FastAPI) serves a session at any instant: the running order, every
+  car's position and telemetry, race control, and the models' answers.
+- **The interface** (React and TypeScript, built with Vite) draws it. The map and
+  the telemetry are buffered ahead of the clock and interpolated between
+  samples, so playback is smooth at every speed.
+- **The desktop app** wraps the same thing in its own window (pywebview on
+  Windows' WebView2), with no terminal and no port to remember.
+
+---
+
+## The models, and how good they are
+
+Each is described in full, with the measurements behind it, in
+[docs/TECHNICAL.md](docs/TECHNICAL.md).
+
+- **Tyre wear and pace.** Fitted per season on clean race laps, with fuel burn
+  and track evolution separated from wear. Compounds are compared on the same
+  fuel load.
+- **The circuit.** Pit lane loss measured from green-flag stops, safety-car
+  and VSC rates (shrunk toward the league average for circuits with little
+  history), and how often cars actually pass.
+- **Strategy.** Every plan costed in seconds (tyres, compounds, stops), then
+  re-ranked under random safety cars, then raced against the whole field in a
+  car-by-car simulator that knows the wake of the car ahead and how hard
+  passing is at this circuit, so it scores plans in **places**, not seconds.
+- **Pit windows and the undercut.** For each car at the clock's moment: the
+  stop lap that loses least over the rest of the race, every lap within two
+  seconds of it, and for close pairs the chance that one lap on fresh tyres
+  beats the gap, given the scatter of two pit stops.
+- **Race prediction.** Each driver's race pace is estimated from qualifying,
+  practice long runs, the sprint, recent form and (early in a season) last
+  season's form, each weighted by how well it predicted real races, then the
+  race is simulated 1,000 times. Replayed over every race since 2023, each
+  predicted only from what was known before it:
+
+  | | Finishing order (rank correlation) | Win chances (Brier, lower is better) |
+  |---|---|---|
+  | 2023 to 2025, 69 races | **0.69** model, 0.66 grid | **0.54** model, 0.63 grid |
+  | 2026 (a new rulebook, never trained on), 16 races | **0.66** model, 0.64 grid | **0.46** model, 0.50 grid |
+
+  It beats "everyone finishes where they started" every season, by a small
+  margin; the grid already holds most of what is knowable on Saturday night.
+  On naming the winner it ties pole.
+- **Sprint prediction.** The same, made once sprint qualifying is in: each
+  driver's pace from the sprint qualifying gap, FP1 long runs and recent race
+  pace, weighted by how well each predicted past sprints, then the sprint
+  simulated 1,000 times over its own distance with no stops. Replayed over every
+  sprint since 2023:
+
+  | | Finishing order (rank correlation) | Win chances (Brier, lower is better) |
+  |---|---|---|
+  | 2023 to 2025, 18 sprints | 0.76 model, 0.75 grid | **0.53** model, 0.59 grid |
+  | 2026 (never trained on), 5 sprints | 0.87 model, 0.88 grid | **0.38** model, 0.39 grid |
+
+  On the order it ties the grid: a sprint is short, nobody stops, and the
+  field mostly finishes where it started. Its chances are the more honest,
+  for the win and the podium alike.
+- **Title odds.** The rest of the season simulated 10,000 times from the
+  standings: each driver's pace from recent race form, uncertain in two
+  measured parts (how far form misses a driver's level, drawn once a season,
+  and how much their pace strays race to race, drawn every race), with
+  retirements at the season's rate and F1's points. Replayed over 2023 to 2025
+  from every round, it gave the eventual champion a 66% chance on average,
+  against 49% for the same simulation knowing only the points (Brier 0.33 vs
+  0.45), most clearly early in a season. In 2025's close three-way finish it
+  did slightly worse than the points alone.
+- **Pit crews.** The feed gives when a car crossed the pit-lane entry and exit
+  lines, not how long it stood still, so a stop is its pit-lane time against the
+  same race's typical stop: the lane is the same for everyone there. Only
+  green-flag stops with new tyres count; safety cars (the lane runs 3 to 4 s
+  quicker under one at Monaco and Baku), red flags, penalties and trips to the
+  garage are left out and counted. A team's figure in one half of a season's
+  races predicts the other half closely (split-half correlation 0.80 to 0.91),
+  so the order is the crews', not chance.
+- **Overtake mode (2026).** The feed never says when a driver used it, so a car
+  is shown as *eligible* when race control has it switched on and the car was
+  within a second of the one ahead at the last timing line. An estimate, and
+  labelled as one.
+
+---
+
+## Setup guide
+
+### What you need
+
+| | Version | Check with |
 |---|---|---|
 | Bahrain | 5.333 km | 5.412 km |
 | Silverstone | 5.822 | 5.891 |
@@ -366,58 +383,24 @@ the full field rather than trusting it.
 Each race is fitted separately rather than the season as a whole, which is what
 makes holding one out free. The interface does not ask for it until a tab that
 needs it is opened, so a replay never pays for a fit nobody looked at.
+| Windows 10 or 11 | for the desktop app; the browser mode runs on macOS and Linux too | |
+| Python | 3.11 or newer | `python --version` |
+| Node.js | 20.19+ or 22.12+ (needed by Vite 7) | `node --version` |
+| Git | any | `git --version` |
+| Disk | about 3 GB for 2023 to 2026, less for fewer seasons | |
+| WebView2 runtime | ships with Windows 11 and with Edge on Windows 10 | |
 
-## Live timing
+### 1. Get the code
 
 ```powershell
 .venv\Scripts\racecraft-live record --name baku-2026     # leave running from FP1
 .venv\Scripts\racecraft-live status                      # what has been recorded
 .venv\Scripts\racecraft-live read                        # parse it and report
+git clone https://github.com/Adityavalaki/racecraft.git
+cd racecraft
 ```
 
-F1's own timing feed is a SignalR stream at `livetiming.formula1.com` — the same
-one MultiViewer reads for timing. FastF1 ships a client that writes it to a file,
-which sounds like a limitation and is closer to a feature: the recording is the
-source of truth, it survives a crash of whatever is reading it, and it replays
-afterwards exactly as it arrived.
-
-### No F1 TV subscription is needed
-
-FastF1's client says otherwise. It attaches an F1 TV token by default and prints
-*"this feature requires an active F1TV Access/Pro/Premium subscription"* if it
-cannot find one. The timing stream does not check: connecting with an empty token
-returns the driver list, lap count, race control messages and the rest. Verified
-against the live server from an account-less machine — 17 messages and 106 KB in
-40 seconds, outside a session.
-
-FastF1 has a `no_auth=True` flag meant to say exactly this, and it is broken in
-3.8.3: it sets the token factory to `None`, and the SignalR library underneath
-rejects that with `access_token_factory is not function`. So `recorder.py`
-substitutes a factory returning an empty string rather than passing the flag,
-which is why it reaches into the library. `--subscription` uses FastF1's own
-login for anyone who has an account and would rather.
-
-A subscription buys *video*, which this project does not use and should not
-rebuild — that is MultiViewer's job. Run Racecraft beside it.
-
-So live mode is a recorder and a reader rather than a streaming pipeline. A
-recording parses into the same FastF1 session object a historic session does, so
-it goes through the same `ingest.fastf1_source.extract` and comes out as the same
-tables. That is what makes live a data-source swap rather than a second
-application, and it is the reason the session clock was built the way it was.
-
-Start recording before the session you care about. The feed carries no history,
-so whatever happened before the recorder started is gone; the recording appends
-across reconnections, and the connection drops after about two hours, which is
-handled rather than treated as the end.
-
-**Not yet carried live:** car telemetry and positions, so no track map. They are
-the overwhelming majority of the feed's volume and the least of its strategy
-value — a race is 1.4 million position samples against a few thousand lap rows.
-The timing side is what the tower, the trace, the tyre model and the strategy
-board read.
-
-### Watching it
+### 2. Install the Python side
 
 ```powershell
 .venv\Scripts\racecraft-live record --name baku-2026    # one terminal
@@ -495,920 +478,301 @@ racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
 racecraft-analyse race Baku            # simulate the field, answer in places
 racecraft-analyse race Baku --driver HAD   # on the tyres that car actually had
 racecraft-analyse following            # time lost in the wake of the car ahead
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[dev,app]"
 ```
 
-The scripts beside them answer "is this worth anything?", and every figure this
-file quotes comes from one of them:
+On macOS or Linux, use `.venv/bin/python` and leave out `app` (the desktop
+window is Windows-only; everything else works):
 
 ```sh
-python scripts/validate_race.py prior      # finishing order, held out, against the grid
-python scripts/validate_tyres.py 2025      # what racing a car's own tyres changes
-python scripts/validate_tyre_sets.py       # how often the set tracker is right
-python scripts/compare_compounds.py        # C-number against label for tyre wear
-python scripts/calibrate_scale.py          # the 1.5 degradation scale
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
-Every model number quoted below comes from these, so they can be reproduced
-rather than taken on trust. For example:
+`dev` adds the test tools; `app` adds pywebview for the desktop window.
 
-```
-Baku
-  pit lane costs      21.0s  (± 1.0s, 42 green-flag stops, 3 seasons)
-  neutralised         100% of 3 races, 0.83 allowing for the short history
-  when it happens     4.1 laps under SC or VSC
-  races in the lake:
-    2023  51 laps, 1.20 stops per driver, hard 82%, medium 18%, soft 0%
-    2024  51 laps, 1.20 stops per driver, hard 77%, medium 23%, soft 1%
-    2025  51 laps, 1.05 stops per driver, hard 62%, medium 38%
+### 3. Build the interface
+
+```powershell
+cd web
+npm install
+npm run build
+cd ..
 ```
 
-## Circuit-owned estimates (Phase 3, in progress)
+This writes `web/dist/`, which the server and the desktop app serve. Rebuild
+after changing anything under `web/src/`.
 
-Tyre wear and relative pace belong to the car, so 2026 can only be learned
-from 2026. Pit loss and safety car likelihood belong to the circuit — the
-length of the pit lane, the walls and run-off — so they pool across every
-season, which is what makes them usable for a circuit the current cars have
-not raced on yet.
+### 4. Get some race data
 
-Pit loss is a driver's own in-lap and out-lap against their pace either side
-of the stop, which cancels car, fuel and track. Stops under a safety car are
-excluded: they are far cheaper, and including them would understate what a
-green-flag stop costs. Spa is cheapest at 18.0 s, Imola dearest at 27.8 s.
+The lake starts empty. Either let the app fetch the latest five race weekends
+(step 5, it does this by itself), or ingest what you want from a terminal:
 
-Safety car risk counts SC and VSC together and is shrunk toward the league
-average by four races, so a short history reads as "probably high" rather than
-"always": Baku 0.83 rather than 1.00, Monza 0.47 rather than 0.25.
-
-**A trap worth knowing about:** FastF1's location names drift between seasons.
-Monaco became "Monte Carlo" in 2026 and Miami became "Miami Gardens" in 2025,
-so keying on the raw name silently splits a circuit's history in half. Event
-names drift too — Barcelona stopped being the "Spanish Grand Prix" when Madrid
-took the title — which is why location, aliased, is the key.
-
-## Pace model (Phase 3, in progress)
-
-`racecraft.model.pace` separates the two things that change a lap time as a
-stint goes on: fuel burning off (faster) and the tyre wearing (slower).
-
-Within a stint they cannot be separated at all — one more lap of tyre age is
-always exactly one less lap of fuel. The split only exists across stints: the
-same tyre age at two different fuel loads. So the model is fitted over a whole
-race, with a baseline per driver, a fuel slope, and a degradation slope per
-compound. When a race cannot support that split (every driver stopping on the
-same lap), `fit` raises `Confounded` instead of returning a number. Least
-squares would happily answer, splitting the effect arbitrarily while reporting
-an excellent fit.
-
-Fitted across the lake: **78 of 84 races fit, 4 refused as confounded, 2 had no
-dry laps** (wet races).
-
-Single races are too noisy to trust for degradation — the scatter in clean lap
-times is 0.5-1.1 s against an effect near 0.05 s per lap, and individual races
-come back negative. `fit_pooled` shares degradation across a season while each
-race keeps its own fuel slope and baselines:
-
-| Season | Fuel s/lap | Soft | Medium | Hard |
-|---|---|---|---|---|
-| 2026 | 0.050 | 0.025 ± 0.003 | 0.038 ± 0.002 | 0.041 ± 0.001 |
-| 2025 | 0.054 | 0.060 ± 0.002 | 0.043 ± 0.001 | 0.035 ± 0.001 |
-| 2024 | 0.061 | 0.080 ± 0.004 | 0.058 ± 0.001 | 0.054 ± 0.001 |
-| 2023 | 0.058 | 0.046 ± 0.002 | 0.047 ± 0.001 | 0.042 ± 0.001 |
-
-Fuel lands at 0.05-0.06 s per lap every season, which is the expected size.
-2023-2025 order as you would expect: soft wears fastest, hard slowest.
-
-### Measuring degradation without modelling fuel
-
-The model above has to assume a shape for everything that changes as a race
-runs — fuel burning away and the track rubbering in — and fits one straight
-line to both. `fit_lap_effects` avoids the assumption instead of refining it:
-give every lap its own effect, and anything shared by the whole field on that
-lap is absorbed whatever its shape. What is left is what differs between cars
-on the same lap, which is tyre age, because drivers stop at different times.
-
-On synthetic data with non-linear track evolution added, the fuel model
-compresses the gap between compounds while this one recovers it. Run it with
-`racecraft-analyse pace --method lap-effects`:
-
-| Season | Soft | Medium | Hard |
-|---|---|---|---|
-| 2026 | 0.033 ± 0.003 | 0.036 ± 0.002 | 0.043 ± 0.001 |
-| 2025 | 0.070 ± 0.002 | 0.046 ± 0.001 | 0.030 ± 0.001 |
-| 2024 | 0.079 ± 0.003 | 0.055 ± 0.001 | 0.050 ± 0.001 |
-| 2023 | 0.050 ± 0.002 | 0.049 ± 0.001 | 0.037 ± 0.001 |
-
-**2026 really does behave differently.** Softs degrade least and hards most,
-the reverse of 2023-2025, and it survives both estimators and allowing the
-curve to bend (`--curved`): at every stint length from 5 to 30 laps the 2026
-soft loses less than the 2026 hard. Overall degradation is also far lower — a
-2026 soft loses 0.86 s by lap 30 where a 2025 soft loses 2.15 s. Lighter cars
-and new tyre construction make that plausible, and a hard compound struggling
-to reach temperature would degrade through sliding, but this is data, not an
-explanation, and it is quoted as such.
-
-**What is still not measurable here: the cliff.** Fitted curvature is negative
-for 2024 and 2025, which would mean tyres settling down as they age. That is
-survivorship: a team pits when the tyre falls away, so the laps after the
-cliff are mostly missing from the data. Any simulator built on these numbers
-models wear up to the point teams accept, not the wall beyond it.
-
-## Strategy (Phase 4, first pass)
-
-`racecraft.model.strategy` costs a race plan: compound pace for every lap on a
-harder tyre, wear accumulated in each stint, pit loss per stop. Then it sweeps
-every plan and ranks them.
-
-```sh
-racecraft-analyse strategy Baku --laps 51 --scale 1.5
+```powershell
+.venv\Scripts\racecraft-ingest --season 2025 --rounds 4 --sessions FP2 Q R   # one weekend, quickly
+.venv\Scripts\racecraft-ingest --season 2025 --prune-cache                   # a whole season
+.venv\Scripts\racecraft-ingest --prune-cache                                 # everything, 2026 back to 2023
 ```
 
-**Backtested against 62 dry races, 2023-2025**, comparing the predicted stop
-count with the median a driver actually made:
+**A full backfill takes hours, and that is expected.** FastF1 allows 500
+uncached requests an hour to F1's servers; the command waits for its budget
+rather than risk getting you blocked, and resumes where it left off if you run
+it again. On Windows, `scripts\backfill.ps1` runs it while keeping the machine
+awake. Always pass `--prune-cache`, or FastF1's download cache grows by several
+gigabytes.
 
-| Degradation as measured | x1.5 |
+### 5. Run it
+
+**As a desktop app (Windows):**
+
+```powershell
+.venv\Scripts\racecraft --install-shortcuts     # adds Racecraft to the Desktop and Start menu
+```
+
+Then double-click **Racecraft**. It opens in its own window, fetches the latest
+race weekends ten seconds after launch and every fifteen minutes while open,
+and stops completely when you close it. A second launch brings the open window
+forward. Logs are in `data/logs/`. Remove the icons with
+`racecraft --uninstall-shortcuts`.
+
+**In a browser (any system):**
+
+```powershell
+.venv\Scripts\racecraft-serve          # http://127.0.0.1:8000
+```
+
+Open <http://127.0.0.1:8000>. Pop-out screens open as browser windows.
+
+### 6. Check it works
+
+```powershell
+.venv\Scripts\python -m pytest -m "not network"     # Python tests, offline
+cd web; npm test; cd ..                             # interface tests
+```
+
+Tests marked `realdata` use your lake and skip themselves when a session they
+need is not in it.
+
+### Troubleshooting
+
+| Problem | Fix |
 |---|---|
-| 42% exact, 87% within one stop | **53% exact, 89% within one stop** |
+| The session list is empty | No data yet: press **Refresh data** at the foot of the rail, or run `racecraft-ingest` (step 4). |
+| `racecraft` is not recognised | Use the full path, `.venv\Scripts\racecraft`, or activate the environment first: `.venv\Scripts\Activate.ps1`. |
+| The window is blank | Build the interface (step 3); check `data/logs/app-*.log`. |
+| Ingest is "waiting" for a long time | It is respecting FastF1's rate limit. Leave it running. |
+| A session shows no track map | Some sessions have no position data in F1's feed; the app says so. |
+| Fonts look plain | Rebuild the interface; the fonts are bundled by `npm install`. |
+| VS Code uses the wrong Python | Command Palette, *Python: Select Interpreter*, pick `.venv`. |
 
-Measured degradation systematically **under-stops**: it predicted a one-stop
-in 57 of 62 races when teams split roughly evenly between one and two. That is
-the survivorship problem made concrete — degradation measured from race laps
-only covers the life teams accept, so a long stint looks cheaper than it is.
-Multiplying it by about 1.5 best reproduces real strategy, and that factor is
-also absorbing everything the model omits: traffic, safety cars, warm-up and
-track position. It is a calibration, not a physical constant.
+---
 
-The model prints its own limits every time it runs, because a number this
-simple should not travel without them. Notably it counts **seconds, not
-places**, and races are scored in places.
+## Using the app
 
-### Safety cars
+- **Pick a session** from the picker at the top. **Play** with Space or the red
+  button; **scrub** on the timeline, which is coloured by yellow flags, safety
+  cars, VSC and red flags, with the laps marked.
+- **Follow a driver** by clicking them in the timing tower (up to two): they get
+  a card under the map and a tag on it, the pedal map shows their last lap, and
+  the stewards narrow to them.
+- **Pop out** any screen with ↗; it stays in step with the main window.
+- **Resize** the timing tower and the driver cards by dragging their edges;
+  double-click or *Reset layout* to put them back.
 
-```sh
-racecraft-analyse strategy Baku --laps 51 --scale 1.5 --safety-car
-```
-
-Green-flag costing assumes a race that runs start to finish without
-interruption. Races do not: one is neutralised 1.27 times on average, and a
-stop taken entirely under a full safety car costs **61% of a green one** —
-13.7 s against 22.5 s, measured against the drivers who stayed out on the same
-laps. (Measuring it against green-flag pace instead gives 274%, which is not a
-stop cost at all but the fact that every lap under a safety car is slow.)
-
-`racecraft.model.simulate` therefore runs each plan through hundreds of races,
-drawing neutralisations from that circuit's own rate, and follows the strategy
-teams actually use: stop as planned, unless the race is neutralised while a
-stop is still owed and the tyres have done enough laps.
-
-This changes the answer, which is the point. At Baku:
-
-| Plan | Expected | If green | Cheap stop |
-|---|---|---|---|
-| medium 30 > soft 21 | **51.8 s** | 53.5 s | 40% |
-| medium 26 > soft 25 | 51.8 s | 52.6 s | 34% |
-| medium 34 > soft 17 | 53.0 s | **56.2 s** | 45% |
-
-Stopping later is the worst plan if the race stays green and among the best
-once safety cars are allowed for, because a stop still owed is a stop that
-might come cheap. Its downside is also bounded: the worst a plan can do is its
-own green-flag race, since a neutralisation only ever makes a stop cheaper.
-
-## Race simulator (Phase 4)
-
-`racecraft.model.race` puts the whole field on track and runs the race lap by
-lap, so strategy can be judged in places rather than seconds. Cars have their
-own pace, tyres that wear, and plans; a car that catches another loses time in
-its wake and only gets past when the circuit allows; safety cars bunch the
-field and hand a cheap stop to whoever still owes one.
-
-Every input is measured from the lake, and for a race that has happened, only
-from races that started before it (`model/race_inputs.py`). The strategy tab's
-seconds and safety-car rankings use the same cutoff: they used to take a race's
-pit loss and safety cars from every race at the circuit, itself included. Tyre wear, the pace
-ladder, pit loss, safety-car risk, overtaking and the wake penalty all stop at
-the same date. It used to be otherwise: analysing Baku 2025 fitted tyres on
-Baku 2025, took the pace ladder from races after it, and measured pit loss from
-its own stops. `--include-race` still does that, for comparison, and says so.
-The price is that the first race at a new circuit cannot be simulated, because
-there is no earlier pit lane to measure; it refuses rather than borrowing its
-own.
-
-
-| Input | Measured | Example |
-|---|---|---|
-| Overtaking | pairwise on-track passes per race | Monaco 5.8, Baku 27.0, Las Vegas 48.3 |
-| Following | lap time lost in the wake of the car ahead, per season | 2026: +0.28 s under 0.5 s, gone by 2.5 s |
-| Pit loss | in and out lap against pace either side | Spa 18.0 s, Baku 21.0 s, Imola 27.8 s |
-| Safety cars | rate, duration and the discount on a stop | 1.27 per race, 61% of a green stop |
-| Pace, wear | the pace model's driver and compound terms | see above |
-
-The following penalty used to be a constant, +0.55 s inside half a second,
-which nothing in the repository reproduced. Measuring it properly
-(`racecraft-analyse following`) found it was about double the real figure,
-for a reason worth keeping. A car close behind another is slow for two
-reasons: dirty air, and being held up by a slower car it cannot pass. The
-simulator already models the second — a car cannot go through the one ahead
-until the circuit allows — so a penalty that includes it counts the same lost
-time twice. The measurement therefore uses only laps where the follower's own
-pace was *slower* than the car ahead, so it cannot have been held up:
-
-| Gap | 2024 | 2025 | 2026 | 2026, all laps |
-|---|---|---|---|---|
-| under 0.5 s | +0.294 | +0.315 | **+0.283** ± 0.053 | +0.386 |
-| 0.5–1.0 s | +0.082 | +0.115 | +0.072 | +0.171 |
-| 1.0–1.5 s | +0.082 | +0.087 | +0.034 | +0.073 |
-| 1.5–2.5 s | +0.067 | +0.049 | +0.002 | +0.023 |
-| 2.5–4.0 s | +0.024 | +0.016 | +0.000 | −0.018 |
-
-Seconds per lap against the same driver in clear air, after tyres, fuel and
-track evolution. The wake right behind a car barely changed between seasons;
-what changed in 2026 is how quickly it fades — gone by 1.5 s, where in 2024 it
-was still there at 2.5 s. The simulator uses the season's own table, fitted
-only on races before the one being simulated.
-
-### The tyres the car has
-
-A plan is a sequence of compounds, and a car cannot run one it has no sets for.
-The simulator used to give every stint a new tyre, so it would happily
-recommend two new hards to a car that had run one of them in practice, and cost
-a stint on a four-lap medium as if the rubber were fresh.
-
-It now races what the car has. `race_inputs.tyre_stock` reads the sets the car
-on a grid slot held when the race started — from the weekend's earlier sessions,
-so the study stays held out — and the study drops the plans it cannot run and
-starts each stint on the set it would really use, at the age that set carries.
-The assignment is the cheapest one: new sets first, then the least worn, with
-the oldest set on the shortest stint.
-
-```sh
-racecraft-analyse race Baku --season 2025 --driver HAD    # on the tyres he had
-racecraft-analyse race Baku --season 2025 --grid 8 --new-tyres
-```
-
-Baku 2025, P8. That was Hadjar, who reached Q3 and started the race without a
-single new set — three used softs, two used mediums, one hard with a lap on it.
-The same three plans, raced on new sets and on his, 1500 runs each:
-
-| Plan | On new sets | On his tyres |
-|---|---|---|
-| `medium 22 > hard 29` | **P8.59** ±0.08 | **P9.03** ±0.08 |
-| `medium 31 > hard 20` | P8.68 ±0.08 | P9.35 ±0.09 |
-| `medium 25 > hard 26` | P8.79 ±0.08 | P9.06 ±0.08 |
-
-His tyres cost him about four tenths of a place, and they cost the long first
-stint most — `medium 31 > hard 20` is a tenth behind on new sets and three
-tenths behind on his, because the set it runs long is the one with laps on it.
-The plan at the top does not change here.
-
-**The first version of this table said it did**, and that was the run count
-talking. At 300 runs the order of the top three moved between tyre settings, and
-the difference looked like a finding; at 1500 it is a tenth of a place and the
-same plan wins both. The rule the rest of this file follows applies to its own
-results: a ranking has an error bar, and a change smaller than it is noise.
-
-**Some races demand more than one stop.** Monaco required three sets of tyres,
-and so two stops, in 2025 — and the field's median stop count there runs 1, 1, 2
-across 2023, 2024 and 2025, which is the rule showing up in the data. The plan
-sweep did not know it, and the tyre join is what exposed that: given a car short
-of hard sets, the shortlist fell back to a one-stop the regulations forbade.
-
-`race_inputs.mandatory_stops` now holds it, as a table of seasons rather than a
-rule that carries forward — which matters, because it does not. The rule lasted
-one year: teams answered it by having one car back the field up to make a pit
-window for the other, and it was deleted from the 2026 regulations. A model that
-had assumed "2025 onward" would now be putting an extra stop into every Monaco
-race it is asked about.
-
-**A wet race is a different race.** Three of the 2025 races ran mostly on
-intermediates — Australia at 81% of laps, Silverstone at 74%, Spa at 27% — and a
-ranking of dry plans describes none of them. Studying one now says so first, in
-as many words, and marks it as the hindsight it is: the forecast could not have
-known, the review has no excuse.
-
-**A car can be short of the whole shortlist.** Verstappen started Monaco 2025
-with one new medium, one new hard and four used softs, and every plan in the
-shortlist — Monaco requires two stops — called for two hard stints. Filtering
-the ranking *after* it was built left him with nothing at all. The filter now
-runs before the sweep (`rank_with_risk(allow=...)`), so what comes back is the
-best plan he could actually have run, `soft 19 > medium 25 > hard 34` starting
-on a three-lap soft, with the out-of-reach plans still named.
-
-The rivals get their own tyres too, where the plan drawn for them fits what
-they had; one whose drawn plan it does not fit stays on new sets, because
-inventing a different plan for a rival would be modelling a strategist rather
-than a field. **It makes no measurable difference**: at Baku 2025 the answer
-moves 0.02 places against an error bar of 0.13. The reason is in the grid — only
-2 of the 20 cars started with no new set at all, and the set assignment gives
-the fresh rubber to the long stints anyway. It stays in because "every rival has
-new tyres" is an assumption that cannot be defended once the real sets are
-known, not because it changed the answer.
-
-**Is it worth anything?** Two questions, two answers, and only one of them is
-yes.
-
-*Choosing a plan for one car* — `python scripts/validate_tyres.py 2025`, every
-race and three grid slots, each studied twice with the same luck and the same
-field, differing only in the tyres:
-
-| | |
+| Key | Does |
 |---|---|
-| Car started on at least one used set | 35% |
-| Best plan changed with the real tyres | 41% (27 of 66) |
-| ...by more than the error bars on both | **30%** (20 of 66) |
-| Plans ruled out for want of a set | 146 |
-| The new-tyre answer was a plan the car **could not run** | 18 of 66 |
-| Cost of following it where it could be run | +0.06 places, +1.34 at worst |
+| Space | Play or pause |
+| ← → | Back or forward 5 s (with Shift, 30 s) |
+| ↑ ↓ | Faster or slower |
+| Home | Back to the start |
+| L | Driver names on the map |
+| D | DRS zones on the map (2026: overtake rings) |
 
-The first two lines are one measurement with and without a noise test: a top
-plan that changes by less than the error bars on both finishes has not changed,
-it has wobbled. Counting the wobble gives 41%; requiring the new-tyre answer to
-actually cost something gives 30%.
+---
 
-The last two lines are the point, and they say different things. Most of the
-time the ideal-tyre answer is runnable and costs a rounding error, so this is
-not a model that changes every call. But in 18 of 66 cases it was a plan the car
-had no sets for — advice that cannot be taken is worse than advice that is
-slightly wrong, and the old model gave it without noticing.
+## Command line
 
-(Rerun with Monaco's two-stop rule in place: Verstappen's answer there changes
-from an illegal one-stop to `soft 19 > medium 25 > hard 34`, and every figure in
-the table above is unchanged.)
+| Command | What it does |
+|---|---|
+| `racecraft` | The desktop app. `--install-shortcuts`, `--uninstall-shortcuts`. |
+| `racecraft-serve` | The API and interface on `http://127.0.0.1:8000` (`--port`, `--reload`). |
+| `racecraft-ingest` | Fetch sessions into the lake (`--season`, `--rounds`, `--sessions`, `--prune-cache`, `--watch`). |
+| `racecraft-analyse pace` | Tyre degradation and fuel effect, per season. |
+| `racecraft-analyse circuits` | Pit loss and safety-car risk at every circuit. |
+| `racecraft-analyse circuit Baku` | Everything known about one circuit. |
+| `racecraft-analyse strategy Baku` | The cheapest plans, in seconds. |
+| `racecraft-analyse race Baku --grid 8` | Plans for one car, raced against the field, in places. |
+| `racecraft-analyse predict 2025_04_Q` | The weekend's race, predicted from before it started. |
+| `racecraft-analyse predict-backtest` | Every race since 2023 predicted and scored against the grid. |
+| `racecraft-analyse predict 2025_06_SQ --sprint` | The weekend's sprint, predicted from sprint qualifying. |
+| `racecraft-analyse predict-backtest --sprint` | Every sprint since 2023 predicted and scored against the grid. |
+| `racecraft-analyse title 2026` | Each driver's and team's chance of the championship. |
+| `racecraft-analyse title-backtest` | 2023 to 2025 replayed from every round, scored against the points alone. |
+| `racecraft-live record` / `status` / `read` | Record F1's live timing feed, and read it back. |
 
-*Predicting a finishing order* — no. `scripts/validate_race.py prior` simulates
-each race twice, once with every stint on a new set and once at the age each set
-really carried, and the mean position error is **3.27 against 3.24**: the real
-tyres are very slightly worse, and beat new sets in 10 of 30 races. About seven
-cars a race start a stint on a used set, so the information is there; it just
-does not move a finishing order, which car pace dominates. The join earns its
-place in choosing a plan, not in predicting a race.
+Session keys look like `2025_04_R`: season, round, session (`FP1`, `FP2`,
+`FP3`, `SQ`, `S`, `Q`, `R`).
 
-### What it is for, and what it is not for
+---
 
-**It does not predict finishing order.** Validated over 30 races with every
-input — driver pace, tyre wear, pit loss, safety cars, overtaking, the wake —
-taken only from races that started before the one simulated, it is barely
-better than predicting the starting grid:
+## Live timing
 
-| | Simulator | Grid order |
-|---|---|---|
-| Mean position error | 3.24 | 3.39 |
-| Podium places hit (of 3) | 1.93 | 2.00 |
-| Races won against the baseline | 17 of 30 | — |
-
-The first version of this backtest took driver pace from earlier races but
-everything else from the race itself, and scored 3.24 against 3.31. Holding the
-rest out as well left the simulator's error where it was; the grid baseline
-moved because a different 30 races now qualify — eight are skipped, four for
-too few earlier races for driver pace, three for coming too early in a season
-to fit tyre wear on, and one, Madrid, for having no earlier
-pit lane to measure.
-
-Given each race's *own* pace instead, it looks far better — 2.46 against 3.04,
-winning 33 of 36 — and that gap is the measure of how much hindsight was
-doing. Finishing order is dominated by how quick each car is on the day, and
-forecasting that is a different problem from strategy.
-
-`python scripts/validate_race.py prior` and `... hindsight` reproduce both.
-
-**What it is for is comparing plans for one car**, where pace errors largely
-cancel because every plan runs against the same field:
-
-```sh
-racecraft-analyse race Baku --laps 51 --grid 8
+```powershell
+.venv\Scripts\racecraft-live record --name baku-2026     # start before the session, leave running
+.venv\Scripts\racecraft-serve                            # then pick LIVE in the session list
 ```
 
-A midfield car starting P8 at Baku 2025, held out — fitted on the fourteen
-races before it, none of Baku and nothing after:
+Racecraft records F1's own timing stream (the one MultiViewer reads) to a file
+and reads it into the same views as a historic session. **No F1 TV subscription
+is needed** for timing. Live carries the timing side (the tower, the trace,
+tyres, strategy); car positions and telemetry are not recorded live, so there
+is no track map until the session is ingested afterwards.
 
-| Plan | Expected loss | Mean finish | ± | In the points |
-|---|---|---|---|---|
-| hard 31 > medium 20 | 63.1 s | **8.41** | 0.16 | 85% — tied |
-| medium 22 > hard 29 | 60.0 s | 8.44 | 0.16 | 86% — tied |
-| medium 28 > hard 23 | 60.2 s | 8.56 | 0.17 | 81% — tied |
-| medium 31 > hard 20 | 60.9 s | 8.61 | 0.17 | 83% — tied |
-| medium 25 > hard 26 | **59.9 s** | 8.84 | 0.17 | 78% |
-| medium 16 > hard 35 | 62.6 s | 10.33 | 0.21 | 62% |
+---
 
-Four plans cannot be separated, and the simulator says so rather than picking
-one. The useful answer is the **price of track position**: `medium 22 > hard 29`
-is as good as the best and costs 0.1 s more than the seconds-cheapest plan, for
-0.40 places. The plans are shortlisted by the safety-car ranking, not by
-green-flag seconds, so a long first stint that only pays off when a safety car
-arrives gets raced at all.
+## Building the Windows installer
 
-## Tyre sets
-
-Nothing in the feed numbers a set of tyres. Every lap does carry its compound,
-whether the set was new when fitted, and how many laps the set has done —
-counted across sessions, so a medium run for four laps in qualifying starts the
-race at age five. `model/tyre_sets.py` follows each physical set through a
-weekend from that, and so can say before a race what every car still has.
-
-**Joining stints to sets.** A stint on a used set is joined to the earlier set
-of the same compound whose lap count it continues. Across all 84 weekends, 97%
-continue a set exactly. The rest are handled by name rather than dropped: a
-counter that stalled for an out-lap, one that slipped back a lap or two, a set
-whose earlier laps were never timed. When two sets fit equally — a six-lap soft
-from practice and another from qualifying — the more recently used one wins,
-because a car races the sets it kept. Choosing the older one sent to the race
-sets that had gone back to Pirelli days earlier, and fixing it took the tracker
-from 93.3% to 96.7%.
-
-**The rules are Article 30**, as data (`RULES`): 13 dry sets on a normal weekend
-(8 soft, 3 medium, 2 hard) with two handed back after each practice session;
-12 on a sprint weekend (6, 4, 2) with one back after practice, the sprint's
-most-used set after the sprint and three after qualifying; one soft fewer when
-Pirelli's test tyres run; 11 at the two 2023 trials of the Alternative Tyre
-Allocation. A Q3 driver hands one more soft back after qualifying, and one hard
-and one medium can never go back before the race. The data found every one of
-these without being told — the counts cluster exactly on the allocations, the
-2023 trials stand out as four softs short — and found one the rulebook does not
-state: at Qatar 2025, the weekend stints were capped at 25 laps, half the field
-ran a third hard.
-
-The rules say how many sets go back, not which. A set run again later plainly
-was not one; otherwise the most worn go back. Where a car has no used set left
-to give, a new one goes and its compound is a guess, named as one.
-
-Rookies in first practice drive a race driver's car under their own number;
-their laps go on the car of the same team whose regular driver sat that session
-out. At Barcelona 2026 the feed has no team for anyone in FP1, so a rookie's
-team is taken from the rest of their season, and where they drove for two teams
-the one with a car free wins.
-
-**How often it is right** (`python scripts/validate_tyre_sets.py`): for every car
-in every race, what the tracker says it held at the start — from the sessions
-before only — against every set it then ran:
-
-| | |
-|---|---|
-| Sets raced | 4,185 |
-| Right about | **96.7%** |
-| Cars holding exactly what the rules leave | 95% |
-
-The misses are sets the tracker thought went back but were raced (45) and new
-sets opened beyond the count it had left (94). The panel draws the first kind
-dashed when it happens.
-
-**What it is for.** The strategy model's plans assume new tyres. With the sets
-known, each car's plans are re-ranked on what it has: a used set costs the wear
-line carried on from its age, a plan needing two new hards is out for a car that
-ran one in practice. At Baku 2025 the model's cheapest plan on new tyres is 0.4 s
-behind for Russell, whose mediums had all run in qualifying. The used-set cost
-is an upper bound: the feed counts out-laps and cool-down laps, so a set from
-qualifying is fresher than its count.
-
-The race simulator uses the same sets; see **The tyres the car has** below.
-
-## Showing it
-
-Five minutes, in this order, each step answering a question the last one raises.
-
-**1. A race, replayed.** `racecraft-serve`, open the page, pick a race. The
-timing tower, the trace and the track map all run off one clock, and the tower
-agrees with what the tyre panels say a car is on — that is the check that the
-data underneath is one thing rather than three.
-
-**2. What the tyre model says, and what it cannot.** The *Tyre model* tab draws
-modelled wear against what that race's tyres actually did. The line never saw
-the race it is drawn over. The panel names how many races it was fitted on, and
-which Pirelli compound each label was that weekend.
-
-**3. Three answers to one question.** The *Strategy* tab ranks plans in seconds,
-then with safety cars allowed for, then in finishing positions. The three
-disagree, and the interesting part is where: the seconds ranking understates how
-bad a bad plan is, because it cannot see a car rejoining into traffic.
-
-**4. The tyres that car actually had.** *In places* races the sets the car held
-at the start — click through the grid slots by driver name. At Baku 2025 from
-P8, Hadjar had no new set at all, and his best plan is not the best plan on new
-tyres. The *Tyre sets* tab shows where that came from, set by set, following the
-clock.
-
-**5. What none of it can do.** `python scripts/validate_race.py prior`:
-predicting a finishing order, held out, is level with predicting the starting
-grid. Car pace dominates a race and forecasting car pace is a different problem.
-The negative results below are the rest of that answer.
-
-## Query
-
-```python
-from racecraft.store.db import connect
-
-con = connect()
-con.sql("""
-    select driver, stint, any_value(compound) as compound, count(*) as laps
-    from laps where session_key = '2024_01_R'
-    group by all order by driver, stint
-""").show()
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build_app.ps1     # dist\Racecraft\Racecraft.exe, no Python needed
+powershell -ExecutionPolicy Bypass -File packaging\build_msix.ps1    # dist\Racecraft.msix, signed
 ```
 
-Views: `sessions`, `results`, `laps`, `car_data`, `pos_data`, `weather`,
-`race_control`, `track_status`, `session_status`, `circuit_markers`. Every
-view also exposes `year`, `round` and `session` from the partition path.
-`results.q1_s`/`q2_s`/`q3_s` hold qualifying times and are null for other
-sessions, including every race file written before those columns existed.
-
-## Conventions
-
-- **One clock.** Every timestamp is `t`, float seconds since the session's t0.
-  FastF1 mixes timedeltas with absolute datetimes (race control); ingest
-  converts all of it. Absolute UTC is `sessions.t0_utc + t`.
-- **Declared types.** Schemas live in `src/racecraft/store/schema.py` and are
-  enforced at write time. `track_status` is always a string (`'1'`, `'12'`).
-- **`tyre_life` is not `laps_in_stint`.** Drivers often start a stint on a set
-  used in qualifying. Degradation fits should use `tyre_life`; anything about
-  stint length should use `laps_in_stint`.
-- **Parquet is the source of truth.** DuckDB runs in memory over it; there is
-  no database file to lock or keep in sync.
-
-## Where this came from
-
-`legacy/` holds the two projects Racecraft replaced: an earlier strategy
-engine and a single-page live pit wall. They are kept for their mistakes,
-which shaped this one — a pit model that scored 1.22 laps of error while
-knowing nothing, and the second leak found inside its own replacement. See
-[legacy/README.md](legacy/README.md).
-
-## Layout
-
-```
-src/racecraft/
-  config.py                paths, overridable by RACECRAFT_* env vars
-  ingest/fastf1_source.py  FastF1 Session -> normalised DataFrames
-  ingest/quality.py        pre-write checks (errors block, warnings report)
-  ingest/cli.py            racecraft-ingest
-  store/schema.py          Arrow schemas for every table
-  store/lake.py            atomic Parquet writes, hive partitioning
-  store/db.py              DuckDB views over the lake
-  api/timing.py            running order and gaps at any instant
-  api/session.py           one session held in memory, ready to replay
-  api/places_view.py       the places ranking for one session, cached
-  api/tyre_sets_view.py    tyre sets for one session, and plans per car
-  api/app.py               FastAPI routes
-  model/pace.py            fuel vs tyre degradation
-  model/circuit.py         pit loss, safety car risk
-  model/strategy.py        costing and ranking race plans
-  model/simulate.py        plans under safety car uncertainty
-  model/race.py            the whole field, scored in places
-  model/traffic.py         time lost in the wake of the car ahead
-  model/race_inputs.py     simulator inputs from earlier races only
-  model/places.py          plans raced against the field, and the verdict
-  model/tyre_sets.py       every set through a weekend, Article 30 as data
-  model/compounds.py       Pirelli's nominations, from pirelli_compounds.csv
-  model/cli.py             racecraft-analyse
-tests/                     offline tests, no network
-web/                       React + Vite interface (npm test, npm run build)
-```
-
-## Verification status
-
-Backfill complete: **420 sessions** covering every practice, qualifying,
-sprint qualifying, sprint and race from 2023 to 2026 round 14. 1.53 GB,
-229,816 laps, 370 million telemetry rows, 0 failures.
-
-| Season | FP1 | FP2 | FP3 | SQ | Q | S | R |
-|---|---|---|---|---|---|---|---|
-| 2026 (to round 14) | 14 | 9 | 9 | 5 | 14 | 5 | 14 |
-| 2025 | 24 | 18 | 18 | 6 | 24 | 6 | 24 |
-| 2024 | 24 | 18 | 18 | 6 | 24 | 6 | 24 |
-| 2023 | 22 | 16 | 16 | 6 | 22 | 6 | 22 |
-
-Audited across the whole lake:
-
-- **Race time:** 104 of 107 races and sprints reconcile within +0.33 s of the
-  official time (median +0.25 s). The three outliers are interrupted, mostly
-  wet races: 2025 Miami sprint (-4.9 s, suspended start), 2023 Dutch GP
-  (-1.8 s), 2026 Dutch GP (-1.3 s). Their laps are internally consistent; the
-  session start marker is a few seconds off.
-- **Qualifying:** in 83 of 84 sessions the fastest lap matches a recorded
-  Q1/Q2/Q3 time exactly. Pole is not always the session's fastest lap, which
-  is correct: in wet 2023 Canada the fastest lap was 7.1 s quicker than pole.
-- **Position data:** median 1.02 position samples per car sample.
-- **FP2 long runs** (5+ timed green laps on one compound): 243 in 2026, 396
-  in 2025, 493 in 2024, 444 in 2023, averaging about 8 laps. This is the
-  degradation training set.
-
-## Negative results
-
-Kept because they cost as much to find as the positive ones, and because a
-model is shaped as much by what it refuses to include.
-
-### Tyre wear is not a circuit property, however much it looks like one
-
-Wear obviously differs between circuits — Sakhir eats tyres, Monaco does not —
-so the strategy model ought to carry a per-circuit multiplier alongside the
-per-circuit pit loss and safety-car risk it already has. It should not.
-
-Measuring each race's wear against its own season's average gives a ratio that
-strips out how that year's tyres behave and leaves the circuit. Ranked, the
-result looks exactly like a finding: Sakhir 2.21, Suzuka 1.62, Barcelona 1.48 at
-one end; Lusail 0.31, Montreal 0.41, Miami 0.48 at the other.
-
-It is noise. The spread *between* circuits is 0.424, and the wobble *within* one
-circuit from season to season is 0.490 — bigger. A quantity that varies more
-against itself than against its peers is not a property of the thing.
-
-The out-of-sample test agrees. Applying each circuit's multiplier, measured from
-the seasons other than the one being scored, to the 2026 stop-count prediction:
-
-| | Mean error in stops |
-|---|---|
-| Season wear alone | 0.571 |
-| With a per-circuit multiplier | 0.571 |
-
-Identical. It fixes Austria and Hungary and breaks Canada and Zandvoort. The
-giveaway is Melbourne's multiplier of 0.07, which would mean a circuit that
-barely wears tyres at all.
-
-### The real compound does not predict wear better than its label
-
-The feed says soft, medium and hard. Pirelli brings three of six compounds to
-each race, so a medium is a C2 at Silverstone and a C5 at Baku, and a model that
-learns one wear rate per label mixes different rubber. The obvious fix is to
-learn it per compound. `model/pirelli_compounds.csv` has every race in the lake,
-each row with the Pirelli release it was read from, and
-`python scripts/compare_compounds.py` tests the fix before trusting it: each
-race's wear per label, predicted from its own season's earlier races only.
-
-| Predicting a label's wear from | Mean error, s/lap per lap of age |
-|---|---|
-| **the same label** (the model) | **0.0344** |
-| the same C-number | 0.0373 |
-| the label, adjusted for how soft this compound is | 0.0372 |
-| the label, pulled toward last season's visit | 0.0402 |
-| the label, adjusted for track temperature | 0.0384 |
-| *the race's own measurement noise* | *0.0080* |
-
-The label wins in every season. Pirelli chooses each weekend's compounds so that
-hard, medium and soft behave alike wherever they run, and they do — within a
-label a softer compound wears *less*, because it is brought to gentler tracks.
-Track temperature has the expected sign, about +0.009 s/lap per 10 °C hotter,
-but too weakly to help out of sample. And last season's visit makes it worse,
-which is the previous finding again from another side.
-
-So the table is shown — the tyre model and the sets tab say which compound each
-label was — and not fitted on. What the 4× gap between the error and the noise
-*is*, none of these explain.
-
-### A used set's own history is at the edge of what the data can see
-
-Everything the simulator does with used tyres rests on one choice: wear is
-counted against the laps a set has done all weekend, not the laps since it was
-fitted. If the second clock fitted better, a set from qualifying would behave
-like a new one and charging a car for the laps on it would be inventing a
-penalty. `python scripts/compare_tyre_clock.py` fits both, same races, same
-model, same number of terms:
-
-| Wear counted against | Left over after the fit | R² |
-|---|---|---|
-| the set's whole life | 0.5539 s/lap | 0.827 |
-| laps in this stint | 0.5532 s/lap | 0.827 |
-
-A coin flip: the whole-life clock fits better in 40 of 78 races. The reason is
-in the second line of the output — only 17% of race laps run on a set with laps
-already on it, and those sets carry 2.6 laps on average, which is far too small
-to separate from a 0.55 s lap-to-lap scatter.
-
-So the model keeps the clock its wear was measured on, which is the consistent
-choice rather than the proven one, and the cost it charges a used set is
-reported as an upper bound: the feed counts out-laps and cool-down laps as laps,
-and a set that did three of those in Q1 is fresher than its count says. It is
-the one part of the tyre join that the lake cannot confirm.
-
-**How much rides on it.** Baku 2025 from P8, the same study with the laps
-carried into each stint taken as counted, halved, and ignored:
-
-| Carried laps | Best plan | Finish |
-|---|---|---|
-| as counted | `medium 25 > hard 26` | P8.82 |
-| halved | `medium 22 > hard 29` | P8.62 |
-| ignored | `medium 31 > hard 20` | P8.55 |
-
-The shape survives — one stop, medium then hard, in every case — and the stop
-lap does not, moving nine laps across an assumption the data cannot settle. The
-gaps between those plans are around two tenths of a place against an error bar
-of 0.17, which is why the panel shows which plans are tied and what track
-position costs rather than naming a lap and standing on it.
-
-### The 1.5 degradation scale was already right
-
-Race data cannot see past the tyre age teams accept, so measured wear understates
-a long stint and the strategy model multiplies it by 1.5. That constant was
-picked by eye. `python scripts/calibrate_scale.py` checks it against every dry
-race in the lake — 76 of them, four seasons — by costing every plan at each scale
-and scoring the cheapest plan's stop count against what the field ran:
-
-| Scale | Mean error | Exact | Bias |
-|---|---|---|---|
-| 1.00 | 0.737 | 32/76 | −0.66 |
-| **1.50** | **0.553** | **41/76** | −0.38 |
-| 1.75 | 0.566 | 40/76 | −0.26 |
-| 2.00 | 0.566 | 38/76 | −0.11 |
-| 3.00 | 0.803 | 21/76 | +0.55 |
-
-Leave-one-season-out, choosing the scale on three seasons and scoring it on the
-fourth, picks 1.50 in three years of four and averages 0.618. So the constant
-stands, and it stands on a measurement rather than on the first number tried.
-
-Worth reading the bias column beside the error. At 1.5 the model under-stops by
-0.38 stops on average; at 2.0 that bias nearly vanishes, and the per-race error
-gets *worse*. One constant can correct the average or the individual races, not
-both, which is the clearest sign available that what is missing is not a number.
-
-### What the dead ends have in common
-
-The model says one stop where Barcelona, Silverstone, Hungary and Austria ran
-two, and two where Monaco ran four. It under-stops, and it under-stops because
-teams buy **track position** with a stop, not lap time — a plan two seconds
-quicker that rejoins behind a car it cannot pass has lost, and a model counting
-seconds in a vacuum cannot see that.
-
-No constant fixes it, and the dead ends above are all attempts at a constant:
-a circuit multiplier, a compound, a temperature, a scale. Scoring plans in
-places rather than seconds does fix it, which meant joining the strategy model
-to `model/race.py`, where a field to rejoin into already existed. That join is
-built; what the measurements establish is that it was the only work left worth
-doing.
-
-### The rejoin penalty is not measurable from where a car leaves the pits
-
-The strategy model counts seconds and cannot see that a plan two seconds
-quicker may rejoin behind a car it will never pass. The obvious fix is to
-measure what rejoining in traffic costs and add it. It does not work.
-
-`python scripts/traffic_probe.py` takes every green-flag stop since 2024 — 1,328
-of them, 30 drivers, 60 races — and measures each driver's pace over the three
-green laps after the out-lap against the field's median on those same laps,
-against the gap to the car ahead when they rejoined.
-
-Raw, the bands span 0.13 s/lap and are not even ordered: cars rejoining 5–8 s
-behind someone are the *quickest* of all. Fitting proximity properly, with
-driver fixed effects — the least you must do when quick cars rejoin in clear air
-*because* they are quick — the effect dies:
-
-| Proximity decay | Traffic penalty |
-|---|---|
-| 1.0 s | −0.028 ± 0.156 s/lap |
-| 2.0 s | +0.040 ± 0.127 s/lap |
-| 4.0 s | +0.059 ± 0.117 s/lap |
-
-Every estimate is inside its own error bar, and the sign is not even stable.
-
-This is not evidence that traffic is free. The project measures a following
-penalty of +0.28 s/lap inside 0.5 s in 2026, over whole races. It is evidence
-that *this* design cannot see it, and the reasons are identifiable: three laps
-is a short window, the car ahead may itself pit on the next lap, and a fresh
-tyre is worth about 0.6 s/lap, which swamps what is being looked for.
-
-So no traffic term went into the strategy model. A number of 0.04 ± 0.13 dressed
-up as a penalty would have made every plan look more considered and none of them
-more correct.
-
-**What to try instead.** The information is not missing, it is in the wrong
-model. Knowing where a plan rejoins requires a field to rejoin *into*, which the
-seconds-based model does not have and `model/race.py` does. Joining them is the
-remaining work, and it is a simulation problem rather than a measurement one.
-
-## TypeSafe: where a model judgment would and would not help
-
-Every rule-based part of the project was audited with one question: is this a
-known rule applied to structured data, which code does better — exact, free,
-instant, the same answer twice — or a semantic judgment that only looks like
-parsing? Each verdict below was measured on the lake rather than assumed.
-
-| Candidate | Verdict | Evidence |
-|---|---|---|
-| Reading race control (`api/penalties.py`) | **Code.** | Machine-written, closed grammar: 3,257 of 3,257 steward messages classified, every car extracted, no residue for a model. |
-| Which stop a penalty was served at | **Code.** | The rule is in the regulations. Tested against the 40 penalties the feed marks `PENALTY SERVED`, it is never contradicted; the six not served at the very next stop are explained by timing and track status. |
-| Penalised stops in pit loss | **Code, and a real bug.** | `model/circuit.pit_loss` averaged in stops that served a penalty, 8.4 s dearer each. Now excluded: 1,954 stops fall to 1,884, Montréal moves 0.65 s. |
-| Circuit renames (`CIRCUIT_ALIASES`) | **Judgment, not built.** | Correct today — the only event at two circuits is the Spanish GP, which really moved. A rename would split a circuit's history silently, so `test_no_event_is_split_across_two_names_for_one_circuit` now fails loudly instead. Deciding rename-or-move is where an entity-alignment Score would fit, but a few names a season is a person's job. |
-| Pirelli compounds by race name | **Not a live path.** | Every caller joins by round; the name match never runs. |
-| Explaining ingest warnings | **Judgment, not built.** | Whether a `WARN` in `ingest/quality.py` is explained by the race (a red flag, rain, a stand-in) is a real semantic question over race control, and the one worth building first if a model is added. |
-
-Nothing here calls a model, and none of it is blocked on one. The TypeSafe SDK is
-not a dependency; adding it is a decision for when a judgment above earns it.
-
-## What is left
-
-In the order they are worth doing.
+The frozen app runs as-is on any Windows 10 or 11 machine; the MSIX installs it
+into the Start menu. Signing needs a certificate made once with
+`packaging\make_cert.ps1`, and the first install trusts it from an elevated
+PowerShell (`packaging\install_msix.ps1`). Installed, the app keeps its data in
+`%LOCALAPPDATA%`, separate from a source checkout's `data/`. Full steps:
+[packaging/README.md](packaging/README.md).
 
 **1. Run live through practice at Baku, Thursday 24 September** (FP1 08:30 UTC, FP2 12:00 UTC). Everything about
 live mode works against a recording — the format, a dropped feed, a half-written
 file, the full parse of a real 1,106-lap recording served to every panel. What
 has never happened is a recording *growing under the reader* while a session
 runs. Practice is the rehearsal, and it happens once.
+---
 
-**2. Mark the Baku call, 26 September.** Five predictions were published ten days
-early with their marking rules frozen:
-
-```powershell
-racecraft-ingest --season 2026
-python scripts/mark_baku.py
-```
-
-Then write down why the wrong ones were wrong *before* reading anyone else's
-account of the race.
-
-**3. Track position inside the strategy model — built.** `model/places.py` takes
-the plans the seconds model likes, races each one against a whole field, and
-ranks them by finishing position: `racecraft-analyse race Baku --grid 8`, or
-**In places** on the interface's strategy board.
-
-What it found is not what was expected, and the first version of it was wrong.
-Running every rival on one identical plan produced a four-place cliff in favour
-of stopping on the lap they stopped — the simulation rewarding a car for copying
-a field that does not exist. Spreading the field's stop laps and redrawing them
-fifteen times per plan removes it, and the spread falls from 4.03 places to 1.78.
-
-It has since been corrected four more ways: inputs held out to races before the
-one simulated, the wake penalty measured rather than assumed, the shortlist
-drawn from the safety-car ranking, and the car racing the tyres it actually had
-rather than new ones — see *The tyres the car has* above for what that is worth
-and what it is not.
-
-Where the models differ most is **how bad a bad plan is**. At Baku 2025 from P8
-the worst plan on the shortlist costs about a second more in seconds and a place
-and a half more here. The value of modelling track position turns out to be less
-about choosing between good plans — which usually tie, and are reported as tied
-— than about knowing the cost of a wrong one, which the seconds model
-understates badly.
-
-Untested against real races. It is a model of racing against a field, not
-against a strategist: rivals run a fixed plan and never cover a stop.
-
-**4. Tyre sets — built, and joined to the simulator.** Every car's sets through a
-weekend, right about 96.7% of the sets raced; each car's plans ranked on the
-tyres it had; and the race simulator racing those sets rather than new ones. Live, it
-needs the weekend's earlier sessions in the lake, so ingest each one after it
-ends — timing only is enough, and quick:
+## Development
 
 ```powershell
-racecraft-ingest --season 2026 --rounds <round> --sessions FP1 --no-telemetry
+.venv\Scripts\racecraft-serve --reload          # the API, restarting on change, on :8000
+cd web; npm run dev                             # the interface with hot reload, on :5173
 ```
 
-**5. The write-up.** The material is unusually good and most of it is already
-written down here: two leakage bugs that scored beautifully and knew nothing,
-four measured dead ends, a simulator level with grid order, a season of tyres
-that wear backwards, and three interface bugs found by opening the page rather
-than by any test.
+The dev server proxies `/api` to port 8000. Before committing:
 
-Deliberately not on this list: predicting finishing order. Car pace dominates it,
-forecasting car pace is a different problem, and the backtest says plainly that
-this tool does not solve it.
+```powershell
+.venv\Scripts\python -m pytest -m "not network"
+cd web; npm test; npm run build; npm audit
+```
 
-## Known data gaps
+Conventions: every model figure comes from a command or script that reproduces
+it; a model never sees the race it is asked about; anything estimated says so
+on screen. More in [docs/TECHNICAL.md](docs/TECHNICAL.md).
 
-Problems in the source feed, not in ingest. Re-downloading does not fix them.
+---
 
-| Session | Gap | Consequence |
+## Project layout
+
+```
+racecraft/
+├── src/racecraft/
+│   ├── config.py          where data lives (overridable, see Configuration)
+│   ├── ingest/            FastF1 to tables, quality checks, the sync of recent weekends
+│   ├── store/             the Parquet lake (atomic writes) and DuckDB over it
+│   ├── live/              recording and reading F1's live timing feed
+│   ├── model/             pace, circuits, strategy, the race simulator, prediction
+│   ├── api/               FastAPI: sessions, timing, telemetry, insight, pit windows, prediction
+│   └── app/               the desktop app: window, server, single instance, auto-sync, shortcuts
+├── web/src/
+│   ├── App.tsx            the main window: rail, screens, playback
+│   ├── shell/             the rail and screen headers
+│   ├── screens/           one component per screen
+│   ├── panels/            the map, timing tower, cards, playback bar and other pieces
+│   └── styles.css         the design: tokens, layout, every screen
+├── tests/                 Python tests (offline; `realdata` ones use your lake)
+├── packaging/             PyInstaller spec and MSIX scripts
+├── scripts/               validation scripts behind the figures in the docs
+├── docs/                  TECHNICAL.md and the screenshots
+├── legacy/                the two earlier projects Racecraft grew out of
+└── data/                  (not in git) lake/, logs/, predictions/, caches
+```
+
+---
+
+## Configuration
+
+All optional, set as environment variables:
+
+| Variable | Default | What it sets |
 |---|---|---|
-| 2026 Monaco (`2026_06_R`) | Position feed stops before the race: 18% of normal coverage, almost none after lights out | No track map for the race; no position-derived features. Permanent: OpenF1's `/location` has the same gap (positions at lap 5, none by lap 30), because both record the same feed |
-| 2026 Monaco, 2026 Spain (Madrid) | No `circuit_markers` (Madrid is a new circuit; Monaco follows from the position gap) | Corners must be derived from position data where it exists |
-| All 2026 sessions | Throttle missing on 3.1% of samples at racing speed (2023-2025: under 0.1%). Varies by session (up to 18.9%, 2026 China sprint), not by team | Throttle-based analysis must tolerate gaps |
-| 2025 Miami qualifying (`2025_06_Q`) | No Q1/Q2/Q3 times; FastF1 has none either. Positions and laps are complete | Segment times must be derived from laps if needed |
-| 2025 Miami sprint, 2023 and 2026 Dutch GPs | Session clock a few seconds off | Negligible for strategy work; worth excluding from anything timing-precise |
+| `RACECRAFT_DATA_DIR` | `data/` in a checkout, `%LOCALAPPDATA%\Racecraft` when installed | Everything Racecraft writes |
+| `RACECRAFT_LAKE_DIR` | `<data dir>/lake` | The race data |
+| `RACECRAFT_FASTF1_CACHE` | `<data dir>/fastf1_cache` | FastF1's download cache |
+| `RACECRAFT_ALLOWED_HOSTS` | none | Extra addresses the server answers to (comma-separated), to open it from another device. See [Security](#security). |
 
-New ingests warn on the position gap (`pos_data.coverage`), so a repeat is
-reported rather than silent.
+The app's own settings (units, density, map options) are on the Settings screen
+and are saved in the window's storage.
 
-### Earlier spot checks
+---
 
-The first checks, run on 2024 rounds 1-5 and 2026 round 14:
+## Security
 
-| Check | Result |
-|---|---|
-| 2024 Bahrain: position, grid and laps vs Jolpica (independent source) | 20/20 drivers match |
-| 2024 Bahrain: winner's race time and fastest lap vs Jolpica | exact to the millisecond |
-| Race control lap derived from `t` vs the message's own lap field | agrees on every flag checked |
-| Winner's lap span vs official time, all 7 sessions | +0.24 to +0.29 s every time, systematic (see below) |
-| Red-flag race (2024 Japan), sprint (2024 China), 2026 regulations (Madrid) | all ingest and reconcile |
-| `track_status` type after Parquet round trip | VARCHAR, `'1'`/`'12'`/`'21'` |
-| Car telemetry sample interval during the race | median 0.24 s; 0.13% of gaps over 1 s, none over 3 s |
+Racecraft has no accounts, passwords or API keys, and keeps no personal data:
+everything it stores is public timing data. The server is for your own
+computer, and is built to stay that way:
 
-The +0.25 s offset: lap 1's `lap_start_t` is the session "Started" status,
-slightly before lights out. The session clock is therefore accurate to about
-a quarter of a second, consistently.
+- **It listens on 127.0.0.1 only**, so other devices cannot reach it.
+- **It answers to this computer's names only** (`127.0.0.1`, `localhost`), so a
+  website that points its own domain at your computer (DNS rebinding) is
+  refused.
+- **Only its own pages can change anything.** A request that starts a data
+  refresh or attaches live timing is refused if another website sent it.
+- **Every response carries security headers:** a content security policy that
+  allows only the app's own scripts, and protection against framing and type
+  sniffing. The page loads nothing from other sites; the fonts are bundled.
+- **Input is checked:** session keys before they reach a query, and live
+  recordings must be in the live folder.
+- **The API's documentation pages are off.**
 
-Feed problems found and handled at ingest:
+To open it from another device on purpose, start it with
+`racecraft-serve --host 0.0.0.0` and name the address you will use in
+`RACECRAFT_ALLOWED_HOSTS`. There is no login, so anyone on that network can
+then use it: do this only on a network you trust.
 
-- **Gear values up to 128**, almost all while stationary (2024 Japan: 168
-  samples). Stored as null. Only 128 overflowed the column type; values like
-  75 fit and had been stored silently before a domain check was added.
-- **Throttle 104** is a "no reading" sentinel on 7-15% of samples. Stored as
-  null. In 2023-2025 it occurs while stationary and coverage at racing speed
-  is effectively complete; 2026 is worse (see Known data gaps).
-- **Lap times are missing under safety cars and red flags** (e.g. 2024 China
-  laps 24-28). `lap_start_t` / `lap_end_t` are still present, which is why the
-  race-time check uses them.
+The signing certificate for the installer (`packaging/msix/*.pfx`) is a private
+key. It is ignored by git and has never been committed. Make your own with
+`packaging\make_cert.ps1 -Password <yours>`.
 
-2026 differences to design around:
+---
 
-- `drs` is always 0. DRS no longer exists; the replacement overtake mode is
-  visible only as race control messages (`OVERTAKE ENABLED` / `DISABLED`).
-- New circuits have no `circuit_markers` (Madrid: none). The track map will
-  need to derive corners from position data.
-- 22 cars, 11 teams.
+## Limits, and what the data cannot tell you
 
-Storage: 5.5-7.3 MB of Parquet per race with telemetry (1.2-1.6 M telemetry
-rows), against 80-160 MB of FastF1 cache for the same race.
+- **The brake is on or off.** The public feed carries no brake pressure, tyre
+  temperatures, fuel or sets remaining, so nothing here pretends to show them.
+- **Positions are about four samples a second**, smoothed between samples. The
+  safety car has no position in the feed; it is drawn about 500 m ahead of the
+  leader and labelled as simulated.
+- **Practice fuel loads are unknown**, so long runs are the weakest prediction
+  signal and are weighted accordingly.
+- **What chance decides is left to chance**: first-lap incidents, rain and team
+  orders are not modelled; retirements and safety cars are drawn at random.
+- **The models are fitted on 2023 onwards**, so the first race at a new circuit
+  borrows typical values and says so.
 
+The full list of what has been checked, the dead ends and the known data gaps
+is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
+
+---
+
+## Data, licences and credits
+
+- Timing data comes from Formula 1's public feeds through
+  [FastF1](https://github.com/theOehrly/Fast-F1). Racecraft is a personal,
+  non-commercial project and is **not affiliated with Formula 1**. F1 and the F1
+  logo are trademarks of Formula One Licensing B.V. Use the data in line with
+  F1's terms.
+- Fonts: Titillium Web, Barlow Condensed and JetBrains Mono, under the SIL Open
+  Font License, bundled through Fontsource.
+- Built with FastF1, DuckDB, pandas, numpy, scipy, FastAPI, React, Vite and
+  pywebview.

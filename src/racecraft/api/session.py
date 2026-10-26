@@ -15,6 +15,7 @@ reloading, and little enough to stay comfortable in memory.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from racecraft import config
 from racecraft.api import penalties as penalties_model
@@ -43,6 +45,33 @@ MAX_INTERPOLATION_GAP_S = 2.0
 # serving positions. Half a second removes the feed's timestamp jitter while
 # moving the car about a metre along its own path.
 DEFAULT_SMOOTHING_S = 0.5
+# Channels that hold a state, not a quantity: between two samples a car is in
+# one gear or the other, never 6.5, and DRS codes are labels (8 eligible, 10+
+# open), so averaging two of them invents a code. These take the last sample.
+STEPPED_CHANNELS = frozenset({"gear", "drs", "brake"})
+
+# 2026 replaced DRS with overtake mode: extra electrical deployment for a car
+# within a second of the one ahead at a detection point. Race control switches
+# it on and off as it did DRS. The feed never says when a driver used it, so
+# eligibility is estimated from the timing interval at the last line crossing.
+OVERTAKE_WINDOW_S = 1.0
+OVERTAKE_ON, OVERTAKE_OFF = "OVERTAKE ENABLED", "OVERTAKE DISABLED"
+
+# DRS flap open, in the feed's codes (8 is eligible-but-closed). Only 2023-2025
+# carry it: the 2026 cars have active aero instead, and the channel is all 0.
+DRS_OPEN = 10
+# DRS is sampled about four times a second, a few outline points apart at speed,
+# so open samples this close together along the lap are one stretch.
+DRS_GAP_POINTS = 6
+DRS_MIN_ZONE_POINTS = 5
+DRS_MIN_OPENINGS = 3
+DRS_SHARE = 0.10
+
+# F1 publishes no position for the safety car. It is drawn where it usually is,
+# a short way up the road from the leader, along the outline.
+SAFETY_CAR_LEAD_M = 500.0
+POSITION_UNITS_PER_M = 10.0      # FastF1's X/Y are tenths of a metre
+SAFETY_CAR_STATUS = "4"
 
 
 @dataclass
@@ -58,7 +87,7 @@ class Channel:
         stale = (idx < 0) | (np.abs(times - self.t[np.clip(idx, 0, len(self.t) - 1)]) > MAX_INTERPOLATION_GAP_S)
         out: dict[str, list] = {}
         for name, series in self.values.items():
-            if interpolate and series.dtype.kind == "f":
+            if interpolate and series.dtype.kind == "f" and name not in STEPPED_CHANNELS:
                 sampled = np.interp(times, self.t, series)
             else:
                 sampled = series[np.clip(idx, 0, len(series) - 1)]
@@ -66,8 +95,16 @@ class Channel:
         return out
 
 
+# A session key is a partition code the lake wrote, like `2024_01_R`. Every
+# query below puts it straight into SQL, so anything that is not a plain code is
+# refused here rather than reaching DuckDB, which can read and write files.
+_KEY = re.compile(r"[A-Za-z0-9_]+")
+
+
 class SessionData:
     def __init__(self, session_key: str, con=None):
+        if not _KEY.fullmatch(session_key):
+            raise KeyError(session_key)
         con = con or connect()
         self.session_key = session_key
         try:
@@ -96,6 +133,12 @@ class SessionData:
 
         self.position = self._load_channels(con, "pos_data", ["x", "y"])
         self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs"])
+        # Corner numbers and where they fall along the lap, for the traces.
+        try:
+            self.markers = con.sql(f"""select kind, number, letter, distance from circuit_markers
+                                       where session_key = '{session_key}'""").df()
+        except duckdb.Error:
+            self.markers = pd.DataFrame(columns=["kind", "number", "letter", "distance"])
         self._assemble()
         log.info("loaded %s: %d laps, %d drivers, %d position samples",
                  session_key, len(self.laps), len(self.drivers),
@@ -135,6 +178,7 @@ class SessionData:
                                 ["t", "air_temp", "track_temp", "rainfall", "wind_speed"])
         self.position = {}
         self.car = {}
+        self.markers = tables.get("circuit_markers", pd.DataFrame(columns=["kind", "number", "letter", "distance"]))
         self._assemble()
         return self
 
@@ -154,6 +198,8 @@ class SessionData:
 
         self.outline = self._build_outline()
         self.bounds = self._bounds()
+        self.drs_zones = self._build_drs_zones()
+        self.overtake_changes = _overtake_changes(self.race_control)
 
     # ------------------------------------------------------------- loading
 
@@ -161,17 +207,37 @@ class SessionData:
         # The partition columns in the filter let DuckDB open only this session's
         # file. Without them it opens all 420 to check each one, and repeated
         # many-file scans crash DuckDB outright; see `store/db.py`.
-        df = con.sql(f"""select driver_number, t, {', '.join(columns)}
-                         from {table} where session_key = '{self.session_key}'{partition(self.session_key)}
-                         order by driver_number, t""").df()
+        #
+        # Read straight into arrays, not through a DataFrame: a race is some
+        # 800,000 samples, and the frame and its per-driver copies cost several
+        # times the arrays kept. Each column is then held at the size it needs
+        # (`_compact`), and each driver's channel is a view of it.
+        arrays = con.sql(f"""select driver_number, t, {', '.join(columns)}
+                             from {table} where session_key = '{self.session_key}'{partition(self.session_key)}
+                             order by driver_number, t""").fetchnumpy()
+        numbers = np.ma.filled(arrays["driver_number"], -1)
+        if len(numbers) == 0:
+            return {}
+        times = np.ma.filled(arrays["t"], np.nan).astype(np.float64, copy=False)
+        values = {c: _compact(c, arrays[c]) for c in columns}
+        del arrays
+        if "x" in values and "y" in values:
+            # (0, 0) is the feed's "no position", not a place: a car in the
+            # garage, before it goes out, or while its transponder drops out,
+            # and still marked OnTrack. Kept, it puts the car at the origin
+            # and draws a line to it across the circuit; dropped, the car has
+            # no position there, and is not drawn.
+            real = ~((values["x"] == 0) & (values["y"] == 0))
+            if not real.all():
+                numbers, times = numbers[real], times[real]
+                values = {c: v[real] for c, v in values.items()}
+                if len(numbers) == 0:
+                    return {}
+        edges = np.concatenate([[0], np.flatnonzero(np.diff(numbers)) + 1, [len(numbers)]])
         out: dict[int, Channel] = {}
-        if df.empty:
-            return out
-        for number, group in df.groupby("driver_number", sort=True):
-            out[int(number)] = Channel(
-                t=group["t"].to_numpy(dtype=float),
-                values={c: group[c].to_numpy(dtype=float) for c in columns},
-            )
+        for first, last in zip(edges[:-1], edges[1:]):
+            out[int(numbers[first])] = Channel(t=times[first:last],
+                                               values={c: v[first:last] for c, v in values.items()})
         return out
 
     def _build_outline(self) -> list[list[float]]:
@@ -261,6 +327,8 @@ class SessionData:
             "bounds": self.bounds,
             "has_position_data": bool(self.position),
             "track_status": _records(self.track_status),
+            "drs_zones": self.drs_zones,
+            "has_overtake": self.overtake_changes is not None,
         }
 
     def state(self, t: float) -> dict:
@@ -282,15 +350,115 @@ class SessionData:
                 **{name: _round(values[0], 1) for name, values in telemetry.items()},
             }
         state = classification.as_dict()
+        overtake = self.overtake_enabled_at(t)
         for row in state["drivers"]:
             against = penalties.get(int(row["driver_number"]))
             row["penalties"] = None if against is None else against.as_dict()
+            row["overtake"] = None if overtake is None else overtake_status(row, overtake)
+        track_status = self.track_status_at(t)
+        leader = next((d.driver_number for d in classification.drivers if d.status == "racing"), None)
         return {
             **state,
             "cars": cars,
-            "track_status": self.track_status_at(t),
+            "track_status": track_status,
             "weather": self.weather_at(t),
+            "overtake": None if overtake is None else {"enabled": overtake},
+            "safety_car": self.safety_car_at(cars.get(leader)) if (
+                track_status and track_status["status"] == SAFETY_CAR_STATUS) else None,
         }
+
+    def _nearest_outline_index(self, xy: np.ndarray) -> np.ndarray:
+        """For each (x, y), the index of the closest outline point (the closing duplicate left out)."""
+        tree = getattr(self, "_outline_tree", None)
+        if tree is None:
+            # Built once: a race maps tens of thousands of DRS samples, and
+            # comparing each with all 600 points was most of a second.
+            tree = self._outline_tree = cKDTree(np.asarray(self.outline[:-1], dtype=float))
+        _, nearest = tree.query(xy)
+        return np.asarray(nearest, dtype=int)
+
+    def safety_car_at(self, leader_car: dict | None) -> dict | None:
+        """
+        Where to draw the safety car: SAFETY_CAR_LEAD_M up the road from the
+        leader, along the outline (which runs in the direction of travel from
+        the start line). Simulated — F1 publishes no position for it — and
+        None when the leader's own position is not known.
+        """
+        if len(self.outline) < 3 or not leader_car:
+            return None
+        x, y = leader_car.get("x"), leader_car.get("y")
+        if x is None or y is None:
+            return None
+        points = np.asarray(self.outline[:-1], dtype=float)
+        perimeter = float(np.hypot(*np.diff(np.asarray(self.outline, dtype=float), axis=0).T).sum())
+        if perimeter <= 0:
+            return None
+        step = perimeter / len(points)
+        ahead = int(round(SAFETY_CAR_LEAD_M * POSITION_UNITS_PER_M / step))
+        here = int(self._nearest_outline_index(np.array([[x, y]], dtype=float))[0])
+        px, py = points[(here + ahead) % len(points)]
+        return {"x": round(float(px), 1), "y": round(float(py), 1), "simulated": True}
+
+    def _build_drs_zones(self) -> list[list[int]]:
+        """
+        Where DRS opens, as [first, last] outline indices (wrapping past the line
+        when first > last). Empty for 2026, whose cars have no DRS, and for live.
+
+        The flap can only open inside a zone, so every opening by every car in
+        the session is evidence of one. Using only the fastest laps lost zones:
+        in a race DRS needs the car ahead within a second, and the fastest laps
+        are mostly set in clean air, so Bahrain came out with one zone of three.
+        A point counts when enough openings covered it (DRS_MIN_OPENINGS, and
+        DRS_SHARE of the busiest point), which keeps a stray sample mapped to
+        the wrong part of the circuit from drawing a zone of its own.
+        """
+        if len(self.outline) < 3 or not self.car or not self.position:
+            return []
+        n = len(self.outline) - 1
+        counts = np.zeros(n, dtype=int)
+        for number, car in self.car.items():
+            pos = self.position.get(number)
+            if pos is None or "drs" not in car.values:
+                continue
+            open_t = car.t[car.values["drs"] >= DRS_OPEN]
+            if len(open_t) == 0:
+                continue
+            at = pos.at(open_t)
+            known = [i for i, (px, py) in enumerate(zip(at["x"], at["y"])) if px is not None and py is not None]
+            if not known:
+                continue
+            times = open_t[known]
+            xy = np.array([[at["x"][i], at["y"][i]] for i in known], dtype=float)
+            indices = self._nearest_outline_index(xy)
+            # One opening is a run of samples less than a second apart; its
+            # samples sit a few outline points apart and are joined into a span.
+            for run in np.split(np.arange(len(indices)), np.flatnonzero(np.diff(times) > 1.0) + 1):
+                points = indices[run]
+                span = np.zeros(n, dtype=bool)
+                span[points] = True
+                for a, b in zip(points[:-1], points[1:]):
+                    gap = (b - a) % n
+                    if 0 < gap <= DRS_GAP_POINTS:
+                        span[(a + np.arange(gap + 1)) % n] = True
+                counts += span
+        if counts.max() == 0:
+            return []
+        is_open = counts >= max(DRS_MIN_OPENINGS, DRS_SHARE * counts.max())
+        if is_open.all():
+            return [[0, n - 1]]
+        # Runs of open points around the loop, starting just after a closed one.
+        first_closed = int(np.argmin(is_open))
+        zones, start = [], None
+        for k in range(1, n + 1):
+            i = (first_closed + k) % n
+            if is_open[i] and start is None:
+                start = i
+            elif not is_open[i] and start is not None:
+                last = (i - 1) % n
+                if (last - start) % n + 1 >= DRS_MIN_ZONE_POINTS:
+                    zones.append([int(start), int(last)])
+                start = None
+        return zones
 
     def frames(self, start: float, end: float, hz: float = 5.0,
                smooth_s: float = DEFAULT_SMOOTHING_S) -> dict:
@@ -360,6 +528,13 @@ class SessionData:
             },
         }
 
+    def overtake_enabled_at(self, t: float) -> bool | None:
+        """Whether race control had overtake mode on at `t`; None for a session without it."""
+        if self.overtake_changes is None:
+            return None
+        past = self.overtake_changes[self.overtake_changes["t"] <= t]
+        return bool(past["enabled"].iloc[-1]) if not past.empty else False
+
     def track_status_at(self, t: float) -> dict | None:
         if self.track_status.empty:
             return None
@@ -389,6 +564,32 @@ class SessionData:
 
 
 _LAP_COLUMNS = ["driver_number", "driver", "lap_number", "lap_start_t", "lap_end_t"]
+
+
+def _overtake_changes(race_control: pd.DataFrame) -> pd.DataFrame | None:
+    """Every switch of overtake mode, in time order; None when race control never mentions it."""
+    if race_control is None or race_control.empty or "message" not in race_control:
+        return None
+    message = race_control["message"].astype(str).str.strip().str.upper()
+    switches = race_control.loc[message.isin([OVERTAKE_ON, OVERTAKE_OFF]), ["t"]].copy()
+    if switches.empty:
+        return None
+    switches["enabled"] = message[switches.index] == OVERTAKE_ON
+    return switches.sort_values("t", kind="stable").reset_index(drop=True)
+
+
+def overtake_status(row: dict, enabled: bool) -> str:
+    """
+    'disabled' while race control has it off; 'eligible' for a running car
+    within a second of the car ahead at the last line crossing; otherwise
+    'not_eligible'. An estimate: the real detection points are around the lap.
+    """
+    if not enabled:
+        return "disabled"
+    interval = row.get("interval_s")
+    if row.get("status") == "racing" and interval is not None and 0 <= interval < OVERTAKE_WINDOW_S:
+        return "eligible"
+    return "not_eligible"
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:
@@ -495,8 +696,13 @@ def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -
     at = np.where(usable, at, np.interp(times, t, distance))
     at = np.maximum.accumulate(at)          # a car only ever goes forward
 
-    # Outside the samples there is nothing to stand on, so say so.
-    stale = (times < t[0] - MAX_INTERPOLATION_GAP_S) | (times > t[-1] + MAX_INTERPOLATION_GAP_S)
+    # Outside the samples there is nothing to stand on, so say so; nor inside a
+    # gap longer than the feed ever leaves while a car is running (the garage,
+    # a dropout), where it would otherwise slide across the circuit.
+    after = np.clip(np.searchsorted(t, times, side="left"), 0, len(t) - 1)
+    before = np.clip(after - 1, 0, len(t) - 1)
+    in_gap = (t[after] - t[before] > MAX_INTERPOLATION_GAP_S) & (times > t[before]) & (times < t[after])
+    stale = (times < t[0] - MAX_INTERPOLATION_GAP_S) | (times > t[-1] + MAX_INTERPOLATION_GAP_S) | in_gap
     xs = np.interp(at, distance, x)
     ys = np.interp(at, distance, y)
     return ([None if bad else v for bad, v in zip(stale, xs)],
@@ -505,6 +711,27 @@ def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -
 
 def _records(df: pd.DataFrame) -> list[dict]:
     return [{k: (None if pd.isna(v) else v) for k, v in row.items()} for row in df.to_dict("records")]
+
+
+# Telemetry kept at the size it needs: speed, throttle and position to a
+# hundredth or better in 32 bits; gear, brake and DRS are small whole numbers,
+# one byte each. Time stays 64-bit: session seconds need the precision.
+_FLOAT32 = {"speed", "throttle", "rpm", "x", "y", "z"}
+_SMALL_INT = {"gear", "brake", "drs"}
+
+
+def _compact(name: str, column) -> np.ndarray:
+    """One telemetry column at the smallest dtype that holds it exactly enough."""
+    masked = np.ma.isMaskedArray(column) and bool(np.ma.getmaskarray(column).any())
+    if name in _SMALL_INT and not masked:
+        data = np.asarray(column)
+        if data.dtype == bool:
+            return data.astype(np.uint8)
+        if data.size and np.isfinite(data).all() and data.min() >= 0 and data.max() <= 255 and (data == np.round(data)).all():
+            return data.astype(np.uint8)
+    if name in _FLOAT32 or name in _SMALL_INT:
+        return np.ma.filled(np.ma.asarray(column, dtype=np.float32), np.nan)
+    return np.ma.filled(np.ma.asarray(column, dtype=np.float64), np.nan)
 
 
 def _round(value, digits: int):

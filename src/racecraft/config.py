@@ -8,9 +8,15 @@ can live on a different drive from the code without editing anything.
 import os
 from pathlib import Path
 
+from racecraft import resources
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-DATA_DIR = Path(os.environ.get("RACECRAFT_DATA_DIR", PROJECT_ROOT / "data"))
+# A frozen app's install folder is read-only (always, for MSIX), so its data
+# lives under %LOCALAPPDATA%\Racecraft. A checkout keeps data/ beside the code.
+# The environment variable overrides either.
+_DEFAULT_DATA_DIR = resources.user_data_dir() if resources.frozen() else PROJECT_ROOT / "data"
+DATA_DIR = Path(os.environ.get("RACECRAFT_DATA_DIR", _DEFAULT_DATA_DIR))
 
 # Parquet files are the source of truth. One file per table per session,
 # hive-partitioned: lake/<table>/year=2024/round=01/session=R/data.parquet
