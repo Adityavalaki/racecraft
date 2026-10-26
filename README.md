@@ -196,6 +196,193 @@ Each is described in full, with the measurements behind it, in
 
 | | Version | Check with |
 |---|---|---|
+| Bahrain | 5.333 km | 5.412 km |
+| Silverstone | 5.822 | 5.891 |
+| Monza | 5.757 | 5.793 |
+| Zandvoort | 4.204 | 4.259 |
+| Monaco | 3.265 | 3.337 |
+
+`tests/test_outline_realdata.py` keeps this honest; it skips when the lake is
+missing.
+
+**The position feed's timestamps jitter**, at intervals of 0.08-0.50 s where
+the cadence is 0.24 s, while the positions themselves are smooth. Sampling an
+even grid straight off those timestamps makes a car leap: 4.9% of intervals
+imply over 340 km/h when the cars never exceed 331.
+
+Smoothing the coordinates does not fix this and makes it worse - median
+filtering, trajectory smoothing and an even cadence were all measured and all
+lost. The noise is in the *mapping from time to distance*, so that is what is
+smoothed: distance along the car's own path is fitted against time with a
+local straight line over half a second. Positions are never altered, only the
+judgement of how far along the path the car had got at each instant.
+
+| | Over 340 km/h | p99 | Path moved by |
+|---|---|---|---|
+| Raw | 4.9% | 424 km/h | — |
+| Smoothed, 0.5 s | **0.02%** | **312 km/h** | 1.3 m |
+
+A metre on a circuit 5 km round is invisible; the leaping is not.
+`?smooth=0` on `/frames` returns the raw feed, and `smooth=0.8` steadies it
+further at the cost of about 2.4 m.
+
+Genuine position jumps remain and are left alone: the feed occasionally lags
+and catches up in one step, moving a car over 60 m in about 0.1% of samples.
+
+### Gaps
+
+Gaps are derived the way broadcast timing derives them, from line-crossing
+times, because the public feed carries no interval field. A car is only shown
+as lapped when the leader had completed more laps *at the moment that car last
+crossed the line*; comparing current lap counts would label the whole field
+"+1 LAP" for most of every lap.
+
+### Race control
+
+The feed carries 9,947 race and sprint messages and, until now, the interface
+read none of them. They are the only place it says *why* something happened, so
+`api/penalties.py` reads them into per-car state: seconds still to serve, stop/go
+and drive-through penalties outstanding, open investigations, deleted lap times.
+The tower's **PEN** column shows the most consequential thing outstanding against
+each car and the whole standing in its tooltip. The **Stewards** panel, beside the
+track map, holds the verdicts themselves — it is watched rather than consulted, and
+news behind a tab is news nobody sees. It takes width the map was not using, so
+the tower keeps its floor and the charts below keep their height; below 1360px it
+drops under the map rather than squeezing three columns.
+
+Kept deliberately plain. Two lines per verdict — who and what, then the offence —
+because four columns in a narrow panel crush all four. No controls of its own: the
+tower's selection is the only filter, which is how every other panel here narrows
+already. Emphasis carries the hierarchy, a penalty loud and anything settled grey.
+
+Race control is two separate panels in the right-hand column: **Stewards**
+beside the map and **Track** beside the charts below it, each a full row high
+and each scrolling on its own. Both are always visible, with nothing hidden
+behind a control.
+
+The track list is short because the feed's churn is left out. `Event.topic`
+splits race control three ways rather than two: a blue flag is shown to one
+lapped car as it is passed and a sector flag repeats every time a sector changes
+state, and together those are **4,771 noise messages** against 3,257 from the
+stewards and 1,919 genuine track events. What is left — the safety car, the race
+flags, the pit exit, DRS, a slippery patch, a recovery vehicle, a resumption
+order — is a median of **18 events a race**, which is short enough to read. The
+line is drawn on the flag words rather than on the phrase "IN TRACK SECTOR",
+because `TRACK SURFACE SLIPPERY IN TRACK SECTOR 11` is a condition worth reading
+and 176 of those were swept up by the looser rule.
+
+Deleted lap times are left out of the verdicts list too, and they are **47% of
+every steward message** (1,533 of 3,257): in a race a deletion is a track-limits
+tick, and what matters is how many a car has collected, which is exactly what the
+PEN column counts. Nothing is lost — every message is still served by the API
+(`?topic=track`, `?topic=noise`) and still counted against the driver.
+
+The **PEN** column answers one question, *does this car still owe something?*, and
+shows four marks rather than a vocabulary: `DSQ` out of the race, `+5s` for time
+still to serve, `STOP` for a stop/go or drive-through, `•` while the stewards are
+looking, `–` for nothing. An earlier version answered five questions with eight
+marks, which had to be learned before the column meant anything; everything
+settled — a served penalty, a deleted lap, a black-and-white flag — is in the
+tooltip and the panel instead, because it changes no decision.
+
+What counts as the stewards' is whether the message carries a verdict, not
+whether it says `FIA STEWARDS:`. Only 971 of the 3,257 do, so filtering on the
+prefix would drop **70%** of them — no lap deletion carries it and most incident
+notices do not either. Nothing with the prefix lacks a verdict, so the verdict is
+the stronger test. The filter is applied server-side before the limit, so asking
+for the stewards' last sixty returns sixty of theirs rather than sixty of
+everything of which twenty happen to be theirs.
+
+It is a pure function of the message table and a time, like `timing.classify`
+beside it. That is what makes scrubbing correct: an accumulator would be wrong
+the moment the clock went backwards, and the scrubber, the -30s button and live
+"following" all move it freely. At lap 12 the column shows what was known at lap
+12 however the clock got there, and it is computed at the same `t` as the gap
+next to it, so the two cannot describe different moments.
+
+Parsed rather than judged, because the FIA's text is machine-generated and its
+grammar is rigid. Three measurements over every race and sprint in the lake set
+the shape of it, and each corrected an assumption:
+
+* **Anchoring on the word CAR is wrong.** `CARS 31 (OCO), 77 (BOT) AND 20 (MAG)`
+  writes it once for three cars, and requiring it found only the first on
+  **1,514 messages** — every multi-car incident silently lost all but one car.
+  The three-letter code is the anchor instead, and the number in front of it is
+  the car. That code is also what makes extraction safe: a message is full of
+  other numbers — `1:40.956`, `TURN 9`, `LAP 10`, `14:23:43` — and none of them
+  is followed by one. 3,229 of 3,256 car-concerning messages match; the 27 that
+  do not name no car, or name a team, which is resolved to that team's cars.
+* **Two things match that are not cars, and one of them is dangerous.** A
+  deletion ending `... 16:12:10 (PIT)` offers `10 (PIT)`, and 10 is a real
+  driver — so a message about car 23 charges a deleted lap to car 10. `CAR 26
+  (BED)` is the other kind: a real car in another championship sharing the feed.
+  **337** phantom matches are rejected across the lake, **200** of them carrying
+  a number that belongs to an actual driver. Timestamps are stripped before
+  scanning and every number is checked against this session's driver list.
+* **An incident is reported four times, not once.** Noted, then under
+  investigation, then a penalty or no further action — so counting messages
+  counts one incident four times. They are tied together instead: 15.8% carry a
+  trailing `(15:03:08)` that is the incident's own identity, and the rest match
+  on the offence plus an overlapping car, which links **88.1%** of noted
+  incidents to a later verdict. Matching on the offence alone was wrong and the
+  test that proves it is a real race: at 2026 Spain, SAI was in a TURN 8
+  collision with COL and another with HUL twenty seconds later, both `CAUSING A
+  COLLISION`. The second merged into the first and was cleared by the first's
+  verdict. A closing verdict may now only attach to an open incident whose cars
+  its own are a subset of.
+
+The verdicts are a closed set and `_classify` leaves nothing unread across all
+3,256. `tests/test_penalties.py` guards that against a new season's wording —
+it is what caught `STOP-AND-GO` as a second spelling of `STOP/GO`, and the one
+`BLACK FLAG` in the lake, a disqualification that had been folded in with the
+black-and-white warning flag.
+
+What no rule reaches is whether an awarded time penalty was **served at a stop
+or added to race time at the flag**. `PENALTY SERVED` settles 48 of 235; the
+rest are left pending rather than guessed at. That matters beyond the display:
+235 in-race penalty messages stand against 1,958 measured green-flag stops, and
+a penalty served at a stop inflates that stop's cost *inside* the 5–60 s window
+`model/circuit.py` keeps — so pit loss quietly absorbs it. Deciding it is a
+question about a sequence rather than a string, which is the one place in this
+feature a judgment would earn its keep.
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/sessions` | every session in the lake |
+| `GET /api/sessions/{key}` | drivers, track outline, session bounds |
+| `GET /api/sessions/{key}/state?t=` | one instant: order, gaps, tyres, positions, telemetry, penalties |
+| `GET /api/sessions/{key}/frames?start=&end=&hz=` | a window of positions for playback |
+| `GET /api/sessions/{key}/laps` | the whole race trace, plus leader crossing times |
+| `GET /api/sessions/{key}/messages?until=&limit=&topic=` | race control up to `until`, newest first, each message read; `topic` is `stewards`, `track` or `noise` |
+| `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
+| `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
+| `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
+| `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
+
+**The server no longer crashes on long sessions.** DuckDB kills the process with a native fault after roughly 1,000–3,000 repeated scans of a table spread over many Parquet files (reproduced on 1.4.5, 1.5.4 and 1.5.5), and the API used to scan on ordinary requests. Now one database per lake is built once, the small tables are held in memory and reloaded only after an ingest, and telemetry is read one partition at a time; `store/db.py` has the measurements. A smoke test that crashed the process twice now serves all 420 sessions, 4,200 requests, without a failure. The first request after start-up pays about 10 s to load the small tables.
+
+A session is read into memory once (about 1.6 s), after which a state costs
+~25 ms and a 30-second position window ~25 ms and 43 KB. Telemetry is thinned
+server-side; the browser never sees raw samples.
+
+`/insight` is the expensive one: the first call for a season fits every race in
+it, about 13 s, and later calls cost about 5 s — nearly all of it the Monte
+Carlo behind the safety-car ranking.
+
+That ranking simulates a pruned field, because simulating every plan took 25 s.
+The prune is a bound rather than a guess: a plan cannot cost less than its green
+cost minus the discount on its stops, so anything whose floor sits above the
+best plan's green cost cannot win and is never run. The bound is exact but loose
+for two-stop plans — at Zandvoort 3054 of 6234 survived it — so the survivors
+are screened on 120 runs and only the leading 24 re-run on 1500. A screen noisy
+by a tenth cannot lose a plan that wins by more, and what is displayed always
+comes from the accurate pass. `tests/test_insight.py` checks the bound against
+the full field rather than trusting it.
+Each race is fitted separately rather than the season as a whole, which is what
+makes holding one out free. The interface does not ask for it until a tab that
+needs it is opened, so a replay never pays for a fit nobody looked at.
 | Windows 10 or 11 | for the desktop app; the browser mode runs on macOS and Linux too | |
 | Python | 3.11 or newer | `python --version` |
 | Node.js | 20.19+ or 22.12+ (needed by Vite 7) | `node --version` |
@@ -206,6 +393,9 @@ Each is described in full, with the measurements behind it, in
 ### 1. Get the code
 
 ```powershell
+.venv\Scripts\racecraft-live record --name baku-2026     # leave running from FP1
+.venv\Scripts\racecraft-live status                      # what has been recorded
+.venv\Scripts\racecraft-live read                        # parse it and report
 git clone https://github.com/Adityavalaki/racecraft.git
 cd racecraft
 ```
@@ -213,6 +403,81 @@ cd racecraft
 ### 2. Install the Python side
 
 ```powershell
+.venv\Scripts\racecraft-live record --name baku-2026    # one terminal
+.venv\Scripts\racecraft-serve                           # another
+```
+
+Open the interface and `LIVE` is at the top of the session dropdown, selected by
+default — a recording exists only because someone started it, which is as clear
+a statement of intent as an interface is going to get. An empty recording is not
+offered: a recorder started before a session sits connected and writes nothing,
+and listing that would hand back an error when clicked.
+
+On race day the strategy views work off the weekend's own sessions: the sets
+each car has left come from practice and qualifying, already in the lake, and
+the grid from the qualifying result, since the race has no classification until
+it ends. Penalties are not applied to that grid, and the panel says so. Live
+answers are never cached — the race changes underneath them.
+
+Live is a session key, not a second set of endpoints. `/api/sessions/live/state`,
+`/laps` and `/insight` all work, so the timing tower, the race trace, the tyre
+model and the strategy board need no live code path at all. The only part of the
+server that knows live exists is `api/live_store.py`.
+
+The clock follows the newest lap. Scrubbing back stops it following — someone
+looking at lap 12 should not be yanked to lap 40 a second later — and **Go live**
+resumes. A session that is not ready answers 409 rather than 404, because the
+difference decides whether the interface should retry, and in the opening
+minutes of a session it always should.
+
+One asymmetry worth stating: a finished race is scored against a model that
+never saw it, and the strategy panel says `held out`. A race in progress is
+watched with a model fitted on every race that finished before it. Both are
+honest and they are not the same arrangement, so the response carries `is_live`
+and the panel says which it is.
+
+**Proven, on real feed data.** Outside a session the feed serves the last
+completed one, so a 40-second recording of the 2026 Spanish Grand Prix was put
+through the whole path: 1,106 laps, 183 race control messages, 22 results and
+161 weather rows parsed into the lake's tables, then served to every endpoint.
+The tower at t=7000 has LEC leading lap 34 on a 34-lap-old hard, ANT +2.934,
+VER +8.416; the lap chart carries 22 drivers over 57 laps; the strategy board
+costs plans against Madrid's measured 26.5 s pit lane.
+
+Finding session time zero is what that exercise cost. FastF1 derives it from the
+telemetry stream, which live mode does not carry, and a live recording's
+`LapStartDate` comes back entirely null, so it cannot come from the laps either.
+It is taken from FastF1's own parse of the recording instead (`live/feed.live_t0`):
+the moment the session status became Started, or failing that the first message
+FastF1 could read. Reading the first message ourselves, as this first did, put a
+recorder switched on at 08:10 for an 08:30 session **twenty minutes** off the laps,
+so every penalty would have sat beside the wrong lap. The laps are FastF1's, so
+race control has to be on FastF1's clock, and now reads it rather than re-deriving it.
+
+**What that exercise did not prove.** Repeated on 23 September, the recording held
+only the connection snapshot, and none of its lines carries a timestamp, so FastF1
+had nothing to parse and quietly filled the laps from its cache of the finished race
+— which is why they matched the lake to the millisecond. The endpoints and panels
+were exercised on real data; parsing laps *from the feed* was not.
+
+**Still unproven:** a session actually in progress, where the recording grows
+under the reader. That waits for first practice at Baku, Thursday 24 September. Everything testable offline is tested
+— the recording format round-trips through FastF1's own parser, a dropped feed
+appends rather than starting a second file, a half-written recording reads as
+"not ready" rather than crashing, and the reader caches instead of re-parsing on
+every request. The connection waits for a real session.
+
+## Analysis commands
+
+```sh
+racecraft-analyse pace                 # fuel and degradation, per season
+racecraft-analyse pace --season 2026   # one season, race by race
+racecraft-analyse circuits             # pit loss and neutralisation risk
+racecraft-analyse circuit Baku         # everything known about one circuit
+racecraft-analyse strategy Baku        # cheapest plans, counted in seconds
+racecraft-analyse race Baku            # simulate the field, answer in places
+racecraft-analyse race Baku --driver HAD   # on the tyres that car actually had
+racecraft-analyse following            # time lost in the wake of the car ahead
 python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev,app]"
 ```
@@ -380,6 +645,11 @@ PowerShell (`packaging\install_msix.ps1`). Installed, the app keeps its data in
 `%LOCALAPPDATA%`, separate from a source checkout's `data/`. Full steps:
 [packaging/README.md](packaging/README.md).
 
+**1. Run live through practice at Baku, Thursday 24 September** (FP1 08:30 UTC, FP2 12:00 UTC). Everything about
+live mode works against a recording — the format, a dropped feed, a half-written
+file, the full parse of a real 1,106-lap recording served to every panel. What
+has never happened is a recording *growing under the reader* while a session
+runs. Practice is the rehearsal, and it happens once.
 ---
 
 ## Development

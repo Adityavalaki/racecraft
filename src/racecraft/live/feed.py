@@ -185,6 +185,9 @@ def tables_from_recording(path: Path, session: LiveSession,
     livedata.load()
 
     ses = fastf1.get_session(session.year, session.round_number, session.session_name)
+    ses.load(laps=True, telemetry=telemetry, weather=True, messages=True, livedata=livedata)
+    return fastf1_source.extract(ses, SESSION_KEY, telemetry=telemetry,
+                                 t0=live_t0(livedata, path))
     try:
         # Not cached, and this is the whole reason live works at all. FastF1
         # caches a parse by the session's API path, so the first read of a

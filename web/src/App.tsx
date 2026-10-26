@@ -4,6 +4,16 @@ import { useClock } from "./clock";
 import { openFeature, screenById, type FeatureId, type ScreenId } from "./features";
 import { useLayout } from "./layout";
 import { usePositions } from "./positions";
+import { BestSectors } from "./panels/BestSectors";
+import { ClockBar } from "./panels/ClockBar";
+import { Stewards, filterLabel } from "./panels/Stewards";
+import { TrackLog } from "./panels/TrackLog";
+import { RaceTrace } from "./panels/RaceTrace";
+import { StrategyBoard } from "./panels/StrategyBoard";
+import { TimingTower } from "./panels/TimingTower";
+import { TrackMap } from "./panels/TrackMap";
+import { TyreModel } from "./panels/TyreModel";
+import { TyreSets } from "./panels/TyreSets";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
 import { ReplayScreen } from "./screens/ReplayScreen";
@@ -159,6 +169,80 @@ export default function App() {
     toggleDrs: toggleRings,
   }, Boolean(info));
 
+          <section className="panel panel-stewards">
+            <h2>
+              Stewards
+              {filterLabel(selected, driverCodes) && <small> {filterLabel(selected, driverCodes)}</small>}
+            </h2>
+            <Stewards
+              events={stewards}
+              start={info.t_start}
+              codes={driverCodes}
+              selected={selected}
+              onSelect={toggleDriver}
+            />
+          </section>
+
+          <section className="panel panel-track">
+            <h2>Track</h2>
+            <TrackLog events={trackLog} start={info.t_start} />
+          </section>
+
+          <section className="panel panel-trace">
+            <div className="panel-bar with-tabs">
+              <span className="tabs" role="tablist" aria-label="Lower panel">
+                {TABS.map((item) => (
+                  <button
+                    key={item.id}
+                    id={`tab-${item.id}`}
+                    role="tab"
+                    type="button"
+                    aria-selected={tab === item.id}
+                    className={tab === item.id ? "tab is-active" : "tab"}
+                    onClick={() => setTab(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </span>
+              <small>{TABS.find((item) => item.id === tab)?.hint}</small>
+            </div>
+            <div className="tab-body" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+              {tab === "trace" && (
+                <RaceTrace
+                  series={laps}
+                  selected={selected}
+                  currentLap={state?.leader_lap ?? 0}
+                  onSelectLap={seekToLap}
+                />
+              )}
+              {tab === "tyres" && (
+                <TyreModel insight={insight} loading={!insight && !insightError} error={insightError} />
+              )}
+              {tab === "strategy" && (
+                <StrategyBoard
+                  insight={insight}
+                  loading={!insight && !insightError}
+                  error={insightError}
+                  actualStops={actualStops}
+                  sessionKey={sessionKey}
+                />
+              )}
+              {tab === "sets" && sessionKey && (
+                <TyreSets
+                  sessionKey={sessionKey}
+                  t={state?.t ?? info.t_start}
+                  drivers={state?.drivers ?? []}
+                  selected={selected}
+                  onSelect={toggleDriver}
+                  insight={insight}
+                />
+              )}
+            </div>
+          </section>
+        </main>
+      ) : (
+        <main className="grid loading">{error ? "" : "Loading session…"}</main>
   const popOut = useCallback((feature: FeatureId) => {
     if (sessionKey) void openFeature(feature, sessionKey);
   }, [sessionKey]);
