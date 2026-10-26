@@ -19,13 +19,19 @@ Aditya chose the **free route** (no budget) and approved several free sources me
 the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the optional extras.
 
 - [x] Decisions: the six steps below approved; branch `free-plan`; optional step 6 included.
-- [ ] **Step 1 (BUG-004): a clear message instead of `DataNotLoadedError`.** *ready*
+- [x] **Step 1 (BUG-004): a clear message instead of `DataNotLoadedError`.** Done: 8d22f69.
   Detect the 401, mark the session "needs F1 TV", stop asking F1 for the rest of that refresh,
   and say so on the Refresh button and its tooltip.
-- [ ] **Step 2: the merge step and the OpenF1 adapter.** *ready*
-  `ingest/sources/openf1.py` builds the lake's existing tables (all but corners, copied from
-  the circuit's last session). Checked against FastF1 on Singapore 2026, already in the lake.
-  OpenF1's free tier: 30 requests a minute, personal and non-commercial use.
+- [x] **Step 2: the OpenF1 adapter.** Done: see `git log` (D-010).
+  `ingest/openf1_source.py` builds the lake's existing tables (corners copied from the
+  circuit's last session) for any session F1's archive refuses. Checked against FastF1 on
+  Singapore 2026 (race, qualifying, FP1, sprint) with `scripts/compare_openf1.py`; the 2026
+  US GP race fetched with telemetry into a scratch lake (209 s, no quality findings).
+  The "merge step" is not needed yet: one source per session. It comes with step 3 or 4.
+- [ ] **Refresh the real lake** with the 2026 US GP weekend (Refresh data, or
+  `racecraft-ingest --season 2026 --rounds 18`). *waiting on Aditya* Not run: it writes to the lake.
+- [ ] **Known OpenF1 gaps** (D-010), for steps 3 and 4 to fill: practice tyre age restarts on a
+  reused set; lapped finishers have no gap time; sprint retirees' order unconfirmed.
 - [ ] **Step 3: the Jolpica adapter.** *ready* Official results and points; first cross-check
   (finishing order). 500 requests an hour.
 - [ ] **Step 4: the TracingInsights adapter.** *ready* Backup for every table, and corner

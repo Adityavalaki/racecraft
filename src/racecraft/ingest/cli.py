@@ -28,7 +28,7 @@ import pandas as pd
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config, locking
-from racecraft.ingest import api_budget, fastf1_source, quality
+from racecraft.ingest import api_budget, fastf1_source, openf1_source, quality
 from racecraft.store import lake
 
 log = logging.getLogger("racecraft.ingest")
@@ -213,12 +213,18 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
 def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
                    telemetry: bool, force: bool, prune: bool) -> str:
     t, calls_before = time.time(), api_budget.calls_recorded()
+    ses = None
     try:
         ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
+        tables = fastf1_source.extract(ses, key, telemetry=telemetry)
     except fastf1_source.ArchiveLocked as error:
-        log.warning("%s: %s", key, error)
-        return "locked"
-    tables = fastf1_source.extract(ses, key, telemetry=telemetry)
+        # F1 wants an F1 TV login (BUG-004): the same tables from OpenF1 instead (D-009).
+        log.warning("%s: %s; trying OpenF1", key, error)
+        try:
+            tables = openf1_source.extract(season, rnd, ident, session_name, key, telemetry=telemetry)
+        except openf1_source.NotAvailable as missing:
+            log.warning("%s: %s", key, missing)
+            return "locked"
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
     findings = quality.check_session(tables)
@@ -235,7 +241,7 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
     rows = ", ".join(f"{name} {r['rows']:,}" for name, r in report.items())
     log.info("%s: wrote %.1f MB in %.0fs, %d API calls (%s)", key, total_mb, load_s, calls, rows)
 
-    if prune:
+    if prune and ses is not None:       # OpenF1 sessions leave nothing in FastF1's cache
         freed, responses = prune_cache(ses)
         log.info("%s: pruned %.0f MB of parsed cache and %d HTTP responses", key, freed / 1e6, responses)
     return "written"

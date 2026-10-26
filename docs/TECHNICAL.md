@@ -65,6 +65,13 @@ runs, FP2 above all, are the standard pre-race source for tyre degradation.
 Sessions already in the lake are skipped, so an interrupted backfill resumes
 by re-running the same command.
 
+**When F1's archive wants an F1 TV login** (since about 15 October 2026), each
+session it refuses is built from OpenF1 instead (`ingest/openf1_source.py`), into
+the same tables; `sessions.fastf1_version` reads `openf1`. OpenF1's free tier allows
+30 requests a minute, so a race with telemetry takes about three and a half
+minutes (2026 US GP: 209 s). Corners come from the latest session at the same
+circuit. How its fields are made to match FastF1's, and what still differs: D-010.
+
 **Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
 folder per session (~80-160 MB) and a shared HTTP cache file that grows about
 20 MB per session. The flag deletes both for each session once it is safely
@@ -1456,6 +1463,7 @@ knowing nothing, and the second leak found inside its own replacement. See
 src/racecraft/
   config.py                paths, overridable by RACECRAFT_* env vars
   ingest/fastf1_source.py  FastF1 Session -> normalised DataFrames
+  ingest/openf1_source.py  OpenF1 -> the same tables, when F1's archive refuses (D-009, D-010)
   ingest/quality.py        pre-write checks (errors block, warnings report)
   ingest/cli.py            racecraft-ingest
   store/schema.py          Arrow schemas for every table

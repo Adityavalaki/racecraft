@@ -115,3 +115,29 @@ Trade-off: More code to keep working as sources change. Sources keep time differ
 in UTC, TracingInsights on FastF1's session clock), so aligning them is the riskiest part.
 OpenF1 and f1db licences are non-commercial or need credit: fine for Racecraft as it is.
 Revisit if: a source stops publishing or changes its format; or F1 opens the archive again.
+
+## D-010: OpenF1 sessions shaped to match FastF1's, field by field
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 2. When F1's archive refuses a session, `ingest/openf1_source.py` builds
+it from OpenF1. Checked table by table against FastF1's copy of Singapore 2026 (race,
+qualifying, FP1, sprint), already in the lake, OpenF1 differs from FastF1 in places.
+Options:   1) Take OpenF1 as it comes.  2) Put each difference right where the evidence says
+which source is right, so models and screens see what FastF1 would have given them.
+Chosen: 2. t0 an hour before the scheduled start (as FastF1's, so `t` stays positive and
+pre-session race control is kept); `start_t` from race control's SESSION STARTED. Track status
+rebuilt from race control, sector yellows included ("VSC DEPLOYED" is Singapore's wording),
+with FastF1's labels. Pit `date` read as the exit, entry = exit - `pit_duration` (0.25 s from
+FastF1). Stints re-cut at the stops for a pit-lane start. Garage out-laps start where the last
+lap ended and have no time. Deleted laps found by the time race control quotes; without one,
+the message's lap number is one ahead outside a race. `is_accurate` is FastF1's rule less its
+timing-continuity check. Results as FastF1 writes them: classification only for races and
+sprints, the grid from the qualifying session that set it, no places in practice.
+Why: Models filter on these fields (`track_status == "1"`, `is_accurate`, in/out laps); a
+source that fills them differently would quietly change every number.
+Trade-off: Rules learned on one weekend. Left as they are, and visible in the comparison: practice
+tyre age restarts at 0 on a reused set (OpenF1 does not know); lapped finishers have no gap
+time; `session_status` stays empty (nothing reads it); slow practice laps keep a time FastF1
+leaves blank (the models' outlier filters drop them); the sprint's unplaced retirees may be
+ordered differently (Jolpica, step 3, has the official order).
+Revisit if: an OpenF1 session fails the quality checks, or another weekend's comparison
+disagrees: `python scripts/compare_openf1.py <session_key>` prints every difference.
