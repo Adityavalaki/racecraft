@@ -7,10 +7,10 @@ discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 <!-- Newest entry on top. Five lines, every session. -->
 ## 2026-10-26 — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: `docs/BACKLOG.md`, every task discussed and not done; linked above. No code changed.
-- In progress: F1's archive needs an F1 TV login since ~15 Oct (401); free-route fix planned
-  (BUG-004 message, D-009 free Jolpica results), waiting on Aditya's four decisions (BACKLOG §1).
+- In progress: F1's archive needs an F1 TV login since ~15 Oct (401). Approved: D-009, free
+  sources merged (OpenF1, Jolpica, TracingInsights, extras), six steps on branch `free-plan`.
 - Broken or risky: Refresh data fails for every new session (2026 US GP onwards); existing data fine.
-- Next: Aditya answers BACKLOG §1 decisions; then change 1, then change 2, one commit each.
+- Next: BACKLOG §1 steps 1-6 in order, one commit each; step 2 checked against FastF1 on Singapore 2026.
 - Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
 
 ## 2026-10-20 — model: Claude Opus 5.5 (claude-opus-5-5)
