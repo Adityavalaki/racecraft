@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 import fastf1
 import pandas as pd
+import requests
 
 from racecraft.store.schema import TABLES
 
@@ -28,11 +29,38 @@ def make_session_key(year: int, round_number: int, session: str) -> str:
     return f"{year}_{round_number:02d}_{session}"
 
 
+# F1's timing archive, which FastF1 reads. Since about 15 October 2026 it answers 401 to anyone
+# without an F1 TV login (FastF1 issue #978), which FastF1 reports only as missing data.
+ARCHIVE = "https://livetiming.formula1.com"
+LOCKED = "F1's timing archive needs an F1 TV subscription since October 2026"
+
+
+class ArchiveLocked(RuntimeError):
+    """F1 refused the session for want of an F1 TV login: FastF1 cannot get it."""
+
+
 def load_session(year: int, round_number: int, session_name: str, telemetry: bool = True) -> fastf1.core.Session:
     """Load by FastF1 schedule name ("Practice 2", "Sprint Shootout"), not by code."""
     ses = fastf1.get_session(year, round_number, session_name)
     ses.load(laps=True, telemetry=telemetry, weather=True, messages=True)
+    if not _has_laps(ses) and _archive_locked(ses):
+        raise ArchiveLocked(LOCKED)
     return ses
+
+
+def _has_laps(ses) -> bool:
+    try:
+        return len(ses.laps) > 0
+    except fastf1.exceptions.DataNotLoadedError:
+        return False
+
+
+def _archive_locked(ses) -> bool:
+    """Whether the archive answers this session with 401: the sign-in wall, not a session with no data."""
+    try:
+        return requests.get(f"{ARCHIVE}{ses.api_path}SessionInfo.json", timeout=15).status_code == 401
+    except requests.RequestException:
+        return False                        # offline or down: not evidence of the wall
 
 
 # ---------------------------------------------------------------- helpers

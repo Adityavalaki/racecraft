@@ -213,7 +213,11 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
 def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
                    telemetry: bool, force: bool, prune: bool) -> str:
     t, calls_before = time.time(), api_budget.calls_recorded()
-    ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
+    try:
+        ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
+    except fastf1_source.ArchiveLocked as error:
+        log.warning("%s: %s", key, error)
+        return "locked"
     tables = fastf1_source.extract(ses, key, telemetry=telemetry)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
@@ -343,7 +347,7 @@ def run_once(args) -> dict[str, int]:
             log.info("clearing cached HTTP responses for %d sessions already in the lake", len(in_lake))
             log.info("removed %d responses", purge_http_cache(in_lake))
 
-    counts = {"written": 0, "skipped": 0, "busy": 0, "failed": 0}
+    counts = {"written": 0, "skipped": 0, "busy": 0, "failed": 0, "locked": 0}
     for season, rnd, ident, event, name in plan:
         try:
             status = ingest_with_limits(season, rnd, ident, name, telemetry=not args.no_telemetry,
@@ -419,7 +423,8 @@ def main(argv: list[str] | None = None) -> int:
 
     counts = run_once(args)
     hint = " (re-run with --verbose for tracebacks)" if counts["failed"] and not args.verbose else ""
-    log.info("done: %d written, %d skipped, %d failed%s", counts["written"], counts["skipped"], counts["failed"], hint)
+    log.info("done: %d written, %d skipped, %d failed, %d need F1 TV%s", counts["written"], counts["skipped"],
+             counts["failed"], counts["locked"], hint)
     log.info("lake size: %.1f MB at %s", lake.lake_size_bytes() / 1e6, config.LAKE_DIR)
     log.info("full log, including FastF1 feed warnings: %s", log_file)
     return 1 if counts["failed"] else 0

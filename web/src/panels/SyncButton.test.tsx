@@ -92,6 +92,22 @@ describe("SyncButton", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("added 1 session, 1 failed"));
     expect(screen.getByRole("status").getAttribute("title")).toContain("not published yet");
   });
+
+  it("says which sessions F1 refused for want of an F1 TV login, and why, once", async () => {
+    const refused = (ident: string, name: string) => ({
+      key: `2026_18_${ident}`, season: 2026, round: 18, ident, event: "United States Grand Prix", name,
+      state: "locked", detail: "not downloaded: F1's timing archive needs an F1 TV subscription since October 2026" });
+    serve([status({
+      state: "done", weekends: WEEKENDS, to_fetch: 2, counts: { locked: 2 },
+      items: [refused("FP1", "Practice 1"), refused("Q", "Qualifying")],
+    })]);
+    render(<SyncButton onSynced={() => undefined} />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("2 need F1 TV"));
+    const title = screen.getByRole("status").getAttribute("title") ?? "";
+    expect(title.match(/F1 TV subscription/g)).toHaveLength(1);
+    expect(title).toContain("United States Grand Prix Practice 1");
+    expect(title).toContain("Sessions already downloaded are unaffected");
+  });
 });
 
 describe("SyncButton, when another process has a session", () => {

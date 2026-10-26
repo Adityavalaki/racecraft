@@ -124,8 +124,9 @@ function summaryOf(status: SyncStatus | null, error: string | null): string {
   const written = status.counts.written ?? 0;
   const failed = status.counts.failed ?? 0;
   const busy = status.counts.busy ?? 0;
+  const locked = status.counts.locked ?? 0;
   if (status.state === "running") {
-    const done = written + failed;
+    const done = written + failed + locked;
     return status.current
       ? `fetching ${done + 1} of ${status.to_fetch} · ${status.current}`
       : `${done} of ${status.to_fetch} fetched`;
@@ -135,15 +136,25 @@ function summaryOf(status: SyncStatus | null, error: string | null): string {
   if (written) parts.push(`added ${written} session${written === 1 ? "" : "s"}`);
   if (busy) parts.push(`${busy} still being fetched elsewhere`);
   if (failed) parts.push(`${failed} failed`);
+  if (locked) parts.push(`${locked} need F1 TV`);
   return parts.length ? parts.join(", ") : `up to date · ${status.weekends.length} weekends`;
 }
+
+/** Said once above the sessions F1 refused, rather than on every line. */
+const LOCKED_NOTE = "F1's timing archive needs an F1 TV subscription since October 2026, so these "
+  + "sessions could not be downloaded. Sessions already downloaded are unaffected.";
 
 function detailOf(status: SyncStatus | null, error: string | null): string {
   if (error) return error;
   if (!status) return "";
   if (status.error) return status.error;
   const failed = status.items.filter((item) => item.state === "failed" || item.state === "busy");
+  const locked = status.items.filter((item) => item.state === "locked");
   const lines = [status.weekends.join(", ")];
   for (const item of failed) lines.push(`${item.event} ${item.name}: ${item.detail}`);
+  if (locked.length) {
+    lines.push(LOCKED_NOTE);
+    for (const item of locked) lines.push(`${item.event} ${item.name}`);
+  }
   return lines.filter(Boolean).join("\n");
 }

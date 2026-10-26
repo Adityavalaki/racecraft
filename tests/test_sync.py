@@ -307,3 +307,20 @@ def test_a_session_once_in_the_lake_leaves_nothing_behind_in_fastf1s_cache(quiet
     syncer.wait(5)
     assert calls and all(k["prune"] is True for k in calls)
     assert compacted == [True]
+
+
+def test_once_f1_refuses_one_session_the_rest_are_not_asked_for(quiet, monkeypatch):
+    """F1's archive wants an F1 TV login since October 2026: the same wall for every session."""
+    monkeypatch.setattr(sync, "plan", _plan((2026, 18, "FP1", "United States", "Practice 1"),
+                                            (2026, 18, "FP2", "United States", "Practice 2"),
+                                            (2026, 18, "Q", "United States", "Qualifying")))
+    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: False)
+    asked = []
+    monkeypatch.setattr(sync.cli, "ingest_with_limits", lambda *a, **k: asked.append(a[2]) or "locked")
+    syncer = sync.Syncer()
+    syncer.start()
+    syncer.wait(5)
+    answer = syncer.status()
+    assert asked == ["FP1"]
+    assert answer["state"] == "done" and answer["counts"]["locked"] == 3
+    assert all("F1 TV" in item["detail"] for item in answer["items"])
