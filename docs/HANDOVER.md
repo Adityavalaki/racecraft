@@ -1,10 +1,18 @@
 # HANDOVER
 Lane: B (real users) — the app has been shared with a friend (Google Drive, 2026-10-13), so a
 break tonight would be noticed. Recorded 2026-10-20; Aditya to confirm.
-Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md. No ARCHITECTURE.md or
-CONSTRAINTS.md yet.
+Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (everything
+discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-26 — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: `docs/BACKLOG.md`, every task discussed and not done; linked above. No code changed.
+- In progress: F1's archive needs an F1 TV login since ~15 Oct (401); free-route fix planned
+  (BUG-004 message, D-009 free Jolpica results), waiting on Aditya's four decisions (BACKLOG §1).
+- Broken or risky: Refresh data fails for every new session (2026 US GP onwards); existing data fine.
+- Next: Aditya answers BACKLOG §1 decisions; then change 1, then change 2, one commit each.
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-20 — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: all 8 audit findings fixed on branch `audit-fixes`, one commit each (D-001..D-008,
   BUG-001..003): insight fits on earlier races only; caches keyed by lake version; one load per

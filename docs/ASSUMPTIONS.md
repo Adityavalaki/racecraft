@@ -10,3 +10,4 @@
 | 5 | The legacy code is no longer needed in the working tree (D-008). | unverified: its README says it is kept for a portfolio; removed at "fix all" | `git checkout 177e8e5 -- legacy` restores it. |
 | 6 | The app is Lane B because a friend runs it. | unverified | Aditya to confirm in HANDOVER. |
 | 7 | Concurrent session loads were a real memory problem, not just a theory. | partly verified: on the real lake, four requests at once to cold `2024_10_R` now log one load; the memory saved was not measured | Open a race with a memory monitor on main vs `audit-fixes`. |
+| 8 | Offers left unanswered in conversation (cache cleanup on C:, the revert question, LinkedIn clip, copy page, quiz) are still wanted, so BACKLOG lists them. | unverified | Aditya to strike any he does not want from BACKLOG. |

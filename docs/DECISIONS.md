@@ -92,3 +92,26 @@ Chosen: 2, at Aditya's "fix all".
 Why: The lessons are in the README; the code is in git history at 177e8e5.
 Trade-off: reading the old code needs a `git show`.
 Revisit if: someone needs to run the legacy engine again.
+
+## D-009: Free data from several sources, merged into the lake's existing tables
+Date: 2026-10-26   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: Since about 15 October 2026, F1's timing archive (`livetiming.formula1.com/static`)
+answers 401 without an F1 TV login, for every season, so FastF1 can no longer download a
+session (FastF1 issue #978). The free live stream never carried car telemetry or positions
+(checked in the Baku 2026 FP1 recording). Aditya has no budget: free sources only.
+Options:   1) F1 TV Access through FastF1 3.9's sign-in (paid).  2) OpenF1's Sponsor tier
+(paid, live).  3) Results only, from Jolpica through FastF1's client.  4) Several free
+sources, each table from the first that has it and passes the quality checks, the rest as
+backups and cross-checks: OpenF1's free tier (all tables but corners; checked for Austin 2026
+FP1 telemetry and positions after the lock), TracingInsights' GitHub archive (all tables
+including corners; Austin 2026 FP1 present), Jolpica (official results and points, history),
+the live recorder (live timing), plus Open-Meteo, f1db and team radio as extras.
+Chosen: 4, in six steps, one commit each: a clear "needs F1 TV" message; the merge step and
+the OpenF1 adapter, checked against FastF1 on a session the lake already has; Jolpica;
+TracingInsights; sources shown in the app with credits; then the optional sources.
+Why: Free, and no table depends on a single source. Every adapter produces the tables the
+lake already has, so no screen, model or API changes.
+Trade-off: More code to keep working as sources change. Sources keep time differently (OpenF1
+in UTC, TracingInsights on FastF1's session clock), so aligning them is the riskiest part.
+OpenF1 and f1db licences are non-commercial or need credit: fine for Racecraft as it is.
+Revisit if: a source stops publishing or changes its format; or F1 opens the archive again.
