@@ -53,7 +53,11 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
     (about 430 requests, ~15 min, writes the lake). *waiting on Aditya to run it*
   - [x] Open-Meteo forecast on screen. Done: see `git log` (D-015).
   - [x] f1db history import. Done: see `git log` (D-016).
-  - [ ] Title-odds backtest on f1db.
+  - [x] Title-odds backtest on f1db. Done: see `git log` (D-017, TECHNICAL "The same test on every
+    season since 1950"): results-only 0.550 vs points 0.488 over 76 seasons (p = 3e-9); on
+    2023-2025 it matched the lap-time model (0.688 vs 0.663).
+  - [ ] **Use the results-only model in the app, or blend the two?** *idea* Nothing shows the lap
+    times add to the title odds yet; dropped scores (pre-1991) would make history fairer to it.
 - [ ] **Option: record live sessions automatically.** *idea*
   F1's live timing stream still works without a login. The desktop app could record each
   session while it runs (laps, tyres, race control; no telemetry or GPS positions).

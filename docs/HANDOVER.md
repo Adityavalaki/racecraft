@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-27 (evening) — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: merged `audit-fixes` + `free-plan` into `main` and pushed (41a03be; fixed PR #4's broken App.tsx). On branch `sources-and-extras`: step 5 sources in the app (D-013); step 6 team radio (D-014), Open-Meteo forecast (D-015), f1db history (D-016), results-only title model + backtest (D-017).
+- In progress: nothing. Branch not merged or pushed. `data/history/f1db` fetched (5 MB); the lake was not written.
+- Broken or risky: CSP now allows media from livetiming.formula1.com (radio); the server calls Open-Meteo on request; PR #4's split race-control panels are not in the refactored screens.
+- Next: Aditya to review and merge `sources-and-extras`; run `racecraft-ingest --radio` and `--season 2026 --rounds 18 --force`; rebuild the MSIX.
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-27 (later) — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: C: caches cleaned (16.4 GB free). Steps 3 and 4: Jolpica's official results (D-011) and TracingInsights' tyres, corners and backup (D-012) over OpenF1; Singapore 2026 matches FastF1's copy; pytest 622 passed.
 - In progress: nothing. Both tried through the real CLI on the 2026 US GP into scratch lakes only (`build/tmp/cli_lake`, `cli_lake4`).
