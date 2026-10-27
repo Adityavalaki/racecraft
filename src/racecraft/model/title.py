@@ -174,11 +174,13 @@ def entrants(con, year: int, before: pd.Timestamp | None) -> pd.DataFrame:
 # ------------------------------------------------------------------ simulation
 
 def simulate_races(pace: np.ndarray, sd: np.ndarray, sprint: list[bool], noise: float, retire: float,
-                   runs: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+                   runs: int, rng: np.random.Generator, race_points: np.ndarray = RACE_POINTS,
+                   sprint_points: np.ndarray = SPRINT_POINTS) -> tuple[np.ndarray, np.ndarray]:
     """
     Points and Grand Prix wins per driver per simulated season, over the given
     events, as (runs x drivers) arrays. Single precision throughout: the
-    answers are percentages, and it halves the memory.
+    answers are percentages, and it halves the memory. The points are today's
+    unless an older season's are given (`title_history`).
     """
     n = len(pace)
     true = (pace[None, :] + rng.standard_normal((runs, n), dtype=np.float32) * sd[None, :]).astype(np.float32)
@@ -190,7 +192,7 @@ def simulate_races(pace: np.ndarray, sd: np.ndarray, sprint: list[bool], noise: 
         out = rng.random((runs, n), dtype=np.float32) < (retire * (SPRINT_SHARE if is_sprint else 1.0))
         perf[out] = np.inf
         order = np.argsort(perf, axis=1)                      # quickest first
-        scale = SPRINT_POINTS if is_sprint else RACE_POINTS
+        scale = sprint_points if is_sprint else race_points
         place_points = np.zeros(n, dtype=np.float32)
         place_points[:min(n, len(scale))] = scale[:n]
         earned = np.zeros((runs, n), dtype=np.float32)

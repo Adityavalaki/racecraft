@@ -13,6 +13,7 @@ Run the models over the lake: `racecraft-analyse`.
     racecraft-analyse predict-backtest --sprint     # every sprint since 2023, the same way
     racecraft-analyse title 2026                    # each driver's and team's chance of the title
     racecraft-analyse title-backtest --save         # 2023-2025 replayed from every round
+    racecraft-analyse title-history-backtest        # results-only odds on 1950-2025, from f1db
 
 Every number the README quotes comes from these commands, so anyone can
 reproduce them rather than taking them on trust.
@@ -580,6 +581,41 @@ def cmd_title(args) -> int:
     return 0
 
 
+def _report_title_backtest(checkpoints, by_decade: bool = False) -> pd.DataFrame:
+    """Print a title backtest's scores, by season (or decade), by stage and overall; return the table."""
+    table = pd.DataFrame([c.__dict__ for c in checkpoints])
+    table["stage"] = pd.cut(table["after_round"] / table["rounds"], [0, 0.25, 0.5, 0.75, 1.0],
+                            labels=["first quarter", "second quarter", "third quarter", "last quarter"])
+    group = (table["year"] // 10 * 10).rename("decade") if by_decade else "year"
+    pd.set_option("display.width", 200)
+    print(f"\nChance given to the eventual champion, by {'decade' if by_decade else 'season'} (higher is better)")
+    print(table.groupby(group)[["model", "points_only"]].mean().round(3).to_string())
+    print("\n...and by how far into the season (all seasons)")
+    print(table.groupby("stage", observed=True)[["model", "points_only"]].mean().round(3).to_string())
+    print("\nBrier over every driver (lower is better)")
+    print(table.groupby(group)[["model_brier", "points_brier"]].mean().round(3).to_string())
+    print(f"\nall {len(table)} checkpoints: model {table['model'].mean():.3f} vs points only "
+          f"{table['points_only'].mean():.3f}; Brier {table['model_brier'].mean():.3f} vs {table['points_brier'].mean():.3f}")
+    return table
+
+
+def cmd_title_history_backtest(args) -> int:
+    from racecraft.model import title_history
+
+    years = list(range(args.first, args.last + 1))
+    seasons = title_history.seasons(years)
+    print(f"{len(seasons)} seasons from f1db, {seasons[0].year}-{seasons[-1].year}", file=sys.stderr)
+    checkpoints, split_for = title_history.backtest(
+        seasons, runs=args.runs, progress=lambda y: print(f"  {y}", file=sys.stderr, flush=True))
+    splits = pd.DataFrame(split_for.values())
+    print(f"\nUncertainty, each season measured on the others: race noise {splits['race_noise'].mean():.2f} "
+          f"places, lasting {splits['lasting_sd'].mean():.2f} places")
+    table = _report_title_backtest(checkpoints, by_decade=len(seasons) > 12)
+    if args.out:
+        table.to_csv(args.out, index=False)
+    return 0
+
+
 def cmd_title_backtest(args) -> int:
     import logging
 
@@ -593,20 +629,9 @@ def cmd_title_backtest(args) -> int:
         print(f"  {year} after round {after}", file=sys.stderr, flush=True)
 
     checkpoints, noise_for = title.backtest(con, years, runs=args.runs, progress=progress)
-    table = pd.DataFrame([c.__dict__ for c in checkpoints])
-    table["stage"] = pd.cut(table["after_round"] / table["rounds"], [0, 0.25, 0.5, 0.75, 1.0],
-                            labels=["first quarter", "second quarter", "third quarter", "last quarter"])
-    pd.set_option("display.width", 200)
     print("\nUncertainty measured on the other seasons:",
           {y: (n["race_noise_s"], n["lasting_share"]) for y, n in noise_for.items()})
-    print("\nChance given to the eventual champion, by season (higher is better)")
-    print(table.groupby("year")[["model", "points_only"]].mean().round(3).to_string())
-    print("\n...and by how far into the season (all seasons)")
-    print(table.groupby("stage", observed=True)[["model", "points_only"]].mean().round(3).to_string())
-    print("\nBrier over every driver (lower is better)")
-    print(table.groupby("year")[["model_brier", "points_brier"]].mean().round(3).to_string())
-    print(f"\nall {len(table)} checkpoints: model {table['model'].mean():.3f} vs points only "
-          f"{table['points_only'].mean():.3f}; Brier {table['model_brier'].mean():.3f} vs {table['points_brier'].mean():.3f}")
+    table = _report_title_backtest(checkpoints)
     if args.out:
         table.to_csv(args.out, index=False)
     if args.save:
@@ -700,6 +725,14 @@ def main(argv: list[str] | None = None) -> int:
     title_bt_parser.add_argument("--out", help="write every checkpoint here as CSV")
     title_bt_parser.add_argument("--save", action="store_true", help="save the race noise fitted on these seasons")
     title_bt_parser.set_defaults(handler=cmd_title_backtest)
+
+    history_parser = commands.add_parser(
+        "title-history-backtest", help="the results-only title odds replayed on f1db's seasons (D-017)")
+    history_parser.add_argument("--first", type=int, default=1950)
+    history_parser.add_argument("--last", type=int, default=2025)
+    history_parser.add_argument("--runs", type=int, default=2_000)
+    history_parser.add_argument("--out", help="write every checkpoint here as CSV")
+    history_parser.set_defaults(handler=cmd_title_history_backtest)
 
     args = parser.parse_args(argv)
     return args.handler(args)

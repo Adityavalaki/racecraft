@@ -254,3 +254,23 @@ and all). Sprint weekends are taken from the sprint results: f1db leaves the dat
 Why: History is seasons, not sessions; the lake's tables, checks and screens assume sessions.
 Trade-off: A second store to keep current (one command); about 5 MB.
 Revisit if: a screen wants history (then it may belong in the database layer).
+
+## D-017: A results-only title model, to test the odds on 1950-2025
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 6. The title model (`model/title.py`) reads pace from lap times, which f1db
+(D-016) does not have, so it cannot be replayed on history. Aditya chose a second model whose
+form is results only, tested on f1db and scored beside the lap-time model on 2023-2025.
+Options:   1) Results-only form (average finishing place).  2) Rebuild pace from Jolpica's lap
+times (1996 on): faithful but days of fetching at 500 requests an hour, and no tyres.
+Chosen: 1. `model/title_history.py`: form is a driver's average finishing place so far that
+season; its doubt is measured as `title.measure` measures pace (race-to-race noise in places,
+and the lasting part beyond the early average's own sampling), leaving each season out of its
+own measurement. Races are `title.simulate_races` with each season's own points scale (read
+from its results; `simulate_races` now takes the points as arguments, today's by default),
+the champion `title.champions`. Scored, as `title.backtest` is, by the chance given to the
+official champion beside the points alone. `racecraft-analyse title-history-backtest`.
+Why: Reuses the simulation and the scoring, so the two models' numbers compare directly.
+Trade-off: No dropped scores (best-N counting until 1990), no fastest-lap or shared-drive
+points: seasons settled by those count against it. A driver who has never finished is the
+field's average, as in `title`. Results-only form cannot see a car's pace under the result.
+Revisit if: the pre-1991 seasons score badly against the points alone.
