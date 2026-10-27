@@ -1725,6 +1725,11 @@ button.prediction-row:hover { background: var(--panel-2); }
   background: transparent; color: var(--ink); font-size: 9px; line-height: 1; cursor: pointer;
 }
 .radio-play:hover, .radio-play:focus-visible { border-color: var(--ink); }
+/* The weekend forecast above the prediction (D-015). */
+.forecast { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding: 10px 14px;
+            border-bottom: 1px solid #1C1C21; font-size: 12.5px; color: var(--ink-soft); }
+.forecast b { color: var(--ink); font-weight: 600; }
+.forecast-credit { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
 .rc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
 .rc-dot.is-red { background: var(--red); }
 .rc-dot.is-amber { background: var(--sc); }

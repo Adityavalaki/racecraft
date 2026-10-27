@@ -220,3 +220,21 @@ Trade-off: The security policy now allows one outside host, for media only:
 and if F1 locks the radio folder too, clips will say "could not play"; the fix then is
 TracingInsights' mirror. The live recording carries no radio.
 Revisit if: F1 locks the clips; or someone wants radio offline (option 2).
+
+## D-015: The weekend forecast beside the prediction, from Open-Meteo
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 6. Rain changes a race more than anything the prediction models; Aditya
+chose to show the forecast, not feed it into the model.
+Options:   1) Show it: rain chance, rain, air temperature and wind at the race (and sprint)
+start.  2) Feed rain chance into the prediction (a model change, a refit and a replay of
+past races to show it helps).
+Chosen: 1. `api/forecast.py` takes the circuit's position and the start times from Jolpica's
+schedule and asks Open-Meteo (free, no key, CC BY 4.0, credit shown): the current forecast for
+a start in the next sixteen days, the archived forecast for one already run (labelled "was
+forecast", since what happened is in the session's weather). Cached for an hour. Shown above
+the prediction; nothing at all if Open-Meteo or Jolpica cannot be reached.
+Why: The useful half at a fraction of the cost; option 2 stays open, with the same data.
+Trade-off: The local server now calls two outside hosts on request (api.open-meteo.com and
+historical-forecast-api.open-meteo.com), with no user-supplied address in the call. A weekend
+more than sixteen days off shows no forecast yet.
+Revisit if: a model is to use rain (option 2), or Open-Meteo's terms change.

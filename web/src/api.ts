@@ -46,6 +46,25 @@ export interface SessionInfo {
   radio?: { driver_number: number; t: number; url: string }[];
 }
 
+/** The weather expected at a session's start: forecast if upcoming, else as archived then. */
+export interface SessionForecast {
+  session: "Race" | "Sprint";
+  starts_utc: string;
+  upcoming: boolean;
+  rain_chance: number | null;
+  rain_mm: number | null;
+  air_temp: number | null;
+  wind_kmh: number | null;
+}
+
+export interface WeekendForecast {
+  event: string;
+  circuit: string;
+  forecasts: SessionForecast[];
+  /** Open-Meteo's licence asks for this line wherever the data is shown. */
+  credit: string;
+}
+
 /** The three kinds of race control message. */
 export type Topic = "stewards" | "track" | "noise";
 
@@ -853,6 +872,8 @@ export const api = {
   prediction: (key: string, kind: PredictionKind, signal?: AbortSignal) =>
     get<Prediction>(`/api/sessions/${key}/prediction${kind === "sprint" ? "?kind=sprint" : ""}`, signal),
   weekend: (key: string, signal?: AbortSignal) => get<WeekendInfo>(`/api/sessions/${key}/weekend`, signal),
+  /** The weekend's race (and sprint) forecast at the circuit, from Open-Meteo. */
+  forecast: (key: string, signal?: AbortSignal) => get<WeekendForecast>(`/api/sessions/${key}/forecast`, signal),
   /** The season's championships, from results before this session (or with it, `after`). */
   standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),

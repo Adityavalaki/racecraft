@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from racecraft import resources
+from racecraft.api import forecast
 from racecraft.api import guard
 from racecraft.api import insight
 from racecraft.api import live_store
@@ -336,6 +337,22 @@ def session_pit_crews(session_key: str,
     body["moment"] = moment
     body["session_stops"] = pit_crews.session_stops(con, session_key)
     return body
+
+
+@app.get("/api/sessions/{session_key}/forecast")
+def session_forecast(session_key: str) -> dict:
+    """
+    The weather forecast at the circuit for the start of this weekend's race and
+    sprint, from Open-Meteo (D-015): rain chance, rain, air temperature, wind. For
+    a weekend already run, the forecast as it stood then. Display only.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the list for its weekend's forecast")
+    season, rnd, _ = _safe(session_key).split("_")
+    try:
+        return forecast.for_weekend(int(season), int(rnd))
+    except forecast.Unavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from None
 
 
 @app.get("/api/sessions/{session_key}/weekend")

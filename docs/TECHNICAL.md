@@ -81,6 +81,8 @@ Each session's `sources` table says where each of its tables came from; the app
 names them beside the session picker (D-013). Sessions without one are FastF1's.
 Team radio (`team_radio`: car, time, MP3 address) comes from OpenF1 and plays from F1's
 server in the replay (D-014); `racecraft-ingest --radio` adds it to older sessions.
+The prediction screen shows the weekend's forecast at the circuit from Open-Meteo
+(`api/forecast.py`, `/api/sessions/{key}/forecast`, D-015); display only.
 
 **Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
 folder per session (~80-160 MB) and a shared HTTP cache file that grows about

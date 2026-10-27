@@ -51,7 +51,7 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   the weekend forecast on screen (no model change), f1db imported then title odds backtested.
   - [x] Team radio. Done: see `git log` (D-014). To fill older sessions: `racecraft-ingest --radio`
     (about 430 requests, ~15 min, writes the lake). *waiting on Aditya to run it*
-  - [ ] Open-Meteo forecast on screen.
+  - [x] Open-Meteo forecast on screen. Done: see `git log` (D-015).
   - [ ] f1db history import.
   - [ ] Title-odds backtest on f1db.
 - [ ] **Option: record live sessions automatically.** *idea*
