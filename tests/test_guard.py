@@ -34,6 +34,8 @@ def test_a_local_request_is_answered_with_the_security_headers(client):
     assert response.status_code == 200
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
     assert "script-src 'self'" in response.headers["content-security-policy"]
+    # The one outside host: audio from F1's server, for team radio (D-014), and nothing more.
+    assert "media-src 'self' https://livetiming.formula1.com;" in response.headers["content-security-policy"]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"

@@ -25,12 +25,14 @@ from pathlib import Path
 
 import fastf1
 import pandas as pd
+import requests
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config, locking
 from racecraft.ingest import (api_budget, fastf1_source, jolpica_source, openf1_source, quality,
                               tracinginsights_source)
 from racecraft.store import lake
+from racecraft.store.db import connect, has_table
 
 log = logging.getLogger("racecraft.ingest")
 
@@ -211,6 +213,65 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
         lock.release()
 
 
+def _utc(value) -> pd.Timestamp:
+    stamp = pd.Timestamp(value)
+    return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+
+
+def radio(season: int, session: pd.Series, key: str, year_sessions: list[dict] | None = None) -> pd.DataFrame:
+    """A session's team radio from OpenF1, matched by its start; empty if OpenF1 has none.
+    Radio is an extra: its absence never stops a session being written."""
+    try:
+        return openf1_source.radio_for(season, _utc(session["date_utc"]), _utc(session["t0_utc"]), key,
+                                       year_sessions)
+    except (openf1_source.NotAvailable, requests.RequestException) as error:
+        log.info("%s: no team radio (%s)", key, error)
+        return pd.DataFrame(columns=openf1_source.TABLE_COLUMNS["team_radio"])
+
+
+def backfill_radio(seasons: list[int]) -> int:
+    """
+    Team radio for sessions already in the lake that have none (D-014): about one
+    OpenF1 request a session, 2.1 s apart. Only `team_radio` and `sources` are
+    rewritten, under the session's lock; the session's other source rows are kept.
+    """
+    con = connect()
+    have = set(con.execute("select distinct session_key from team_radio").df()["session_key"]) \
+        if has_table(con, "team_radio") else set()
+    known = con.execute("select * from sources").df() if has_table(con, "sources") else pd.DataFrame(
+        columns=["session_key", "table_name", "source", "fetched_at"])
+    todo = con.execute(f"""select session_key, date_utc, t0_utc, fastf1_version from sessions
+                           where year in ({', '.join(str(int(s)) for s in seasons)}) order by date_utc""").df()
+    written, year_sessions = 0, {}
+    for row in todo.itertuples(index=False):
+        if row.session_key in have or row.session_key == "live":
+            continue
+        season, rnd, ident = row.session_key.split("_")
+        lock = session_lock(row.session_key)
+        if lock is None:
+            log.info("%s: another process is writing it; leaving it alone", row.session_key)
+            continue
+        try:
+            if int(season) not in year_sessions:
+                year_sessions[int(season)] = openf1_source._get("sessions", year=int(season))
+            clips = radio(int(season), pd.Series(row._asdict()), row.session_key, year_sessions[int(season)])
+            if clips.empty:
+                continue
+            mine = known[known["session_key"] == row.session_key]
+            if mine.empty:      # ingested before sources were recorded: FastF1's, or as its sessions row says
+                label = {"openf1": "OpenF1", "tracinginsights": "TracingInsights"}.get(row.fastf1_version, "FastF1")
+                mine = pd.DataFrame([(row.session_key, "all", label, pd.NaT)], columns=known.columns)
+            now = pd.Timestamp.now(tz="UTC")
+            rows = pd.concat([mine[mine["table_name"] != "team_radio"],
+                              pd.DataFrame([(row.session_key, "team_radio", "OpenF1", now)], columns=known.columns)])
+            lake.write_session({"team_radio": clips, "sources": rows}, int(season), int(rnd), ident)
+            written += 1
+            log.info("%s: %d team radio clips", row.session_key, len(clips))
+        finally:
+            lock.release()
+    return written
+
+
 def sources_table(sources: dict[str, str], tables: dict[str, pd.DataFrame], key: str) -> pd.DataFrame:
     """One row per table written with rows in it: where it came from, and when (D-009 step 5)."""
     now = pd.Timestamp.now(tz="UTC")
@@ -253,6 +314,9 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
             sources["results"] += " + Jolpica"
         if differ:
             log.warning("%s: OpenF1 and Jolpica place cars %s differently; Jolpica's order kept", key, differ)
+    if "team_radio" not in tables:          # OpenF1 builds have it; the others ask once (D-014)
+        tables["team_radio"] = radio(season, tables["sessions"].iloc[0], key)
+    sources.setdefault("team_radio", "OpenF1")
     tables["sources"] = sources_table(sources, tables, key)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
@@ -446,12 +510,18 @@ def main(argv: list[str] | None = None) -> int:
                     help="how often to look, in watch mode (default 15)")
     ap.add_argument("--no-brief", action="store_true",
                     help="skip the summary logged after a race is ingested")
+    ap.add_argument("--radio", action="store_true",
+                    help="only add team radio to sessions in the lake that have none (OpenF1, 2023 on)")
     args = ap.parse_args(argv)
 
     log_file = setup_logging()
 
     config.FASTF1_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
+
+    if args.radio:
+        log.info("done: team radio added to %d sessions", backfill_radio(args.season))
+        return 0
 
     if args.watch:
         return watch(args, log_file)

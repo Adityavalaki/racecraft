@@ -30,12 +30,15 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 # Everything the interface loads is its own: the bundle, its fonts, the API.
 # Styles allow 'unsafe-inline' because React and the charts set style
-# attributes; scripts allow nothing but the bundle.
+# attributes; scripts allow nothing but the bundle. The one exception is team
+# radio (D-014): audio only, streamed from F1's own server, which still serves
+# the clips without a login; nothing there can run.
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    "media-src 'self' https://livetiming.formula1.com",
     "font-src 'self' data:",
     "connect-src 'self'",
     "object-src 'none'",

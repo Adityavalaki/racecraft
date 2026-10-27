@@ -787,6 +787,8 @@ is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
     official classifications, points, grids and qualifying times.
   - [TracingInsights](https://github.com/TracingInsights) (Apache-2.0): FastF1's
     tyre history and circuit corners, and a backup for OpenF1.
+- Team radio: listed by OpenF1, played straight from Formula 1's own server; Racecraft
+  stores no audio. Add it to sessions already ingested with `racecraft-ingest --radio`.
 - Fonts: Titillium Web, Barlow Condensed and JetBrains Mono, under the SIL Open
   Font License, bundled through Fontsource.
 - Built with FastF1, DuckDB, pandas, numpy, scipy, FastAPI, React, Vite and

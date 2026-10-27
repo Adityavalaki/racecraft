@@ -47,7 +47,13 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 - [x] **Step 5: show sources in the app, with credits** in the README. Done: see `git log`
   (D-013). `sources` table written by ingest; "Data: ..." beside the session picker; credits in
   Settings and the README.
-- [ ] **Step 6 (optional extras): Open-Meteo weather, f1db history, team radio.** *ready*
+- [ ] **Step 6 (optional extras)**: Aditya chose, 2026-10-27: radio clips on the replay (streamed),
+  the weekend forecast on screen (no model change), f1db imported then title odds backtested.
+  - [x] Team radio. Done: see `git log` (D-014). To fill older sessions: `racecraft-ingest --radio`
+    (about 430 requests, ~15 min, writes the lake). *waiting on Aditya to run it*
+  - [ ] Open-Meteo forecast on screen.
+  - [ ] f1db history import.
+  - [ ] Title-odds backtest on f1db.
 - [ ] **Option: record live sessions automatically.** *idea*
   F1's live timing stream still works without a login. The desktop app could record each
   session while it runs (laps, tyres, race control; no telemetry or GPS positions).

@@ -5,6 +5,7 @@ import { Workspace } from "../layout";
 import { DriverCards } from "../panels/DriverCards";
 import { Leaderboard } from "../panels/Leaderboard";
 import { RaceControl } from "../panels/RaceControl";
+import { TeamRadio } from "../panels/TeamRadio";
 import { TrackMap } from "../panels/TrackMap";
 import type { Settings } from "../settings";
 import { LapCounter } from "../shell/ScreenHeader";
@@ -123,6 +124,7 @@ export function ReplayScreen(props: Props) {
                            onOpenTower={props.onOpenTower} lap={state?.leader_lap} />
             </section>
             <RaceControl stewards={props.stewards} trackLog={props.trackLog} start={info.t_start} codes={props.codes} />
+            <TeamRadio clips={info.radio} t={props.t} start={info.t_start} codes={props.codes} />
           </div>
         }
       />

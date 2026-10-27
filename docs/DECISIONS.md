@@ -202,3 +202,21 @@ no existing session needs rewriting.
 Trade-off: One more table to keep in step with ingest; a source that adds fields later (a
 `--force` re-ingest) is only recorded when the session is written again.
 Revisit if: a screen needs to know a single field's source, not a table's.
+
+## D-014: Team radio on the replay, streamed from F1
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 6. OpenF1's free `team_radio` lists every clip (car, time, MP3 address).
+The MP3s sit on F1's own server, which still serves them without a login (checked: 2024 and
+2026 clips answer 200); TracingInsights mirrors the same files.
+Options:   1) Stream from F1: keep the address, play in the app.  2) Store every MP3 in the lake
+(tens of MB a race, works offline).  3) Proxy the MP3s through the local API.
+Chosen: 1 (Aditya's choice). A `team_radio` table (car, `t` on the session clock, address):
+OpenF1 sessions get it as they are built, others with one more request; `racecraft-ingest
+--radio` adds it to sessions already in the lake, keeping their source rows. The replay's
+right column lists the clips sent by the replay clock, newest first, each playable.
+Why: Smallest change that works; no audio stored or fetched by the server.
+Trade-off: The security policy now allows one outside host, for media only:
+`media-src 'self' https://livetiming.formula1.com` (a test pins it). Playing needs the internet,
+and if F1 locks the radio folder too, clips will say "could not play"; the fix then is
+TracingInsights' mirror. The live recording carries no radio.
+Revisit if: F1 locks the clips; or someone wants radio offline (option 2).

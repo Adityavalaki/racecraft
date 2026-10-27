@@ -171,6 +171,14 @@ SOURCES = pa.schema([
     ("fetched_at", pa.timestamp("us", tz="UTC")),
 ])
 
+# Team radio clips (D-014): the MP3s stay on F1's servers, the lake keeps where and when.
+TEAM_RADIO = pa.schema([
+    ("session_key", pa.string()),
+    ("driver_number", pa.int16()),
+    ("t", pa.float64()),                # when it was sent, on the session clock
+    ("url", pa.string()),               # the MP3, as F1 serves it
+])
+
 TABLES: dict[str, pa.Schema] = {
     "sessions": SESSIONS,
     "results": RESULTS,
@@ -183,4 +191,5 @@ TABLES: dict[str, pa.Schema] = {
     "session_status": SESSION_STATUS,
     "circuit_markers": CIRCUIT_MARKERS,
     "sources": SOURCES,
+    "team_radio": TEAM_RADIO,
 }

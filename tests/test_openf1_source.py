@@ -72,6 +72,8 @@ ANSWERS = {
                   "drs": None}, {"date": at(11), "rpm": 9000, "speed": 120, "n_gear": 3, "throttle": 0,
                                  "brake": 100, "drs": None}],
     "location": [{"date": at(10), "x": 100, "y": -200, "z": 5}],
+    "team_radio": [{"driver_number": 44, "date": at(250),
+                    "recording_url": "https://livetiming.formula1.com/static/2026/HAM_44_radio.mp3"}],
 }
 
 
@@ -160,6 +162,12 @@ def test_results_carry_names_grid_and_classification(race):
     assert res.loc[1, "full_name"] == "Max Verstappen"             # the lake's form, not "Max VERSTAPPEN"
     assert res.loc[44, "classified_position"] == "2" and res.loc[44, "status"] == "Finished"
     assert res.loc[1, "points"] == 25.0
+
+
+def test_team_radio_is_on_the_session_clock(race):
+    radio = race["team_radio"]
+    assert radio[["driver_number", "t"]].values.tolist() == [[44, HOUR + 250.0]]
+    assert radio.loc[0, "url"].endswith("HAM_44_radio.mp3")
 
 
 def test_telemetry_is_shaped_per_driver(race):
@@ -288,6 +296,7 @@ def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
                         lambda *a, **k: {"laps": "from openf1", "results": openf1, "sessions": sessions})
     monkeypatch.setattr(tracinginsights_source, "improve", lambda tables, *a: (tables, {"laps"}))   # tyres only
     monkeypatch.setattr(jolpica_source, "official", lambda *a: official)
+    monkeypatch.setattr(cli, "radio", lambda *a: pd.DataFrame())                # none for this session
     monkeypatch.setattr(quality, "check_session", lambda tables: [])
     monkeypatch.setattr(lake, "write_session", lambda tables, *a: written.update(tables) or {})
     assert cli._ingest_locked(2026, 18, "R", "Race", "2026_18_R",
