@@ -138,9 +138,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding: 6px;
   min-height: 0;
 }
-  padding: 6px;
-  min-height: 0;
-}
 /*
   The workspace: the track map in the middle, the left column (session,
   weather, driver cards, the feature launcher) and the leaderboard beside it.
