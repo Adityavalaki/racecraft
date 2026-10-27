@@ -238,3 +238,19 @@ Trade-off: The local server now calls two outside hosts on request (api.open-met
 historical-forecast-api.open-meteo.com), with no user-supplied address in the call. A weekend
 more than sixteen days off shows no forecast yet.
 Revisit if: a model is to use rain (option 2), or Open-Meteo's terms change.
+
+## D-016: f1db's history beside the lake, for testing the title model
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 6. The title odds were checked on three seasons (2023-2025), all the lake
+holds. f1db (CC BY 4.0) has every championship since 1950, but results only: no lap times,
+which the title model's pace needs. Aditya chose a results-only title model, tested on f1db.
+Options:   1) Keep history in the lake's per-session tables.  2) Keep it apart, per season.
+Chosen: 2. `ingest/f1db_source.py` (`racecraft-ingest --history`) fetches a release, checks its
+SHA-256 against the release's own list before reading it, and keeps five tables as Parquet in
+`<data>/history/f1db/` with the release tag: races, Grand Prix and sprint results, standings
+after each race, and each season's final standings (the official champion, dropped scores
+and all). Sprint weekends are taken from the sprint results: f1db leaves the date empty for
+12 of the 30.
+Why: History is seasons, not sessions; the lake's tables, checks and screens assume sessions.
+Trade-off: A second store to keep current (one command); about 5 MB.
+Revisit if: a screen wants history (then it may belong in the database layer).

@@ -83,6 +83,8 @@ Team radio (`team_radio`: car, time, MP3 address) comes from OpenF1 and plays fr
 server in the replay (D-014); `racecraft-ingest --radio` adds it to older sessions.
 The prediction screen shows the weekend's forecast at the circuit from Open-Meteo
 (`api/forecast.py`, `/api/sessions/{key}/forecast`, D-015); display only.
+Championship history since 1950 comes from f1db into `<data>/history/f1db/`, apart from
+the lake (`racecraft-ingest --history`, D-016), for testing the title model.
 
 **Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
 folder per session (~80-160 MB) and a shared HTTP cache file that grows about

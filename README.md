@@ -787,6 +787,8 @@ is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
     official classifications, points, grids and qualifying times.
   - [TracingInsights](https://github.com/TracingInsights) (Apache-2.0): FastF1's
     tyre history and circuit corners, and a backup for OpenF1.
+- [f1db](https://github.com/f1db/f1db) (CC BY 4.0): every championship since 1950, for
+  testing the title odds (`racecraft-ingest --history`).
 - [Weather data by Open-Meteo.com](https://open-meteo.com) (CC BY 4.0): the race weekend's
   forecast beside the prediction.
 - Team radio: listed by OpenF1, played straight from Formula 1's own server; Racecraft
