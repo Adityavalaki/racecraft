@@ -30,6 +30,7 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   The "merge step" is not needed yet: one source per session. It comes with step 3 or 4.
 - [x] **Refresh the real lake** with the 2026 US GP weekend: done 2026-10-27 at Aditya's request,
   `--force`, all five sessions from OpenF1 with Jolpica's results, TracingInsights' tyres and radio.
+  Checked by Aditya in the app the same night: loads and plays correctly.
 - [x] **Known OpenF1 gaps** (D-010): lapped gaps and the sprint retirees' order fixed by step 3,
   practice tyre age by step 4 (once TracingInsights has published the session).
 - [ ] **Re-ingest recent sessions with `--force` about a day later**, so they pick up

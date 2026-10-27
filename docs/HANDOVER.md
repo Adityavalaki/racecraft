@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-27 (night) — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: BUG-006 fixed (stray CSS from PR #4's merge stacked the replay's columns); `main` pushed at 81cc6d2 by Aditya. Aditya checked the app by hand: the 2026 US GP loads and plays correctly.
+- In progress: nothing.
+- Broken or risky: nothing known. The friend's copy is still the old build and cannot fetch new sessions (Aditya's choice: this build is for Aditya only).
+- Next: PR #4's split race-control panels (decide); "use the results-only title model in the app?" (idea); re-ingest recent sessions a day later (idea).
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-27 (late) — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: `sources-and-extras` merged into `main` and pushed (a174c46). Lake: 2026 US GP re-ingested (`--force`, 5 sessions); team radio backfilled into 408 sessions after fixing BUG-005. App frozen into `dist\Racecraft` (manifest 0.3.0.0).
 - In progress: the MSIX: Aditya packs, signs and installs it (signing key is off-limits to the assistant). This build is for Aditya only, not the friend.
