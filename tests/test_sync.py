@@ -93,8 +93,7 @@ def test_only_what_the_lake_lacks_is_fetched(quiet, monkeypatch):
     fetched = []
     monkeypatch.setattr(sync.cli, "ingest_with_limits",
                         lambda season, rnd, ident, name, **k: fetched.append(ident) or "written")
-    refits = []
-    syncer = sync.Syncer(on_written=lambda: refits.append(True))
+    syncer = sync.Syncer()
     syncer.start()
     syncer.wait(5)
 
@@ -102,18 +101,6 @@ def test_only_what_the_lake_lacks_is_fetched(quiet, monkeypatch):
     assert fetched == ["FP2"]
     assert answer["state"] == "done"
     assert answer["counts"]["present"] == 1 and answer["counts"]["written"] == 1
-    assert refits == [True], "the models were not told there was something new"
-
-
-def test_a_sync_with_nothing_to_do_does_not_make_the_models_refit(quiet, monkeypatch):
-    monkeypatch.setattr(sync, "plan", _plan((2026, 15, "FP1", "Azerbaijan", "Practice 1")))
-    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: True)
-    refits = []
-    syncer = sync.Syncer(on_written=lambda: refits.append(True))
-    syncer.start()
-    syncer.wait(5)
-    assert syncer.status()["to_fetch"] == 0
-    assert refits == []
 
 
 def test_one_session_that_fails_does_not_stop_the_rest(quiet, monkeypatch):
@@ -201,17 +188,31 @@ def test_the_button_starts_a_sync_and_its_progress_can_be_read(monkeypatch):
     assert client.post("/api/sync", params={"weekends": 50}).status_code == 422
 
 
-def test_new_sessions_make_every_cached_fit_let_go():
-    from racecraft.api import insight, places_view, sync_view
-    from racecraft.model import race_inputs, tyre_sets
+def test_new_sessions_change_the_key_every_model_cache_uses(tmp_path, monkeypatch):
+    """Caches keyed by lake_key never serve a fit made before an ingest, from any process."""
+    from racecraft.store import db, lake
 
-    insight._season_cache[("lake", 2026)] = "stale"
-    places_view._cache[("stale",)] = {}
-    race_inputs._race_cache[("lake", "2026_15_R")] = ("stale",)
-    tyre_sets._weekend_cache[("lake", 2026, 15, None)] = "stale"
-    sync_view.forget_models()
-    assert not insight._season_cache and not places_view._cache
-    assert not race_inputs._race_cache and not tyre_sets._weekend_cache
+    def write(rnd):
+        lake.write_session({"sessions": pd.DataFrame({
+            "session_key": [f"2026_{rnd:02d}_R"], "event_name": ["Test"], "country": ["X"],
+            "location": ["Testville"], "session_name": ["Race"],
+            "date_utc": [pd.Timestamp("2026-06-01", tz="UTC")], "t0_utc": [pd.Timestamp("2026-06-01", tz="UTC")],
+            "start_t": [0.0], "total_laps": [50], "circuit_rotation_deg": [0.0],
+            "fastf1_version": ["test"], "ingested_at": [pd.Timestamp.now(tz="UTC")]})}, 2026, rnd, "R", lake=tmp_path)
+
+    write(1)
+    first = db.lake_key(tmp_path)
+    assert db.lake_key(tmp_path) == first, "nothing changed, so the key must not"
+    write(2)                                     # this process: seen at once
+    second = db.lake_key(tmp_path)
+    assert second != first
+
+    # Another process's ingest: the files change without this process knowing.
+    monkeypatch.setattr(db, "RECHECK_S", 0.0)
+    newest = next(tmp_path.rglob("data.parquet"))
+    later = time.time() + 5
+    os.utime(newest, (later, later))
+    assert db.lake_key(tmp_path) != second
 
 
 # ------------------------------------------------------------- the FP2 morning
@@ -306,3 +307,20 @@ def test_a_session_once_in_the_lake_leaves_nothing_behind_in_fastf1s_cache(quiet
     syncer.wait(5)
     assert calls and all(k["prune"] is True for k in calls)
     assert compacted == [True]
+
+
+def test_once_f1_refuses_one_session_the_rest_are_not_asked_for(quiet, monkeypatch):
+    """F1's archive wants an F1 TV login since October 2026: the same wall for every session."""
+    monkeypatch.setattr(sync, "plan", _plan((2026, 18, "FP1", "United States", "Practice 1"),
+                                            (2026, 18, "FP2", "United States", "Practice 2"),
+                                            (2026, 18, "Q", "United States", "Qualifying")))
+    monkeypatch.setattr(sync.lake, "is_ingested", lambda *a: False)
+    asked = []
+    monkeypatch.setattr(sync.cli, "ingest_with_limits", lambda *a, **k: asked.append(a[2]) or "locked")
+    syncer = sync.Syncer()
+    syncer.start()
+    syncer.wait(5)
+    answer = syncer.status()
+    assert asked == ["FP1"]
+    assert answer["state"] == "done" and answer["counts"]["locked"] == 3
+    assert all("F1 TV" in item["detail"] for item in answer["items"])

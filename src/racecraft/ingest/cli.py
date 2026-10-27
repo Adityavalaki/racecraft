@@ -28,7 +28,8 @@ import pandas as pd
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config, locking
-from racecraft.ingest import api_budget, fastf1_source, quality
+from racecraft.ingest import (api_budget, fastf1_source, jolpica_source, openf1_source, quality,
+                              tracinginsights_source)
 from racecraft.store import lake
 
 log = logging.getLogger("racecraft.ingest")
@@ -213,8 +214,29 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
 def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
                    telemetry: bool, force: bool, prune: bool) -> str:
     t, calls_before = time.time(), api_budget.calls_recorded()
-    ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
-    tables = fastf1_source.extract(ses, key, telemetry=telemetry)
+    ses = None
+    try:
+        ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
+        tables = fastf1_source.extract(ses, key, telemetry=telemetry)
+    except fastf1_source.ArchiveLocked as error:
+        # F1 wants an F1 TV login (BUG-004): the same tables from OpenF1 instead (D-009).
+        log.warning("%s: %s; trying OpenF1", key, error)
+        try:
+            tables = openf1_source.extract(season, rnd, ident, session_name, key, telemetry=telemetry)
+            # This session's corners and FastF1's tyre history, where TracingInsights has them (D-012).
+            tables = tracinginsights_source.improve(tables, season, str(tables["sessions"]["event_name"][0]),
+                                                    session_name, key)
+        except openf1_source.NotAvailable as missing:
+            log.warning("%s: %s; trying TracingInsights", key, missing)
+            tables = tracinginsights_source.extract(season, rnd, ident, session_name, key)
+            if tables is None:
+                log.warning("%s: TracingInsights has no such session yet either", key)
+                return "locked"
+        # The official classification, points and grid over OpenF1's, as FastF1 had them (D-011).
+        tables["results"], differ = jolpica_source.overlay(
+            tables["results"], jolpica_source.official(season, rnd, ident), ident)
+        if differ:
+            log.warning("%s: OpenF1 and Jolpica place cars %s differently; Jolpica's order kept", key, differ)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
     findings = quality.check_session(tables)
@@ -231,7 +253,7 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
     rows = ", ".join(f"{name} {r['rows']:,}" for name, r in report.items())
     log.info("%s: wrote %.1f MB in %.0fs, %d API calls (%s)", key, total_mb, load_s, calls, rows)
 
-    if prune:
+    if prune and ses is not None:       # OpenF1 sessions leave nothing in FastF1's cache
         freed, responses = prune_cache(ses)
         log.info("%s: pruned %.0f MB of parsed cache and %d HTTP responses", key, freed / 1e6, responses)
     return "written"
@@ -343,7 +365,7 @@ def run_once(args) -> dict[str, int]:
             log.info("clearing cached HTTP responses for %d sessions already in the lake", len(in_lake))
             log.info("removed %d responses", purge_http_cache(in_lake))
 
-    counts = {"written": 0, "skipped": 0, "busy": 0, "failed": 0}
+    counts = {"written": 0, "skipped": 0, "busy": 0, "failed": 0, "locked": 0}
     for season, rnd, ident, event, name in plan:
         try:
             status = ingest_with_limits(season, rnd, ident, name, telemetry=not args.no_telemetry,
@@ -419,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
 
     counts = run_once(args)
     hint = " (re-run with --verbose for tracebacks)" if counts["failed"] and not args.verbose else ""
-    log.info("done: %d written, %d skipped, %d failed%s", counts["written"], counts["skipped"], counts["failed"], hint)
+    log.info("done: %d written, %d skipped, %d failed, %d need F1 TV%s", counts["written"], counts["skipped"],
+             counts["failed"], counts["locked"], hint)
     log.info("lake size: %.1f MB at %s", lake.lake_size_bytes() / 1e6, config.LAKE_DIR)
     log.info("full log, including FastF1 feed warnings: %s", log_file)
     return 1 if counts["failed"] else 0
@@ -446,8 +469,7 @@ def watch(args, log_file) -> int:
     often and nothing to lose from looking at all — a pass with nothing to do
     costs one schedule request.
     """
-    path = config.LOG_DIR / "watch.lock" if hasattr(config, "LOG_DIR") else \
-        config.LAKE_DIR.parent / "logs" / "watch.lock"
+    path = config.DATA_DIR / "logs" / "watch.lock"   # beside the session and app locks
     lock = take_lock(path)
     if lock is None:
         log.info("another watcher is already running (%s); nothing to do here", path)

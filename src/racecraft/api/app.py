@@ -26,7 +26,6 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -42,7 +41,7 @@ from racecraft.api import sync_view
 from racecraft.api import telemetry
 from racecraft.api import tyre_sets_view
 from racecraft.api import penalties
-from racecraft.store.db import connect, has_table
+from racecraft.store.db import check_key, connect, has_table
 
 log = logging.getLogger(__name__)
 
@@ -53,15 +52,9 @@ WEB_DIST = (resources.bundle_dir() / "web" / "dist" if resources.frozen()
 # their scripts from a CDN that the content security policy refuses.
 app = FastAPI(title="Racecraft", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
-# The Vite dev server runs on another port during development.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
-# Added last, so it is outermost: every request is checked and every response
-# carries the headers, the CORS preflight and the 404s included. See guard.py.
+# No CORS: the Vite dev server proxies /api and the interface uses relative
+# paths, so every request is same-origin. Every request is checked and every
+# response carries the headers, the 404s included. See guard.py.
 app.add_middleware(guard.Guard)
 
 
@@ -149,8 +142,8 @@ def session_insight(session_key: str,
     risk and the cheapest plans.
 
     The first call for a season fits every race in it and takes about fifteen
-    seconds; later calls are served from that fit. The race being viewed is
-    held out of its own degradation figure.
+    seconds; later calls are served from that fit. Degradation comes from the
+    season's races before this one (a first race: the end of last season).
     """
     if session_key == live_store.SESSION_KEY:
         try:
@@ -292,18 +285,10 @@ def session_standings(session_key: str,
     if session_key == live_store.SESSION_KEY:
         raise HTTPException(status_code=422, detail="open a session from the session list for its standings")
     _safe(session_key)
-    import pandas as pd
-
     from racecraft.model import standings
 
     con = connect()
-    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
-    year, start = int(row[0]), pd.Timestamp(row[1])
-    start = start.tz_localize("UTC") if start.tzinfo is None else start
-    # A second past the start takes in this session and nothing after it on the same weekend.
-    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    year, as_of = _as_of(con, session_key, moment)
     body = standings.standings(con, year, as_of=as_of).as_dict()
     body["moment"] = moment
     return body
@@ -343,17 +328,10 @@ def session_pit_crews(session_key: str,
     if session_key == live_store.SESSION_KEY:
         raise HTTPException(status_code=422, detail="open a session from the session list for the pit crews")
     _safe(session_key)
-    import pandas as pd
-
     from racecraft.model import pit_crews
 
     con = connect()
-    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake")
-    year, start = int(row[0]), pd.Timestamp(row[1])
-    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
-    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
+    year, as_of = _as_of(con, session_key, moment)
     body = pit_crews.ranking(con, year, as_of).as_dict()
     body["moment"] = moment
     body["session_stops"] = pit_crews.session_stops(con, session_key)
@@ -493,10 +471,21 @@ def _load(session_key: str):
         raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
 
 
+def _as_of(con, session_key: str, moment: str):
+    """The session's season and cut-off (`standings.as_of`), or a 404."""
+    from racecraft.model import standings
+
+    try:
+        return standings.as_of(con, session_key, moment)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no session '{session_key}' in the lake") from None
+
+
 def _safe(value: str) -> str:
-    if not value.replace("_", "").isalnum():
-        raise HTTPException(status_code=400, detail=f"bad session code '{value}'")
-    return value
+    try:
+        return check_key(value)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"bad session code '{value}'") from None
 
 
 # The built interface, when there is one. Mounted last so /api wins.

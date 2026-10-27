@@ -694,7 +694,7 @@ racecraft/
 ├── packaging/             PyInstaller spec and MSIX scripts
 ├── scripts/               validation scripts behind the figures in the docs
 ├── docs/                  TECHNICAL.md and the screenshots
-├── legacy/                the two earlier projects Racecraft grew out of
+├── legacy/                write-ups of the two earlier projects (their code is in git history)
 └── data/                  (not in git) lake/, logs/, predictions/, caches
 ```
 

@@ -15,7 +15,6 @@ reloading, and little enough to stay comfortable in memory.
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -28,7 +27,7 @@ from scipy.spatial import cKDTree
 from racecraft import config
 from racecraft.api import penalties as penalties_model
 from racecraft.api import timing
-from racecraft.store.db import connect, partition
+from racecraft.store.db import check_key, connect, partition
 
 log = logging.getLogger(__name__)
 
@@ -95,16 +94,11 @@ class Channel:
         return out
 
 
-# A session key is a partition code the lake wrote, like `2024_01_R`. Every
-# query below puts it straight into SQL, so anything that is not a plain code is
-# refused here rather than reaching DuckDB, which can read and write files.
-_KEY = re.compile(r"[A-Za-z0-9_]+")
-
-
 class SessionData:
     def __init__(self, session_key: str, con=None):
-        if not _KEY.fullmatch(session_key):
-            raise KeyError(session_key)
+        # Every query below puts the key straight into SQL, and DuckDB can read
+        # and write files: anything but a plain code is refused here.
+        check_key(session_key)
         con = con or connect()
         self.session_key = session_key
         try:
@@ -635,21 +629,34 @@ def _drivers_from(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
 # different lake, and handing back the wrong one would be silent and wrong.
 _cache: OrderedDict[tuple[str, str], SessionData] = OrderedDict()
 _lock = threading.Lock()
+# One load per session at a time: opening a session fires info, laps, state and
+# messages together, and each would otherwise load its 800,000 samples itself.
+_loading: dict[tuple[str, str], threading.Event] = {}
 
 
 def load(session_key: str) -> SessionData:
     key = (str(config.LAKE_DIR.resolve()), session_key)
-    with _lock:
-        if key in _cache:
+    while True:
+        with _lock:
+            if key in _cache:
+                _cache.move_to_end(key)
+                return _cache[key]
+            waiting = _loading.get(key)
+            if waiting is None:
+                _loading[key] = threading.Event()
+                break
+        waiting.wait(timeout=300)
+    try:
+        data = SessionData(session_key)      # loaded outside the lock: it takes about a second
+        with _lock:
+            _cache[key] = data
             _cache.move_to_end(key)
-            return _cache[key]
-    data = SessionData(session_key)          # loaded outside the lock: it takes about a second
-    with _lock:
-        _cache[key] = data
-        _cache.move_to_end(key)
-        while len(_cache) > MAX_CACHED_SESSIONS:
-            _cache.popitem(last=False)
-    return data
+            while len(_cache) > MAX_CACHED_SESSIONS:
+                _cache.popitem(last=False)
+        return data
+    finally:
+        with _lock:
+            _loading.pop(key).set()
 
 
 def _smooth_positions(channel: "Channel", times: np.ndarray, bandwidth: float) -> tuple[list, list]:

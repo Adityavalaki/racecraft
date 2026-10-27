@@ -316,3 +316,27 @@ def test_the_page_is_never_cached_so_a_rebuild_is_not_invisible(client, tmp_path
     if response.status_code == 404:
         pytest.skip("interface not built in this checkout; nothing is mounted to serve")
     assert "no-store" in response.headers.get("cache-control", "")
+
+
+def test_requests_arriving_together_load_a_session_once(monkeypatch, tmp_path):
+    """Opening a session fires several requests at once; only one may load it."""
+    import threading
+    import time
+
+    loads = []
+
+    def slow(session_key):
+        loads.append(session_key)
+        time.sleep(0.2)
+        return object()
+
+    monkeypatch.setattr(config, "LAKE_DIR", tmp_path)
+    monkeypatch.setattr(session_store, "SessionData", slow)
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(session_store.load("2024_01_R"))) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    assert loads == ["2024_01_R"]
+    assert len(got) == 4 and all(g is got[0] for g in got)

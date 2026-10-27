@@ -48,6 +48,7 @@ at most once every `RECHECK_S` rather than on every request.
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -93,6 +94,9 @@ class _Lake:
         self.loaded: dict[str, Signature] = {}
         self.generation = -1                  # never synced
         self.checked_at = float("-inf")
+        # Bumped whenever a table is reloaded: part of every model cache's key
+        # (`lake_key`), so an answer fitted on the old files is never served again.
+        self.version = 0
 
 
 _databases: OrderedDict[str, _Lake] = OrderedDict()
@@ -150,25 +154,45 @@ def _sync(database: duckdb.DuckDBPyConnection, lake: Path,
     return out
 
 
+def _current(lake: Path) -> _Lake:
+    """This lake's database, brought in line with its files if due. Call holding `_lock`."""
+    key = str(lake)
+    state = _databases.get(key)
+    if state is None:
+        state = _databases[key] = _Lake()
+    now = time.monotonic()
+    written = lake_store.generation()
+    if written != state.generation or now - state.checked_at >= RECHECK_S:
+        present = {table: _signature(lake / table) for table in TABLES}
+        loaded = _sync(state.database, lake, state.loaded, present)
+        if loaded != state.loaded:
+            state.version += 1
+        state.loaded = loaded
+        state.generation, state.checked_at = written, now
+    _databases.move_to_end(key)
+    while len(_databases) > MAX_LAKES:
+        _, evicted = _databases.popitem(last=False)
+        evicted.database.close()
+    return state
+
+
+def lake_key(lake: Path | None = None) -> tuple[str, int]:
+    """
+    (lake path, version): the key for anything cached from the lake. It changes
+    when the lake's files do, whichever process wrote them, so a cache keyed by
+    it needs no clearing, and a fit that ran across an ingest is stored under
+    the old key, where nobody asks for it again.
+    """
+    lake = (lake or config.LAKE_DIR).resolve()
+    with _lock:
+        return str(lake), _current(lake).version
+
+
 def connect(lake: Path | None = None) -> duckdb.DuckDBPyConnection:
     """A cursor on this lake's database, for one caller in one thread."""
     lake = (lake or config.LAKE_DIR).resolve()
-    key = str(lake)
     with _lock:
-        state = _databases.get(key)
-        if state is None:
-            state = _databases[key] = _Lake()
-        now = time.monotonic()
-        written = lake_store.generation()
-        if written != state.generation or now - state.checked_at >= RECHECK_S:
-            present = {table: _signature(lake / table) for table in TABLES}
-            state.loaded = _sync(state.database, lake, state.loaded, present)
-            state.generation, state.checked_at = written, now
-        _databases.move_to_end(key)
-        while len(_databases) > MAX_LAKES:
-            _, evicted = _databases.popitem(last=False)
-            evicted.database.close()
-        cursor = state.database.cursor()
+        cursor = _current(lake).database.cursor()
     # TIMESTAMPTZ columns otherwise come back in the machine's local zone
     # (IST here), which is correct but easy to misread as UTC. A setting of the
     # cursor, not the database, so it is made on every one.
@@ -186,6 +210,21 @@ def has_table(cursor: duckdb.DuckDBPyConnection, name: str) -> bool:
     return bool(found and found[0])
 
 
+# A lake session key (2024_01_R), a session code (FP1) or the live key. Keys are
+# put straight into SQL text, so this is the one rule for what may reach it:
+# ASCII letters, digits and underscores, nothing else (str.isalnum() would let
+# any script's letters and digits through).
+_KEY = re.compile(r"[A-Za-z0-9_]+")
+_PARTITION = re.compile(r"([0-9]{4})_([0-9]{1,2})_([A-Za-z0-9]+)")
+
+
+def check_key(value: str) -> str:
+    """`value` if it is a safe session key or code; KeyError (a session that is not there) if not."""
+    if not isinstance(value, str) or not _KEY.fullmatch(value):
+        raise KeyError(value)
+    return value
+
+
 def partition(session_key: str) -> str:
     """
     The partition filter for one session, so a telemetry read opens one file.
@@ -193,7 +232,8 @@ def partition(session_key: str) -> str:
     `2024_01_R` is `year = 2024 and round = 1 and session = 'R'`. Anything that
     is not a lake session key gives no filter rather than a wrong one.
     """
-    parts = str(session_key).split("_", 2)
-    if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit() or not parts[2].isalnum():
+    match = _PARTITION.fullmatch(str(session_key))
+    if match is None:
         return ""
-    return f" and year = {int(parts[0])} and round = {int(parts[1])} and session = '{parts[2]}'"
+    year, rnd, code = match.groups()
+    return f" and year = {int(year)} and round = {int(rnd)} and session = '{code}'"

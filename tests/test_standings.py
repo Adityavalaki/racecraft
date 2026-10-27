@@ -132,3 +132,12 @@ def test_a_team_is_one_team_however_the_feed_names_it():
     assert resolved["team_key"].tolist() == ["alpha", "alpha", "alpha", "alpha", "bravo"]
     assert resolved["team_name"].tolist() == ["Alpha"] * 4 + ["Bravo"]
     assert resolved["team_color"].iloc[3] == "111111"
+
+
+def test_before_and_after_a_session_are_its_start_and_a_second_past_it(con):
+    year, before = standings.as_of(con, "2024_02_R", "before")
+    _, after = standings.as_of(con, "2024_02_R", "after")
+    assert year == 2024 and str(before.tz) == "UTC"
+    assert (after - before).total_seconds() == 1
+    with pytest.raises(KeyError):
+        standings.as_of(con, "1999_01_R")

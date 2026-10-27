@@ -540,8 +540,8 @@ SPRINT_SESSIONS = ("SQ", "SS", "S")
 
 
 # Rebuilding a weekend costs a second, and the stock of twenty cars is the same
-# work for all of them. Keyed by lake, so a test on a temporary one cannot see
-# another's weekends. A session in progress is never kept.
+# work for all of them. Keyed by lake and its version, so a test on a temporary
+# one cannot see another's weekends, and a newly ingested session is seen. A session in progress is never kept.
 MAX_CACHED_WEEKENDS = 8
 _weekend_cache: "OrderedDict[tuple, Weekend]" = OrderedDict()
 
@@ -555,9 +555,9 @@ def from_lake(con, year: int, round_number: int, *, live_laps: pd.DataFrame | No
     Whether the weekend is a sprint weekend is read from the sessions stored;
     before the sprint itself exists, pass `sprint` from the schedule.
     """
-    from racecraft import config
+    from racecraft.store.db import lake_key
 
-    key = (str(config.LAKE_DIR.resolve()), int(year), int(round_number), sprint)
+    key = (lake_key(), int(year), int(round_number), sprint)
     if live_laps is None and key in _weekend_cache:
         _weekend_cache.move_to_end(key)
         return _weekend_cache[key]

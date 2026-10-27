@@ -29,7 +29,10 @@ import pandas as pd
 
 from racecraft import config
 from racecraft.ingest import cli
+from racecraft.ingest.fastf1_source import LOCKED
 from racecraft.store import lake
+
+LOCKED_DETAIL = f"not downloaded: {LOCKED}"
 
 log = logging.getLogger("racecraft.sync")
 
@@ -45,7 +48,7 @@ class Item:
     event: str
     name: str                         # FastF1's session name
     # pending, ingesting, written, present, busy (another process is fetching
-    # it right now), failed
+    # it right now), failed, locked (F1's archive wants an F1 TV login)
     state: str = "pending"
     detail: str = ""
 
@@ -65,7 +68,7 @@ class Job:
 
     def as_dict(self) -> dict:
         counts = {state: sum(1 for item in self.items if item.state == state)
-                  for state in ("pending", "ingesting", "written", "present", "busy", "failed")}
+                  for state in ("pending", "ingesting", "written", "present", "busy", "failed", "locked")}
         current = next((item for item in self.items if item.state == "ingesting"), None)
         return {
             "state": self.state,
@@ -121,13 +124,10 @@ def plan(weekends: int = DEFAULT_WEEKENDS, now: datetime | None = None) -> tuple
 class Syncer:
     """One sync at a time, in a background thread, with its progress readable."""
 
-    def __init__(self, on_written=None) -> None:
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._job = Job()
         self._thread: threading.Thread | None = None
-        # Called once after a sync that wrote anything, so whatever has cached
-        # the lake can let go of it. The API uses this to drop its model fits.
-        self._on_written = on_written
 
     def status(self) -> dict:
         with self._lock:
@@ -167,8 +167,15 @@ class Syncer:
             log.info("sync: %d weekends, %d sessions, %d to fetch", len(names), len(items),
                      sum(1 for item in items if item.state != "present"))
 
+            locked = False
             for item in items:
                 if item.state == "present":
+                    continue
+                if locked:
+                    # The archive's sign-in wall is the same for every session: asking again
+                    # only costs requests. Marked without trying.
+                    with self._lock:
+                        item.state, item.detail = "locked", LOCKED_DETAIL
                     continue
                 with self._lock:
                     item.state = "ingesting"
@@ -188,12 +195,14 @@ class Syncer:
                     # until the lake says so — reporting a session that is not
                     # there as present is what hid Baku FP2.
                     item.state = {"written": "written", "skipped": "present",
-                                  "busy": "busy"}.get(result, "failed")
+                                  "busy": "busy", "locked": "locked"}.get(result, "failed")
                     item.detail = detail or {
                         "busy": "another process is fetching it",
                         "failed": "ingest failed",
+                        "locked": LOCKED_DETAIL,
                     }.get(item.state, "")
                 wrote += item.state == "written"
+                locked = locked or item.state == "locked"
 
             # Whoever was fetching a busy session may have finished while this
             # pass did the rest. Look once more, and trust only the lake.
@@ -216,8 +225,3 @@ class Syncer:
         finally:
             with self._lock:
                 self._job.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            if wrote and self._on_written is not None:
-                try:
-                    self._on_written()
-                except Exception:                   # a stale cache is not worth a crash
-                    log.exception("sync: could not refresh cached models")

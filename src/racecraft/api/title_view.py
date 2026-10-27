@@ -11,11 +11,8 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 
-import pandas as pd
-
-from racecraft import config
-from racecraft.model import title
-from racecraft.store.db import connect
+from racecraft.model import standings, title
+from racecraft.store.db import connect, lake_key
 
 MAX_ANSWERS = 8
 
@@ -31,13 +28,8 @@ _lock = threading.Lock()
 def for_session(session_key: str, moment: str = "before") -> dict:
     """The odds from the standings when `session_key` started (`before`) or once it was over (`after`)."""
     con = connect()
-    row = con.execute("select year, date_utc from sessions where session_key = ?", [session_key]).fetchone()
-    if row is None:
-        raise KeyError(session_key)
-    year, start = int(row[0]), pd.Timestamp(row[1])
-    start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
-    as_of = start if moment == "before" else start + pd.Timedelta(seconds=1)
-    key = (str(config.LAKE_DIR.resolve()), year, as_of.isoformat())
+    year, as_of = standings.as_of(con, session_key, moment)      # KeyError if not in the lake
+    key = (lake_key(), year, as_of.isoformat())
     with _lock:
         if key in _answers:
             _answers.move_to_end(key)

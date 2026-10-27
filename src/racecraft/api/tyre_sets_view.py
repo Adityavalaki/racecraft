@@ -18,7 +18,7 @@ import threading
 from collections import OrderedDict
 
 from racecraft.model import compounds, tyre_sets
-from racecraft.store.db import connect
+from racecraft.store.db import check_key, connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -30,8 +30,10 @@ SESSION_CODES = {
 }
 
 MAX_CACHED = 24
-_cache: OrderedDict[str, dict] = OrderedDict()
-_weekends: OrderedDict[tuple[int, int], tyre_sets.Weekend] = OrderedDict()
+# Keyed by the lake's version as well as the session: a later session of the
+# weekend, once ingested, changes the sets handed back. The weekends themselves
+# are kept by `tyre_sets.from_lake`.
+_cache: OrderedDict[tuple, dict] = OrderedDict()
 _lock = threading.Lock()
 
 
@@ -43,16 +45,17 @@ def for_session(session_key: str, live=None, live_status: dict | None = None) ->
     """
     Every car's sets for one session. Kept once built, except live, which grows.
     """
+    cache_key = (lake_key(), session_key)
     if live is None:
         with _lock:
-            if session_key in _cache:
-                _cache.move_to_end(session_key)
-                return _cache[session_key]
+            if cache_key in _cache:
+                _cache.move_to_end(cache_key)
+                return _cache[cache_key]
     weekend, code, key = _weekend(session_key, live, live_status)
     out = describe(weekend, code, key)
     if live is None:
         with _lock:
-            _cache[session_key] = out
+            _cache[cache_key] = out
             while len(_cache) > MAX_CACHED:
                 _cache.popitem(last=False)
     return out
@@ -77,18 +80,11 @@ def _weekend(session_key: str, live, live_status: dict | None):
         return weekend, code, session_key
 
     rows = con.sql(f"""select year, round, "session" from sessions
-                       where session_key = '{_safe(session_key)}'""").df()
+                       where session_key = '{check_key(session_key)}'""").df()
     if rows.empty:
         raise KeyError(session_key)
     year, rnd, code = int(rows.iloc[0]["year"]), int(rows.iloc[0]["round"]), str(rows.iloc[0]["session"])
-    with _lock:
-        weekend = _weekends.get((year, rnd))
-    if weekend is None:
-        weekend = tyre_sets.from_lake(con, year, rnd)
-        with _lock:
-            _weekends[(year, rnd)] = weekend
-            while len(_weekends) > MAX_CACHED:
-                _weekends.popitem(last=False)
+    weekend = tyre_sets.from_lake(con, year, rnd)
     if code not in weekend.sessions:
         raise NoSets(f"no laps on dry tyres in {session_key}")
     return weekend, code, session_key
@@ -211,9 +207,3 @@ def _scheduled_sprint(year: int, rnd: int) -> bool | None:
     except Exception:                                   # noqa: BLE001 - offline is normal
         log.info("no schedule for %s round %s; sprint format read from the lake", year, rnd)
         return None
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").isalnum():
-        raise KeyError(value)
-    return value

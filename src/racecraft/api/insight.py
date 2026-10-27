@@ -36,7 +36,6 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from racecraft import config
 from racecraft.model import circuit as circuit_model
 from racecraft.model import compounds as compounds_model
 from racecraft.model import race_inputs as race_inputs_model
@@ -44,7 +43,7 @@ from racecraft.model import pace as pace_model
 from racecraft.model import strategy as strategy_model
 from racecraft.api import penalties
 from racecraft.api import tyre_sets_view
-from racecraft.store.db import connect
+from racecraft.store.db import check_key, connect, lake_key
 
 log = logging.getLogger(__name__)
 
@@ -74,9 +73,16 @@ class SeasonFits:
     names: dict[str, str]
     fuel_s_per_lap: float
 
-    def combined(self, exclude: str | None = None) -> tuple[dict[str, float], dict[str, float], list[str]]:
-        """Degradation and compound offsets from every race but `exclude`."""
-        used = [key for key in self.by_session if key != exclude]
+    def combined(self, before_round: int | None = None,
+                 latest: int | None = None) -> tuple[dict[str, float], dict[str, float], list[str]]:
+        """
+        Degradation and compound offsets from the races before `before_round`
+        (every race, if None), only the `latest` of them if given.
+        """
+        # Keys are lake keys, YYYY_RR_R, and by_session is filled in round order.
+        used = [key for key in self.by_session
+                if before_round is None or int(key.split("_")[1]) < before_round]
+        used = used[-latest:] if latest else used
         models = [self.by_session[key] for key in used]
         if not models:
             return {}, {}, []
@@ -115,7 +121,7 @@ def _for_session(session_key: str, scale: float) -> dict:
     con = connect()
     meta = con.sql(
         "select session_key, year, round, session, event_name, location, total_laps, date_utc "
-        f"from sessions where session_key = '{_safe(session_key)}'"
+        f"from sessions where session_key = '{check_key(session_key)}'"
     ).df()
     if meta.empty:
         raise KeyError(session_key)
@@ -133,8 +139,14 @@ def _for_session(session_key: str, scale: float) -> dict:
     # The scheduled distance was known in advance; the median of past races is a fallback.
     total_laps = _int_or_none(row["total_laps"]) or constants["laps"].get(name)
 
+    # Only races before this one, as every other model here: a later race is
+    # hindsight. The season's first race borrows the end of the season before,
+    # the same fallback race_inputs uses for the simulator.
     fits = _season_fits(year)
-    measured, offsets, fitted_on = fits.combined(exclude=session_key)
+    measured, offsets, fitted_on = fits.combined(before_round=int(row["round"]))
+    if not fitted_on:
+        measured, offsets, fitted_on = _season_fits(year - 1).combined(latest=race_inputs_model.LADDER_RACES)
+        fitted_on = [f"{name} {year - 1}" for name in fitted_on]
     is_race = str(row["session"]) == "R"
 
     out: dict = {
@@ -165,7 +177,7 @@ def _for_session(session_key: str, scale: float) -> dict:
     # is not a strategy. The modelled line below still holds, because it is
     # fitted on races and belongs to the season rather than to this session; the
     # observed side of it does not, and is withheld rather than drawn.
-    laps = con.sql(f"select * from laps where session_key = '{_safe(session_key)}'").df()
+    laps = con.sql(f"select * from laps where session_key = '{check_key(session_key)}'").df()
     out["degradation_curve"] = _degradation_curve(laps, measured, scale, observed=is_race)
     out["stints"] = _observed_stints(laps) if is_race else []
     if not is_race:
@@ -479,7 +491,7 @@ def _stop_laps(plan: strategy_model.Plan) -> list[int]:
 def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
                   circuit: str = "this circuit", held_out: bool = False) -> str:
     if not measured:
-        return "no fittable races in this season to measure degradation from"
+        return "no fittable race before this one to measure degradation from"
     if loss is None:
         if held_out:
             return f"no earlier race at {circuit} to measure its pit lane from"
@@ -489,18 +501,23 @@ def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
 
 # ---------------------------------------------------------------- caches
 
-_tables_cache: dict[str, dict] = {}
+# Every key starts with `_lake()`, the lake's path and version: a new ingest
+# changes it, and nothing fitted on the old files is served again.
+_tables_cache: dict[tuple[str, int], dict] = {}
 _circuit_cache: OrderedDict[tuple, dict] = OrderedDict()
-_season_cache: OrderedDict[tuple[str, int], SeasonFits] = OrderedDict()
+_season_cache: OrderedDict[tuple, SeasonFits] = OrderedDict()
 _lock = threading.Lock()
+# One season fit at a time per key: the main window, a pop-out and the pit
+# windows ask together when a race opens, and each fit takes about 15 s.
+_computing: dict[tuple, threading.Event] = {}
 
 
-def _lake() -> str:
-    return str(config.LAKE_DIR.resolve())
+def _lake() -> tuple[str, int]:
+    return lake_key()
 
 
 def _race_tables() -> dict:
-    """Every race's laps, sessions and track status, read once per lake."""
+    """Every race's laps, sessions and track status, read once per lake version."""
     key = _lake()
     with _lock:
         if key in _tables_cache:
@@ -515,6 +532,7 @@ def _race_tables() -> dict:
         "race_control": _race_control(con),
     }
     with _lock:
+        _tables_cache.clear()                  # one slot: every race's laps, never held twice
         _tables_cache[key] = value
     return value
 
@@ -588,11 +606,31 @@ def _circuit_constants(before: pd.Timestamp | None = None, year: int | None = No
 def _season_fits(year: int) -> SeasonFits:
     """Every race in a season, fitted separately so any one can be left out."""
     key = (_lake(), year)
-    with _lock:
-        if key in _season_cache:
-            _season_cache.move_to_end(key)
-            return _season_cache[key]
+    while True:
+        with _lock:
+            if key in _season_cache:
+                _season_cache.move_to_end(key)
+                return _season_cache[key]
+            waiting = _computing.get(key)
+            if waiting is None:
+                _computing[key] = threading.Event()
+                break
+        waiting.wait(timeout=300)
 
+    try:
+        fits = _fit_season(year)
+        with _lock:
+            _season_cache[key] = fits
+            _season_cache.move_to_end(key)
+            while len(_season_cache) > MAX_CACHED_SEASONS:
+                _season_cache.popitem(last=False)
+        return fits
+    finally:
+        with _lock:
+            _computing.pop(key).set()
+
+
+def _fit_season(year: int) -> SeasonFits:
     con = connect()
     races = con.sql(f"""select session_key, total_laps, event_name from sessions
                         where year = {int(year)} and session = 'R' order by round""").df()
@@ -624,13 +662,7 @@ def _season_fits(year: int) -> SeasonFits:
     if not np.isfinite(fuel):
         fuel = 0.0
 
-    fits = SeasonFits(year=year, by_session=by_session, names=names, fuel_s_per_lap=fuel)
-    with _lock:
-        _season_cache[key] = fits
-        _season_cache.move_to_end(key)
-        while len(_season_cache) > MAX_CACHED_SEASONS:
-            _season_cache.popitem(last=False)
-    return fits
+    return SeasonFits(year=year, by_session=by_session, names=names, fuel_s_per_lap=fuel)
 
 
 def circuits() -> list[dict]:
@@ -645,12 +677,6 @@ def circuits() -> list[dict]:
             "safety_car": constants["safety_car"].get(name),
         })
     return out
-
-
-def _safe(value: str) -> str:
-    if not value.replace("_", "").replace("-", "").isalnum():
-        raise KeyError(value)
-    return value
 
 
 def _int_or_none(value) -> int | None:
