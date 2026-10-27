@@ -1,5 +1,8 @@
 # ROLLBACK
-Last known good commit: 177e8e5 (2026-10-20), on `main`, before the audit fixes.
+Last known good commit: fd0513a (GitHub `main` before 2026-10-27's merge; PR #4). Its web
+app did not build (`App.tsx`, see the merge commit), so for a working app go back to
+177e8e5 (2026-10-20). The 2026-10-27 merge brings in `audit-fixes` and `free-plan`.
+To undo it: `git revert -m 1 <merge sha>` (keeps history; never force-push `main`).
 
 ## Undoing a change
 - Code: the audit fixes are on branch `audit-fixes`, one commit per finding. `git revert <sha>`

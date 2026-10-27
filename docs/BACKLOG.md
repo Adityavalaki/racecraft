@@ -56,8 +56,14 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 
 ## 2. Waiting on Aditya: review and housekeeping
 
-- [ ] **Review and merge the `audit-fixes` branch** into `main` (8 audit fixes, D-001 to D-008,
-      BUG-001 to BUG-003). Not merged or pushed. Then rebuild the MSIX.
+- [x] **Merge `audit-fixes` and `free-plan` into `main` and push** (2026-10-27, at Aditya's request).
+      Fixed on the way: PR #4's merge had left old-layout JSX in `web/src/App.tsx`, so `main`'s web
+      app did not build; restored to the refactored version (177e8e5's).
+- [ ] **PR #4's split race-control panels** (Stewards and Track as two panels) exist only as
+      components (`panels/Stewards.tsx`, `panels/TrackLog.tsx`): the refactored replay screen still
+      shows one `RaceControl` panel. Wire them into `ReplayScreen` if the split is still wanted. *waiting on Aditya*
+- [x] **Review and merge the `audit-fixes` branch** into `main`: merged with `free-plan`, 2026-10-27.
+- [ ] **Rebuild the MSIX** (and `dist\share\Racecraft.zip`) from the new `main`. *ready*
 - [ ] **Confirm the lane** in `HANDOVER.md`: Lane B (a friend uses the app) is recorded but
       unconfirmed.
 - [ ] **Clear the unverified items in `ASSUMPTIONS.md`** (1, 2, 5, 6, 7 are open).
