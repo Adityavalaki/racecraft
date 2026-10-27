@@ -48,7 +48,7 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 - [x] **Step 5: show sources in the app, with credits** in the README. Done: see `git log`
   (D-013). `sources` table written by ingest; "Data: ..." beside the session picker; credits in
   Settings and the README.
-- [ ] **Step 6 (optional extras)**: Aditya chose, 2026-10-27: radio clips on the replay (streamed),
+- [x] **Step 6 (optional extras)**: Aditya chose, 2026-10-27: radio clips on the replay (streamed),
   the weekend forecast on screen (no model change), f1db imported then title odds backtested.
   - [x] Team radio. Done: see `git log` (D-014). `racecraft-ingest --radio` run 2026-10-27: 408
     sessions gained their radio (BUG-005 fixed on the way). Only 2023 Las Vegas FP2 found no match:
@@ -152,16 +152,16 @@ Ranked by how accurate they can be with our data.
 
 ## 5. More data sources
 
-- [ ] **Jolpica-F1 history** to re-test the title-odds and race-prediction models on decades of
-      seasons (results and standings from 1950, lap times from 1996, pit stops from 2011).
-      Biggest accuracy gain available: title odds were checked on three seasons only.
+- [x] **History to re-test the title odds:** done with f1db instead (D-016, D-017): 76 seasons.
+- [ ] **Jolpica lap times (1996 on)** to re-test the *race prediction* on decades of seasons. *idea*
+      Days of fetching at 500 requests an hour; no tyre data before 2018.
       Free, about 4 requests a second and 500 an hour.
 - [ ] **DHL Fastest Pit Stop Award times** as an independent check of the pit-crew ranking
       (stationary times; a full stop-by-stop list was not confirmed).
-- [ ] **OpenF1** (free history from 2023, live is paid). A new external host: ask before
-      calling it, and check it still publishes since F1's archive change.
-- [ ] **Open-Meteo** rain forecasts for race predictions; **Pirelli** tyre allocations and
-      predicted strategies. Neither checked yet.
+- [x] **OpenF1:** in use since D-010 for every session F1's archive refuses.
+- [x] **Open-Meteo:** the forecast is shown beside the prediction (D-015); not fed into it.
+- [ ] **Rain in the race prediction**, from that forecast. *idea* Needs a refit and a replay.
+- [ ] **Pirelli** tyre allocations and predicted strategies. *idea* Not checked yet.
 
 ## 6. LinkedIn and portfolio
 
