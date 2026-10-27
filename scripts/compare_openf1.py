@@ -4,9 +4,9 @@ Does a session built from OpenF1 match the one FastF1 built?
 `ingest/openf1_source.py` stands in for FastF1 when F1's archive wants an F1 TV
 login (D-009). Models filter on fields the two sources fill differently, so each
 rule in it was checked against a session the lake already has from FastF1
-(Singapore 2026, D-010). This builds that session again from OpenF1, without
-telemetry, and prints every lap and result field where the two disagree. The
-lake is only read.
+(Singapore 2026, D-010). This builds that session again as ingest would, from
+OpenF1 without telemetry and with Jolpica's results over it (D-011), and prints
+every lap and result field where the two disagree. The lake is only read.
 
     python scripts/compare_openf1.py 2026_17_R
 """
@@ -17,7 +17,7 @@ import sys
 
 import pandas as pd
 
-from racecraft.ingest import openf1_source, quality
+from racecraft.ingest import jolpica_source, openf1_source, quality
 from racecraft.store.db import connect
 
 NAMES = {"FP1": "Practice 1", "FP2": "Practice 2", "FP3": "Practice 3", "SQ": "Sprint Qualifying",
@@ -40,6 +40,10 @@ def same(a: pd.Series, b: pd.Series) -> pd.Series:
 def main(key: str) -> None:
     season, rnd, ident = key.split("_")
     new = openf1_source.extract(int(season), int(rnd), ident, NAMES[ident], key, telemetry=False)
+    # What ingest writes: Jolpica's official results over OpenF1's (D-011).
+    new["results"], differ = jolpica_source.overlay(new["results"], jolpica_source.official(
+        int(season), int(rnd), ident), ident)
+    print("OpenF1 and Jolpica place differently:", differ)
     con = connect()
     old = {t: con.execute(f"select * from {t} where session_key = ?", [key]).df() for t in new}
     if old["sessions"].empty:

@@ -28,7 +28,7 @@ import pandas as pd
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config, locking
-from racecraft.ingest import api_budget, fastf1_source, openf1_source, quality
+from racecraft.ingest import api_budget, fastf1_source, jolpica_source, openf1_source, quality
 from racecraft.store import lake
 
 log = logging.getLogger("racecraft.ingest")
@@ -225,6 +225,11 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
         except openf1_source.NotAvailable as missing:
             log.warning("%s: %s", key, missing)
             return "locked"
+        # The official classification, points and grid over OpenF1's, as FastF1 had them (D-011).
+        tables["results"], differ = jolpica_source.overlay(
+            tables["results"], jolpica_source.official(season, rnd, ident), ident)
+        if differ:
+            log.warning("%s: OpenF1 and Jolpica place cars %s differently; Jolpica's order kept", key, differ)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
     findings = quality.check_session(tables)

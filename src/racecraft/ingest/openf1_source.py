@@ -212,7 +212,10 @@ def _results(rows: list[dict], grid: list[dict], drivers: pd.DataFrame, key: str
         gap = r.get("gap_to_leader")
         out.append({
             "session_key": key, "driver_number": n, "abbreviation": d.get("name_acronym"),
-            "full_name": d.get("full_name"), "team_name": d.get("team_name"), "team_id": None,
+            # "Lando Norris", as the lake has it; OpenF1's full_name is "Lando NORRIS".
+            "full_name": f"{d['first_name']} {d['last_name']}" if pd.notna(d.get("first_name"))
+            and pd.notna(d.get("last_name")) else d.get("full_name"),
+            "team_name": d.get("team_name"), "team_id": None,
             "team_color": d.get("team_colour"), "grid_position": starts.get(n),
             "position": None if practice else place, "classified_position": code, "status": status,
             "points": r.get("points"), "laps": r.get("number_of_laps") if race else None,

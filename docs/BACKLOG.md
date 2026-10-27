@@ -31,9 +31,11 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 - [ ] **Refresh the real lake** with the 2026 US GP weekend (Refresh data, or
   `racecraft-ingest --season 2026 --rounds 18`). *waiting on Aditya* Not run: it writes to the lake.
 - [ ] **Known OpenF1 gaps** (D-010), for steps 3 and 4 to fill: practice tyre age restarts on a
-  reused set; lapped finishers have no gap time; sprint retirees' order unconfirmed.
-- [ ] **Step 3: the Jolpica adapter.** *ready* Official results and points; first cross-check
-  (finishing order). 500 requests an hour.
+  reused set. (Lapped gaps and the sprint retirees' order: fixed by step 3.)
+- [x] **Step 3: the Jolpica adapter.** Done: see `git log` (D-011). `ingest/jolpica_source.py`
+  puts the official results over OpenF1's and logs cars the two place differently. Checked on
+  Singapore 2026 (race and qualifying now match FastF1's results exactly) and through the real
+  CLI on the 2026 US GP (scratch lake).
 - [ ] **Step 4: the TracingInsights adapter.** *ready* Backup for every table, and corner
   positions for new circuits. GitHub archive, Apache-2.0, one event folder at a time.
 - [ ] **Step 5: show sources in the app, with credits** in the README. *ready*
@@ -53,9 +55,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 - [ ] **Confirm the lane** in `HANDOVER.md`: Lane B (a friend uses the app) is recorded but
       unconfirmed.
 - [ ] **Clear the unverified items in `ASSUMPTIONS.md`** (1, 2, 5, 6, 7 are open).
-- [ ] **Free space on drive C:** download caches from coding tools take about 22 GB
-      (uv 14.4 GB, npm 5 GB, pip 3.2 GB). Offered: `uv cache clean`, `npm cache clean --force`,
-      `pip cache purge`. Not Racecraft's; Aditya to decide.
+- [x] **Free space on drive C:** done 2026-10-27 at Aditya's request: npm cache 5 GB -> 0.95 GB,
+      uv 16.6 GB -> 3.1 GB (`--force`; the rest is claude-mem's running memory server, locked),
+      pip already empty. C: free 14.1 -> 16.4 GB.
 - [ ] **Old open question:** whether to revert commits `71b44b8` or `22086a2` (pushed without
       being asked, early on). No answer given; probably close as "keep".
 - [ ] **Missing docs for Lane B:** `ARCHITECTURE.md`, `CONSTRAINTS.md` and `docs/defense/` do

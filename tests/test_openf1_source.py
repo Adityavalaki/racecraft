@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from racecraft import config
-from racecraft.ingest import cli, fastf1_source, openf1_source, quality
+from racecraft.ingest import cli, fastf1_source, jolpica_source, openf1_source, quality
 from racecraft.store import lake
 
 START = "2026-10-25T19:00:00+00:00"
@@ -33,7 +33,8 @@ ANSWERS = {
                  {"session_key": 9998, "meeting_key": 1, "session_type": "Qualifying",
                   "date_start": "2026-10-24T21:00:00+00:00", "date_end": at(-80000)}],
     "drivers": [{"driver_number": 1, "name_acronym": "VER", "full_name": "Max VERSTAPPEN",
-                 "team_name": "Red Bull Racing", "team_colour": "3671C6"},
+                 "first_name": "Max", "last_name": "Verstappen", "team_name": "Red Bull Racing",
+                 "team_colour": "3671C6"},
                 {"driver_number": 44, "name_acronym": "HAM", "full_name": "Lewis HAMILTON",
                  "team_name": "Ferrari", "team_colour": "E8002D"}],
     "laps": [lap(1, 1, 0, 100.0), lap(1, 2, 100, 90.0), lap(1, 3, 190, 95.0), lap(1, 4, 285, 90.0),
@@ -156,6 +157,7 @@ def test_stray_samples_are_dropped(race):
 def test_results_carry_names_grid_and_classification(race):
     res = race["results"].set_index("driver_number")
     assert res.loc[1, "abbreviation"] == "VER" and res.loc[1, "grid_position"] == 2
+    assert res.loc[1, "full_name"] == "Max Verstappen"             # the lake's form, not "Max VERSTAPPEN"
     assert res.loc[44, "classified_position"] == "2" and res.loc[44, "status"] == "Finished"
     assert res.loc[1, "points"] == 25.0
 
@@ -276,10 +278,16 @@ def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
         raise fastf1_source.ArchiveLocked(fastf1_source.LOCKED)
 
     written = {}
+    openf1 = pd.DataFrame({"driver_number": [1], "position": [1.0], "points": [None]})
+    official = pd.DataFrame({"number": [1], "position": [1], "positionText": ["1"], "grid": [2], "laps": [56],
+                             "status": ["Finished"], "points": [25.0], "totalRaceTime": [pd.Timedelta(seconds=5716.65)],
+                             "constructorId": ["red_bull"], "givenName": ["Max"], "familyName": ["Verstappen"]})
     monkeypatch.setattr(fastf1_source, "load_session", locked)
-    monkeypatch.setattr(openf1_source, "extract", lambda *a, **k: {"laps": "from openf1"})
+    monkeypatch.setattr(openf1_source, "extract", lambda *a, **k: {"laps": "from openf1", "results": openf1})
+    monkeypatch.setattr(jolpica_source, "official", lambda *a: official)
     monkeypatch.setattr(quality, "check_session", lambda tables: [])
     monkeypatch.setattr(lake, "write_session", lambda tables, *a: written.update(tables) or {})
     assert cli._ingest_locked(2026, 18, "R", "Race", "2026_18_R",
                               telemetry=False, force=False, prune=True) == "written"
-    assert written == {"laps": "from openf1"}
+    assert written["laps"] == "from openf1"
+    assert written["results"].loc[0, "points"] == 25.0 and written["results"].loc[0, "team_id"] == "red_bull"

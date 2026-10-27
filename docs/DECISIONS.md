@@ -141,3 +141,21 @@ leaves blank (the models' outlier filters drop them); the sprint's unplaced reti
 ordered differently (Jolpica, step 3, has the official order).
 Revisit if: an OpenF1 session fails the quality checks, or another weekend's comparison
 disagrees: `python scripts/compare_openf1.py <session_key>` prints every difference.
+
+## D-011: Official results from Jolpica over OpenF1's
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 3. FastF1 always took a session's classification, points, grid, team ids
+and Q1-Q3 times from Jolpica (Ergast's successor). An OpenF1 session (D-010) lacks team ids
+and lapped finishers' gaps, and orders unclassified retirees by laps run, a guess.
+Options:   1) Our own HTTP client for api.jolpi.ca.  2) FastF1's Ergast client, already
+installed, which is what FastF1 itself used.  3) Leave OpenF1's results.
+Chosen: 2. `ingest/jolpica_source.py` fetches a race, sprint or qualifying result (one
+request) and lays its official fields over OpenF1's, car by car; cars it does not list keep
+OpenF1's. Cars the two place differently are logged: the finishing-order cross-check.
+Why: No new dependency or client; the results table then matches FastF1's field for field
+(Singapore 2026 race and qualifying: no differences left; the sprint's retirees now in the
+official order, where FastF1's own copy had them wrong).
+Trade-off: Jolpica publishes some hours after a session; ingested before that, a session keeps
+OpenF1's results until re-ingested with `--force`. Practice and sprint qualifying have no
+Jolpica results, so their team ids stay empty (standings fall back to team names).
+Revisit if: Jolpica's format or statuses change, or FastF1 drops its Ergast client.
