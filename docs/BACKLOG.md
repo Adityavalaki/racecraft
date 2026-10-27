@@ -72,9 +72,8 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 - [x] **Merge `audit-fixes` and `free-plan` into `main` and push** (2026-10-27, at Aditya's request).
       Fixed on the way: PR #4's merge had left old-layout JSX in `web/src/App.tsx`, so `main`'s web
       app did not build; restored to the refactored version (177e8e5's).
-- [ ] **PR #4's split race-control panels** (Stewards and Track as two panels) exist only as
-      components (`panels/Stewards.tsx`, `panels/TrackLog.tsx`): the refactored replay screen still
-      shows one `RaceControl` panel. Wire them into `ReplayScreen` if the split is still wanted. *waiting on Aditya*
+- [x] **PR #4's split race-control panels:** dropped, 2026-10-27. Aditya wants every message in the
+      one `RaceControl` panel, as the replay shows it now.
 - [x] **Review and merge the `audit-fixes` branch** into `main`: merged with `free-plan`, 2026-10-27.
 - [ ] **Rebuild the MSIX** from the new `main`, for Aditya's own use. `dist\Racecraft\Racecraft.exe`
       built 2026-10-27 (version 0.3.0.0 in the manifest); packing and signing need Aditya: the signing
