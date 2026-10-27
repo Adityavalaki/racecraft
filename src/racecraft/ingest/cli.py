@@ -238,8 +238,10 @@ def backfill_radio(seasons: list[int]) -> int:
     con = connect()
     have = set(con.execute("select distinct session_key from team_radio").df()["session_key"]) \
         if has_table(con, "team_radio") else set()
-    known = con.execute("select * from sources").df() if has_table(con, "sources") else pd.DataFrame(
-        columns=["session_key", "table_name", "source", "fetched_at"])
+    # Named, not `*`: the lake's tables also carry their partition columns (year, round, session).
+    columns = ["session_key", "table_name", "source", "fetched_at"]
+    known = con.execute(f"select {', '.join(columns)} from sources").df() if has_table(con, "sources") \
+        else pd.DataFrame(columns=columns)
     todo = con.execute(f"""select session_key, date_utc, t0_utc, fastf1_version from sessions
                            where year in ({', '.join(str(int(s)) for s in seasons)}) order by date_utc""").df()
     written, year_sessions = 0, {}

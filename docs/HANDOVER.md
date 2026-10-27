@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-27 (late) — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: `sources-and-extras` merged into `main` and pushed (a174c46). Lake: 2026 US GP re-ingested (`--force`, 5 sessions); team radio backfilled into 408 sessions after fixing BUG-005. App frozen into `dist\Racecraft` (manifest 0.3.0.0).
+- In progress: the MSIX: Aditya packs, signs and installs it (signing key is off-limits to the assistant). This build is for Aditya only, not the friend.
+- Broken or risky: the open desktop app runs the old code until restarted; 2023 Las Vegas FP2 has no radio (ran hours late).
+- Next: restart the app and look at the US GP replay (radio, sources line) and a prediction (forecast); decide on PR #4's split panels.
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-27 (evening) — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: merged `audit-fixes` + `free-plan` into `main` and pushed (41a03be; fixed PR #4's broken App.tsx). On branch `sources-and-extras`: step 5 sources in the app (D-013); step 6 team radio (D-014), Open-Meteo forecast (D-015), f1db history (D-016), results-only title model + backtest (D-017).
 - In progress: nothing. Branch not merged or pushed. `data/history/f1db` fetched (5 MB); the lake was not written.

@@ -28,8 +28,8 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   Singapore 2026 (race, qualifying, FP1, sprint) with `scripts/compare_openf1.py`; the 2026
   US GP race fetched with telemetry into a scratch lake (209 s, no quality findings).
   The "merge step" is not needed yet: one source per session. It comes with step 3 or 4.
-- [ ] **Refresh the real lake** with the 2026 US GP weekend (Refresh data, or
-  `racecraft-ingest --season 2026 --rounds 18`). *waiting on Aditya* Not run: it writes to the lake.
+- [x] **Refresh the real lake** with the 2026 US GP weekend: done 2026-10-27 at Aditya's request,
+  `--force`, all five sessions from OpenF1 with Jolpica's results, TracingInsights' tyres and radio.
 - [x] **Known OpenF1 gaps** (D-010): lapped gaps and the sprint retirees' order fixed by step 3,
   practice tyre age by step 4 (once TracingInsights has published the session).
 - [ ] **Re-ingest recent sessions with `--force` about a day later**, so they pick up
@@ -49,8 +49,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   Settings and the README.
 - [ ] **Step 6 (optional extras)**: Aditya chose, 2026-10-27: radio clips on the replay (streamed),
   the weekend forecast on screen (no model change), f1db imported then title odds backtested.
-  - [x] Team radio. Done: see `git log` (D-014). To fill older sessions: `racecraft-ingest --radio`
-    (about 430 requests, ~15 min, writes the lake). *waiting on Aditya to run it*
+  - [x] Team radio. Done: see `git log` (D-014). `racecraft-ingest --radio` run 2026-10-27: 408
+    sessions gained their radio (BUG-005 fixed on the way). Only 2023 Las Vegas FP2 found no match:
+    it ran hours late, beyond the two-hour window for matching a session's start.
   - [x] Open-Meteo forecast on screen. Done: see `git log` (D-015).
   - [x] f1db history import. Done: see `git log` (D-016).
   - [x] Title-odds backtest on f1db. Done: see `git log` (D-017, TECHNICAL "The same test on every
@@ -62,8 +63,8 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   F1's live timing stream still works without a login. The desktop app could record each
   session while it runs (laps, tyres, race control; no telemetry or GPS positions).
   Needs the app to be open during the session.
-- [ ] **Re-share the app with the friend** once the fix lands: their copy has the same problem.
-  Rebuild `dist\share\Racecraft.zip` (and the data zip if it should include new races).
+- [ ] **Re-share the app with the friend.** Not now: on 2026-10-27 Aditya chose to keep this build
+  for their own use. The friend's copy still cannot fetch new sessions.
 
 ## 2. Waiting on Aditya: review and housekeeping
 
@@ -74,7 +75,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
       components (`panels/Stewards.tsx`, `panels/TrackLog.tsx`): the refactored replay screen still
       shows one `RaceControl` panel. Wire them into `ReplayScreen` if the split is still wanted. *waiting on Aditya*
 - [x] **Review and merge the `audit-fixes` branch** into `main`: merged with `free-plan`, 2026-10-27.
-- [ ] **Rebuild the MSIX** (and `dist\share\Racecraft.zip`) from the new `main`. *ready*
+- [ ] **Rebuild the MSIX** from the new `main`, for Aditya's own use. `dist\Racecraft\Racecraft.exe`
+      built 2026-10-27 (version 0.3.0.0 in the manifest); packing and signing need Aditya: the signing
+      key is off-limits to the assistant. *waiting on Aditya*
 - [ ] **Confirm the lane** in `HANDOVER.md`: Lane B (a friend uses the app) is recorded but
       unconfirmed.
 - [ ] **Clear the unverified items in `ASSUMPTIONS.md`** (1, 2, 5, 6, 7 are open).

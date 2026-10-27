@@ -17,27 +17,40 @@ T0 = START - pd.Timedelta(minutes=52)                    # FastF1 puts t0 a litt
 def test_a_fastf1_session_gains_its_radio_and_keeps_its_source(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "LAKE_DIR", tmp_path / "lake")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
-    session = pd.DataFrame([{n: None for n in TABLES["sessions"].names}]).assign(
-        session_key="2026_17_R", session_name="Race", date_utc=START, t0_utc=T0, fastf1_version="3.8.3")
-    lake.write_session({"sessions": session}, 2026, 17, "R")
+    blank = pd.DataFrame([{n: None for n in TABLES["sessions"].names}])
+    lake.write_session({"sessions": blank.assign(session_key="2026_17_R", session_name="Race", date_utc=START,
+                                                 t0_utc=T0, fastf1_version="3.8.3")}, 2026, 17, "R")
+    # An OpenF1 session from before radio was stored: it already has source rows, which
+    # the lake reads back with its partition columns (year, round, session) beside them.
+    later = START + pd.Timedelta(days=14)
+    lake.write_session({
+        "sessions": blank.assign(session_key="2026_18_R", session_name="Race", date_utc=later,
+                                 t0_utc=later - pd.Timedelta(hours=1), fastf1_version="openf1"),
+        "sources": pd.DataFrame([("2026_18_R", "laps", "OpenF1 + TracingInsights", later)],
+                                columns=["session_key", "table_name", "source", "fetched_at"]),
+    }, 2026, 18, "R")
 
     asked = []
 
     def get(endpoint, **params):
         asked.append(endpoint)
         if endpoint == "sessions":
-            return [{"session_key": 11388, "date_start": START.isoformat()}]
-        return [{"driver_number": 1, "date": (START + pd.Timedelta(minutes=30)).isoformat(),
-                 "recording_url": "https://livetiming.formula1.com/static/NOR_1.mp3"}]
+            return [{"session_key": 11388, "date_start": START.isoformat()},
+                    {"session_key": 11396, "date_start": later.isoformat()}]
+        when = START if params["session_key"] == 11388 else later
+        return [{"driver_number": 1, "date": (when + pd.Timedelta(minutes=30)).isoformat(),
+                 "recording_url": f"https://livetiming.formula1.com/static/NOR_{params['session_key']}.mp3"}]
 
     monkeypatch.setattr(openf1_source, "_get", get)
-    assert cli.backfill_radio([2026]) == 1
+    assert cli.backfill_radio([2026]) == 2
 
     con = connect()
-    radio = con.execute("select driver_number, t, url from team_radio").df()
-    assert radio[["driver_number", "t"]].values.tolist() == [[1, 52 * 60 + 30 * 60.0]]     # on FastF1's clock
-    sources = con.execute("select table_name, source from sources order by table_name").fetchall()
-    assert sources == [("all", "FastF1"), ("team_radio", "OpenF1")]
+    radio = con.execute("select session_key, driver_number, t from team_radio order by session_key").df()
+    assert radio.values.tolist() == [["2026_17_R", 1, 52 * 60 + 30 * 60.0],      # on FastF1's clock
+                                     ["2026_18_R", 1, 90 * 60.0]]
+    sources = con.execute("select session_key, table_name, source from sources order by 1, 2").fetchall()
+    assert sources == [("2026_17_R", "all", "FastF1"), ("2026_17_R", "team_radio", "OpenF1"),
+                       ("2026_18_R", "laps", "OpenF1 + TracingInsights"), ("2026_18_R", "team_radio", "OpenF1")]
 
-    assert cli.backfill_radio([2026]) == 0             # already has its radio: nothing asked
-    assert asked == ["sessions", "team_radio"]
+    assert cli.backfill_radio([2026]) == 0             # both have their radio now: nothing asked
+    assert asked == ["sessions", "team_radio", "team_radio"]
