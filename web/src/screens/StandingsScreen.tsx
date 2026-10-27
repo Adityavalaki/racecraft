@@ -115,6 +115,7 @@ function DriversTable({ drivers, selected, onSelect, odds }: {
           <span role="columnheader" className="num" title="Grand Prix wins">Wins</span>
           <span role="columnheader" className="num" title="Grand Prix podiums">Pod.</span>
           <span role="columnheader" className="num" title="Chance of the championship, the rest of the season simulated">Title</span>
+          <span role="columnheader" className="num" title={SECOND_OPINION}>Results only</span>
           <span role="columnheader" title="The latest Grand Prix finishes, oldest first">Form</span>
         </div>
         {drivers.map((d) => {
@@ -135,6 +136,7 @@ function DriversTable({ drivers, selected, onSelect, odds }: {
               <span role="cell" className="num">{d.wins || "—"}</span>
               <span role="cell" className="num">{d.podiums || "—"}</span>
               <TitleCell odds={odds} entry={chance.get(d.abbreviation)} clinched={contenders === 1} />
+              <SecondOpinionCell odds={odds} code={d.abbreviation} clinched={contenders === 1} />
               <span role="cell" className="form" aria-label={formLabel(d.form)}>
                 {d.form.map((f) => <Finish key={f.round} finish={f} />)}
               </span>
@@ -186,6 +188,17 @@ function ConstructorsTable({ teams, odds }: { teams: ConstructorStanding[]; odds
       </div>
     </section>
   );
+}
+
+const SECOND_OPINION = "A second opinion: the same simulation with form read from finishing places alone, "
+  + "not lap times. Tested on every season since 1950; on 2023-2025 it did as well as the Title column.";
+
+/** The results-only chance beside the main one (D-018); blank when it could not be worked out. */
+function SecondOpinionCell({ odds, code, clinched }: { odds: TitleOdds | null; code: string; clinched: boolean }) {
+  if (!odds) return <span role="cell" className="num title-odds is-waiting">…</span>;
+  const value = odds.second_opinion?.[code];
+  if (value == null) return <span role="cell" className="num title-odds is-second">—</span>;
+  return <span role="cell" className="num title-odds is-second">{titleChance(value, clinched)}</span>;
 }
 
 /** A title chance; "out" once a driver or team can no longer reach the leader. */

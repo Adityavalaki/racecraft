@@ -2191,7 +2191,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 @media (max-width: 1240px) { .standings { grid-template-columns: minmax(0, 1fr); } }
 .standings-panel { padding: 14px 0 6px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .standings-panel > .card-label { margin: 0; padding: 0 16px; }
-.standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 3.2rem 7.4rem; }
+.standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 3.2rem 4.6rem 7.4rem; }
 .standings-table.is-teams { --st-cols: 2rem 4px minmax(6rem, 1fr) 3rem 3.2rem 2.4rem 3rem minmax(5rem, 1.2fr); }
 .standings-row {
   display: grid;
@@ -2253,6 +2253,7 @@ button.standings-row:hover { background: var(--panel-2); }
 .title-odds.is-favourite { color: var(--ink); font-weight: 700; }
 .title-odds.is-out { color: var(--ink-soft); font-size: 0.72rem; }
 .title-odds.is-waiting { color: var(--ink-soft); }
+.title-odds.is-second { color: var(--ink-soft); }   /* the second opinion: there, but not the headline */
 
 /* ---------------------------------------------------------------- pit crews */
 .standings-table.is-crews { --st-cols: 2rem 4px minmax(8rem, 1fr) 4.4rem minmax(9rem, 1.4fr) 4rem 3rem 3rem; }

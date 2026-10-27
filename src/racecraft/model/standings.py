@@ -120,22 +120,13 @@ def as_of(con, session_key: str, moment: str = "before") -> tuple[int, pd.Timest
 def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
     """The championships of `year`, counting results from sessions that started before `as_of` (all, if None)."""
     df = results(con, year)
-    notes: list[str] = []
     if not df.empty and as_of is not None:
         df = df[pd.to_datetime(df["date_utc"], utc=True) < pd.Timestamp(as_of).tz_convert("UTC")]
     if df.empty:
         return Standings(year=int(year), drivers=[], constructors=[], races=0, sprints=0, last=None,
                          notes=["no Grand Prix or sprint has been run yet this season"])
 
-    df = df.copy()
-    missing = df.groupby("session_key")["points"].transform(lambda p: p.isna().all())
-    if missing.any():
-        df.loc[missing, "points"] = [_scale_points(code, place)
-                                     for code, place in zip(df.loc[missing, "code"], df.loc[missing, "classified"])]
-        for event, code in df.loc[missing, ["event_name", "code"]].drop_duplicates().itertuples(index=False):
-            notes.append(f"{event} {'sprint' if code == 'S' else 'Grand Prix'}: the feed sent no points, "
-                         "so they are worked out from the classified positions")
-    df["points"] = df["points"].fillna(0.0)
+    df, notes = counted(df)
 
     sessions = df.drop_duplicates("session_key").sort_values("date_utc")
     last = sessions.iloc[-1]
@@ -151,6 +142,24 @@ def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
               "session": "sprint" if last["code"] == "S" else "Grand Prix"},
         notes=notes,
     )
+
+
+def counted(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """
+    `results` with the points the championship counts: the feed's, or, for a
+    session the feed sent none for, worked out from the classified places. With
+    a note for each session worked out so.
+    """
+    df, notes = df.copy(), []
+    missing = df.groupby("session_key")["points"].transform(lambda p: p.isna().all())
+    if missing.any():
+        df.loc[missing, "points"] = [_scale_points(code, place)
+                                     for code, place in zip(df.loc[missing, "code"], df.loc[missing, "classified"])]
+        for event, code in df.loc[missing, ["event_name", "code"]].drop_duplicates().itertuples(index=False):
+            notes.append(f"{event} {'sprint' if code == 'S' else 'Grand Prix'}: the feed sent no points, "
+                         "so they are worked out from the classified positions")
+    df["points"] = df["points"].fillna(0.0)
+    return df, notes
 
 
 def _scale_points(code: str, place: float) -> float:

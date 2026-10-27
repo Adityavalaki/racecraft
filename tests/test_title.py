@@ -117,6 +117,10 @@ def test_the_title_route(con, monkeypatch):
     body = client.get("/api/sessions/2024_02_R/title", params={"moment": "after"}).json()
     assert body["moment"] == "after" and [e["round"] for e in body["remaining"]] == [3]
     assert body["drivers"][0]["abbreviation"] == "AAA"
+    # The results-only odds beside them (D-018): the same drivers, chances that add up.
+    second = body["second_opinion"]
+    assert set(second) <= {d["abbreviation"] for d in body["drivers"]}
+    assert sum(second.values()) == pytest.approx(1.0, abs=0.01)
     assert client.get("/api/sessions/1999_01_R/title").status_code == 404
     assert client.get("/api/sessions/live/title").status_code == 422
 

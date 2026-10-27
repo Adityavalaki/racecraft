@@ -656,6 +656,8 @@ export interface TitleOdds {
   remaining: { round: number; event_name: string; session: string }[];
   runs: number;
   notes: string[];
+  /** A second opinion from finishing places alone, by driver code; null if it could not be worked out. */
+  second_opinion?: Record<string, number> | null;
 }
 
 /** One team's pit crew over the season: its stops against each race's typical stop, in seconds. */

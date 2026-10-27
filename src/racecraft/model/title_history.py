@@ -16,15 +16,19 @@ dropped scores counts against the model; upgrade if those seasons score badly.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from racecraft.ingest import f1db_source
-from racecraft.model import title
+from racecraft.model import standings, title
 
 MIN_RACES_LEFT = title.MIN_RACES_LEFT
+# The uncertainty measured on every f1db season, so the app needs no history at hand.
+WEIGHTS_FILE = Path(__file__).with_name("title_history_weights.json")
 
 
 @dataclass
@@ -117,11 +121,28 @@ def odds_after(season: Season, after: int, split: dict, *, flat: bool = False, r
                seed: int = 11) -> dict[str, float]:
     """Each driver's chance of the title after round `after`: published points, the rest simulated.
     `flat` gives every driver the same form: what the points alone say."""
-    rng = np.random.default_rng(seed)
     done = season.results[season.results["round"] <= after]
-    gp_done = done[done["kind"] == "R"]
-    field = list(dict.fromkeys(gp_done.loc[gp_done["round"] == after, "driver"]))
     now = season.standings[season.standings["round"] == after].set_index("driver")["points"]
+    events = []
+    for rnd in (r for r in season.rounds if r > after):
+        events += ([True] if season.sprint.get(rnd) else []) + [False]
+    return chances(done, now, events, split, season.race_points, season.sprint_points,
+                   flat=flat, runs=runs, seed=seed)
+
+
+def chances(done: pd.DataFrame, now: pd.Series, events: list[bool], split: dict,
+            race_points: np.ndarray = title.RACE_POINTS, sprint_points: np.ndarray = title.SPRINT_POINTS, *,
+            flat: bool = False, runs: int = 4_000, seed: int = 11) -> dict[str, float]:
+    """
+    Each driver's chance of the title from the results so far (`done`: kind, round,
+    driver, place), the points they stand on (`now`), and the sprints (True) and
+    Grands Prix (False) still to run. The field is whoever started the latest
+    Grand Prix; anyone else keeps their points and scores no more.
+    """
+    rng = np.random.default_rng(seed)
+    gp_done = done[done["kind"] == "R"]
+    latest = gp_done["round"].max() if len(gp_done) else None
+    field = list(dict.fromkeys(gp_done.loc[gp_done["round"] == latest, "driver"]))
     drivers = list(dict.fromkeys(list(now.index) + field))
 
     finishes = gp_done[gp_done["place"].notna()].groupby("driver")["place"]
@@ -134,14 +155,11 @@ def odds_after(season: Season, after: int, split: dict, *, flat: bool = False, r
     sd = np.sqrt(base ** 2 + noise ** 2 / np.maximum(known.to_numpy(float), 1.0)).astype(np.float32)
     retire = float(gp_done["place"].isna().mean()) if len(gp_done) else 0.0
 
-    events = []
-    for rnd in (r for r in season.rounds if r > after):
-        events += ([True] if season.sprint.get(rnd) else []) + [False]
     points = np.zeros((runs, len(field)), np.float32)
     wins = np.zeros((runs, len(field)), np.int16)
     if events and field:
         points, wins = title.simulate_races(pace, sd, events, noise, retire, runs, rng,
-                                            race_points=season.race_points, sprint_points=season.sprint_points)
+                                            race_points=race_points, sprint_points=sprint_points)
     totals = np.zeros((runs, len(drivers)), np.float32)
     all_wins = np.zeros((runs, len(drivers)), np.int16)
     won = gp_done[gp_done["place"] == 1].groupby("driver").size()
@@ -154,6 +172,38 @@ def odds_after(season: Season, after: int, split: dict, *, flat: bool = False, r
             all_wins[:, j] += wins[:, column[driver]]
     champion = title.champions(totals, all_wins, rng)
     return {driver: float((champion == j).mean()) for j, driver in enumerate(drivers)}
+
+
+def load_split(path: Path = WEIGHTS_FILE) -> dict:
+    """The uncertainty measured on every f1db season (`save_split`), for odds outside a backtest."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_split(split: dict, path: Path = WEIGHTS_FILE) -> None:
+    path.write_text(json.dumps(split, indent=2) + "\n", encoding="utf-8")
+
+
+def odds_now(con, year: int, as_of: pd.Timestamp, *, events: list[title.Event] | None = None,
+             split: dict | None = None, runs: int = 4_000) -> dict[str, float]:
+    """
+    The results-only title odds for a season in the lake, from the sessions that
+    started before `as_of`, by driver code: the second opinion beside `title.odds`.
+    Points are counted as the standings count them; the rest of the season is the
+    lake's and the calendar's, as for `title.odds`.
+    """
+    df = standings.results(con, year)
+    if df.empty:
+        return {}
+    df = df[pd.to_datetime(df["date_utc"], utc=True) < pd.Timestamp(as_of).tz_convert("UTC")]
+    if df.empty:
+        return {}
+    df, _ = standings.counted(df)
+    done = pd.DataFrame({"round": df["round"], "kind": df["code"], "driver": df["abbreviation"],
+                         "place": df["classified"]})
+    now = df.groupby("abbreviation")["points"].sum()
+    if events is None:
+        events, _ = title.remaining_events(con, year, as_of)
+    return chances(done, now, [e.sprint for e in events], split or load_split(), runs=runs)
 
 
 def backtest(all_seasons: list[Season], *, runs: int = 2_000, progress=None) -> tuple[list[title.Checkpoint], dict]:

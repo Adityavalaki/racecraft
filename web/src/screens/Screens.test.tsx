@@ -306,6 +306,7 @@ describe("StandingsScreen", () => {
               { abbreviation: "VER", driver_number: 3, points: 213, title: 0, expected_points: 230, p10: 215, p90: 245, max_points: 246, alive: true }],
     constructors: [{ team: "Mercedes", points: 573, title: 0.999, expected_points: 610, max_points: 631, alive: true },
                    { team: "Red Bull Racing", points: 324, title: 0, expected_points: 350, max_points: 382, alive: false }],
+    second_opinion: { RUS: 0.74, VER: 0.03 },
   };
 
   it("shows both championships as they stood going into the session, and after it on request", async () => {
@@ -320,6 +321,8 @@ describe("StandingsScreen", () => {
     expect(drivers.getByText("RUS")).toBeDefined();
     expect(drivers.getByText("238")).toBeDefined();
     expect(await drivers.findByText("82%")).toBeDefined();                // RUS's title chance
+    expect(drivers.getByText("74%")).toBeDefined();                       // ...and the results-only second opinion
+    expect(drivers.getByRole("columnheader", { name: "Results only" })).toBeDefined();
     expect(within(screen.getByRole("table", { name: "Constructors' standings" })).getByText("out")).toBeDefined();
     expect(screen.getByText(/the 1 Grand Prix and 1 sprint still to run simulated 10,000 times from these standings, up to 33 points/)).toBeDefined();
     expect(drivers.getByText("−25")).toBeDefined();                       // VER's gap to the leader
