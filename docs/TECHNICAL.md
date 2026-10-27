@@ -1332,7 +1332,7 @@ the two, but nothing yet shows that the lap times add to the title odds; the
 results-only model's doubt also rests on 75 seasons, the lap-time model's on two.
 
 The standings screen shows both (D-018): "Title" (lap-time) and "Results only".
-A blend of the two, `scripts/title_blend.py`, on the same 67 checkpoints with
+A blend of the two (a test script since removed; in git at f2b8c4f), on the same 67 checkpoints with
 every driver's chance kept:
 
 | | Chance given to the champion | Brier |
@@ -1343,7 +1343,7 @@ every driver's chance kept:
 | Blend, weight picked on the other two seasons (0.3-0.4 lap-time) | 0.680 | **0.314** |
 
 The blend's gain over results-only alone is small (Brier 0.319 to 0.314) and rests
-on three seasons; the second opinion stays a second opinion until 2026 adds a fourth.
+on three seasons, so it is not used: the app shows the two models side by side.
 
 ## Pit crews
 

@@ -286,7 +286,7 @@ Chosen: 1. `title_history.odds_now` reads the season from the lake at any moment
 as the standings count them, via the new `standings.counted`), with the uncertainty measured on
 all 76 f1db seasons and shipped in `title_history_weights.json`; the title route adds
 `second_opinion`, and the standings screen shows it as "Results only" beside "Title".
-`scripts/title_blend.py` replayed both on 2023-2025 (67 checkpoints, every driver's chance kept):
+A blend test (`scripts/title_blend.py`, removed 2026-10-28; in git at f2b8c4f) replayed both on 2023-2025 (67 checkpoints, every driver's chance kept):
 lap-time 0.663 / Brier 0.331; results-only 0.688 / 0.319; 50/50 blend 0.675 / 0.315; a blend
 with its weight picked on the other two seasons (0.3-0.4 on lap-time, the same in every fold)
 0.680 / 0.314. Results-only beat lap-time on Brier at 39 checkpoints, lost at 19.
@@ -295,4 +295,5 @@ Brier. A blend adds little beyond it (0.319 to 0.314), on three seasons, one of 
 miss for both; not enough to replace the headline number with a mixture.
 Trade-off: Two numbers to read instead of one; they can disagree (2025 round 12: Piastri 48%
 lap-time, 67% results-only).
-Revisit if: the 2026 season, a fourth test season, still favours the blend: then show it.
+Revisit if: someone wants a blend again: restore the script from f2b8c4f and re-run it with 2026 added.
+Update 2026-10-28: Aditya dropped the blend for good; the app shows the two models side by side.

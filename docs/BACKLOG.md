@@ -59,8 +59,8 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
     season since 1950"): results-only 0.550 vs points 0.488 over 76 seasons (p = 3e-9); on
     2023-2025 it matched the lap-time model (0.688 vs 0.663).
   - [x] **Results-only odds in the app** as a second opinion beside the lap-time ones (D-018).
-  - [ ] **Blend the two?** Tested (D-018): a small gain over results-only alone on 2023-2025.
-    Re-run `scripts/title_blend.py` once 2026 is over (a fourth season) and decide then.
+  - [x] **Blend the two?** Tested (D-018): a small gain over results-only alone on 2023-2025.
+    Dropped 2026-10-28 at Aditya's request: the app keeps the lap-time and results-only odds.
 - [ ] **Option: record live sessions automatically.** *idea*
   F1's live timing stream still works without a login. The desktop app could record each
   session while it runs (laps, tyres, race control; no telemetry or GPS positions).
