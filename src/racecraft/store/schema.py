@@ -162,6 +162,15 @@ CIRCUIT_MARKERS = pa.schema([
     ("distance", pa.float32()),         # metres from the start line along the reference lap
 ])
 
+# Where each of a session's tables came from (D-009 step 5). Sessions ingested before it
+# have none: all of theirs came from FastF1.
+SOURCES = pa.schema([
+    ("session_key", pa.string()),
+    ("table_name", pa.string()),        # a lake table, e.g. 'laps'
+    ("source", pa.string()),            # 'FastF1', 'OpenF1 + TracingInsights', ...
+    ("fetched_at", pa.timestamp("us", tz="UTC")),
+])
+
 TABLES: dict[str, pa.Schema] = {
     "sessions": SESSIONS,
     "results": RESULTS,
@@ -173,4 +182,5 @@ TABLES: dict[str, pa.Schema] = {
     "track_status": TRACK_STATUS,
     "session_status": SESSION_STATUS,
     "circuit_markers": CIRCUIT_MARKERS,
+    "sources": SOURCES,
 }

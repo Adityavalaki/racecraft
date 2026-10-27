@@ -133,6 +133,14 @@ class SessionData:
                                        where session_key = '{session_key}'""").df()
         except duckdb.Error:
             self.markers = pd.DataFrame(columns=["kind", "number", "letter", "distance"])
+        # Where each table came from (D-009 step 5). A lake from before that has no such
+        # table, and a session ingested before it has no rows: everything there is FastF1's.
+        try:
+            self.sources = con.sql(f"""select table_name, source from sources
+                                       where session_key = '{session_key}' order by table_name""").df()
+        except duckdb.Error:
+            self.sources = pd.DataFrame()
+        self.sources = self.sources.to_dict("records") or [{"table_name": "all", "source": "FastF1"}]
         self._assemble()
         log.info("loaded %s: %d laps, %d drivers, %d position samples",
                  session_key, len(self.laps), len(self.drivers),
@@ -162,6 +170,7 @@ class SessionData:
             raise KeyError(f"{session_key}: the recording carries no session yet")
         self.meta = sessions.iloc[0].to_dict()
         self.session_name = self.meta.get("session_name") or "Live"
+        self.sources = [{"table_name": "all", "source": "F1 live timing"}]     # recorded, parsed by FastF1
 
         self.laps = tables.get("laps", _empty(_LAP_COLUMNS)).copy()
         self.drivers = _drivers_from(tables)
@@ -323,6 +332,7 @@ class SessionData:
             "track_status": _records(self.track_status),
             "drs_zones": self.drs_zones,
             "has_overtake": self.overtake_changes is not None,
+            "sources": self.sources,
         }
 
     def state(self, t: float) -> dict:

@@ -77,6 +77,8 @@ TracingInsights' GitHub archive (FastF1's own output, about twelve hours after a
 session) adds the session's corners and FastF1's tyre history, and stands in for
 OpenF1, without telemetry, when OpenF1 has no session (D-012). Ingested before it
 publishes, a session keeps OpenF1's tyres until `--force` re-ingests it.
+Each session's `sources` table says where each of its tables came from; the app
+names them beside the session picker (D-013). Sessions without one are FastF1's.
 
 **Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
 folder per session (~80-160 MB) and a shared HTTP cache file that grows about

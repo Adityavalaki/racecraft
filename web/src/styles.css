@@ -1529,6 +1529,8 @@ button.prediction-row:hover { background: var(--panel-2); }
 .lap-total { font-size: 22px; font-weight: 600; color: var(--ink-faint); }
 .session-clock { font-size: 20px; }
 .session-warn { font-size: 12px; color: var(--worse); }
+.session-sources { font-size: 12px; color: var(--ink-faint); cursor: help; }
+.settings-credits { font-size: 12px; color: var(--ink-faint); line-height: 1.5; }
 .weather { margin: 0 0 0 auto; display: flex; gap: 22px; }
 .weather > div { display: flex; flex-direction: column; gap: 1px; }
 .weather dt { font-size: 11px; color: var(--ink-soft); }

@@ -104,6 +104,13 @@ on a second monitor.
   positions, weather, race control and track status. It checks the data before
   writing and stores it as Parquet, one file per table per session, in
   `data/lake/` (about 1.5 GB for 2023 to 2026).
+  Since about 15 October 2026 F1's archive needs an F1 TV login, so a session it
+  refuses is built from free sources instead, into the same tables:
+  [OpenF1](https://openf1.org), with official results from
+  [Jolpica](https://github.com/jolpica/jolpica-f1) and tyres and corners from
+  [TracingInsights](https://github.com/TracingInsights) (which also stands in for
+  OpenF1). Each session records where each table came from, and the app names
+  its sources beside the session picker.
 - **DuckDB** reads the lake in place. The small tables are held in memory; the
   telemetry stays on disk and is read one session at a time.
 - **The models** (Python, numpy and pandas) fit tyre wear, pace and pit loss
@@ -768,10 +775,18 @@ is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
 ## Data, licences and credits
 
 - Timing data comes from Formula 1's public feeds through
-  [FastF1](https://github.com/theOehrly/Fast-F1). Racecraft is a personal,
+  [FastF1](https://github.com/theOehrly/Fast-F1) (MIT). Racecraft is a personal,
   non-commercial project and is **not affiliated with Formula 1**. F1 and the F1
   logo are trademarks of Formula One Licensing B.V. Use the data in line with
   F1's terms.
+- Sessions F1's archive will not serve come from free sources, with thanks:
+  - [OpenF1](https://openf1.org): laps, tyres, pit stops, race control, weather,
+    results and telemetry. Its free tier is for personal, non-commercial use,
+    at 30 requests a minute.
+  - [Jolpica F1 API](https://github.com/jolpica/jolpica-f1), Ergast's successor:
+    official classifications, points, grids and qualifying times.
+  - [TracingInsights](https://github.com/TracingInsights) (Apache-2.0): FastF1's
+    tyre history and circuit corners, and a backup for OpenF1.
 - Fonts: Titillium Web, Barlow Condensed and JetBrains Mono, under the SIL Open
   Font License, bundled through Fontsource.
 - Built with FastF1, DuckDB, pandas, numpy, scipy, FastAPI, React, Vite and

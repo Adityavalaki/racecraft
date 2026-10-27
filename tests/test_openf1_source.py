@@ -286,7 +286,7 @@ def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
     sessions = pd.DataFrame({"event_name": ["United States Grand Prix"]})
     monkeypatch.setattr(openf1_source, "extract",
                         lambda *a, **k: {"laps": "from openf1", "results": openf1, "sessions": sessions})
-    monkeypatch.setattr(tracinginsights_source, "improve", lambda tables, *a: tables)
+    monkeypatch.setattr(tracinginsights_source, "improve", lambda tables, *a: (tables, {"laps"}))   # tyres only
     monkeypatch.setattr(jolpica_source, "official", lambda *a: official)
     monkeypatch.setattr(quality, "check_session", lambda tables: [])
     monkeypatch.setattr(lake, "write_session", lambda tables, *a: written.update(tables) or {})
@@ -294,3 +294,6 @@ def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
                               telemetry=False, force=False, prune=True) == "written"
     assert written["laps"] == "from openf1"
     assert written["results"].loc[0, "points"] == 25.0 and written["results"].loc[0, "team_id"] == "red_bull"
+    # Where each table came from (step 5): only tables written with rows are listed.
+    assert dict(zip(written["sources"]["table_name"], written["sources"]["source"])) == {
+        "laps": "OpenF1 + TracingInsights", "results": "OpenF1 + Jolpica", "sessions": "OpenF1"}

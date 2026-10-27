@@ -40,6 +40,8 @@ export interface SessionInfo {
   drs_zones?: [number, number][];
   /** 2026 on: race control switches overtake mode, the successor to DRS. */
   has_overtake?: boolean;
+  /** Where each table came from, e.g. { table_name: "laps", source: "OpenF1 + TracingInsights" }. */
+  sources?: { table_name: string; source: string }[];
 }
 
 /** The three kinds of race control message. */

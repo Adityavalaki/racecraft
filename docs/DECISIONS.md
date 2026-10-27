@@ -185,3 +185,20 @@ downloads a race), not the raw samples the lake keeps. Folder names are FastF1's
 session names; a rename there breaks the lookup quietly (the file is just "not there").
 Revisit if: OpenF1 stops serving telemetry (then read the per-lap files), or the archive's
 format changes.
+
+## D-013: A `sources` table, and the sources named in the app
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 5. Since D-010 to D-012 a session can be built from four sources, and a
+reader of a lap chart should be able to tell which, and the sources need credit.
+Options:   1) Only `sessions.fastf1_version` ("openf1", "tracinginsights" or FastF1's version).
+2) A small `sources` table: per session and table, its source and when it was fetched.
+Chosen: 2. Ingest writes one row per table with rows in it ("OpenF1 + TracingInsights" for
+laps whose tyres came from the archive, "OpenF1 + Jolpica" for official results, "earlier
+session at this circuit" for copied corners). The API's session info returns them, falling
+back to FastF1 for sessions ingested before; the app names the sources beside the session
+picker, each table's in the tooltip. Settings and the README credit every source.
+Why: Per-table detail is the point (one session mixes three sources); the table is tiny and
+no existing session needs rewriting.
+Trade-off: One more table to keep in step with ingest; a source that adds fields later (a
+`--force` re-ingest) is only recorded when the session is written again.
+Revisit if: a screen needs to know a single field's source, not a table's.

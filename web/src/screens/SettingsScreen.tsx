@@ -84,9 +84,14 @@ export function SettingsScreen({ settings, update, picker, onSynced }: {
             </Row>
           </section>
           <section className="panel" aria-label="Data">
-            <div className="panel-bar"><h2>Data</h2><span className="panel-meta">Racecraft reads race data through FastF1.</span></div>
+            <div className="panel-bar"><h2>Data</h2><span className="panel-meta">Race data from FastF1, OpenF1, Jolpica and TracingInsights.</span></div>
             <Row title="Latest weekends" hint="Refresh fetches anything from the five most recent race weekends not on this device yet.">
               <SyncButton onSynced={onSynced} />
+            </Row>
+            <Row title="Sources" hint="Since October 2026 F1's archive needs an F1 TV login, so new sessions are built from free sources. Each session names its own beside the session picker.">
+              <span className="settings-credits">
+                FastF1 (MIT) · OpenF1 (free tier, non-commercial) · Jolpica F1 API · TracingInsights (Apache-2.0)
+              </span>
             </Row>
           </section>
         </div>

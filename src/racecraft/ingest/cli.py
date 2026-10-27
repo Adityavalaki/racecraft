@@ -211,6 +211,14 @@ def ingest_one(season: int, rnd: int, ident: str, session_name: str, *,
         lock.release()
 
 
+def sources_table(sources: dict[str, str], tables: dict[str, pd.DataFrame], key: str) -> pd.DataFrame:
+    """One row per table written with rows in it: where it came from, and when (D-009 step 5)."""
+    now = pd.Timestamp.now(tz="UTC")
+    return pd.DataFrame([(key, name, source, now) for name, source in sources.items()
+                         if name in tables and len(tables[name])],
+                        columns=["session_key", "table_name", "source", "fetched_at"])
+
+
 def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: str, *,
                    telemetry: bool, force: bool, prune: bool) -> str:
     t, calls_before = time.time(), api_budget.calls_recorded()
@@ -218,25 +226,34 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
     try:
         ses = fastf1_source.load_session(season, rnd, session_name, telemetry=telemetry)
         tables = fastf1_source.extract(ses, key, telemetry=telemetry)
+        sources = dict.fromkeys(tables, "FastF1")
     except fastf1_source.ArchiveLocked as error:
         # F1 wants an F1 TV login (BUG-004): the same tables from OpenF1 instead (D-009).
         log.warning("%s: %s; trying OpenF1", key, error)
         try:
             tables = openf1_source.extract(season, rnd, ident, session_name, key, telemetry=telemetry)
+            # Corners copied from the circuit's last session, unless TracingInsights has this one's.
+            sources = {**dict.fromkeys(tables, "OpenF1"), "circuit_markers": "earlier session at this circuit"}
             # This session's corners and FastF1's tyre history, where TracingInsights has them (D-012).
-            tables = tracinginsights_source.improve(tables, season, str(tables["sessions"]["event_name"][0]),
-                                                    session_name, key)
+            tables, improved = tracinginsights_source.improve(
+                tables, season, str(tables["sessions"]["event_name"][0]), session_name, key)
+            sources.update({"laps": "OpenF1 + TracingInsights"} if "laps" in improved else {})
+            sources.update({"circuit_markers": "TracingInsights"} if "circuit_markers" in improved else {})
         except openf1_source.NotAvailable as missing:
             log.warning("%s: %s; trying TracingInsights", key, missing)
             tables = tracinginsights_source.extract(season, rnd, ident, session_name, key)
             if tables is None:
                 log.warning("%s: TracingInsights has no such session yet either", key)
                 return "locked"
+            sources = dict.fromkeys(tables, "TracingInsights")
         # The official classification, points and grid over OpenF1's, as FastF1 had them (D-011).
-        tables["results"], differ = jolpica_source.overlay(
-            tables["results"], jolpica_source.official(season, rnd, ident), ident)
+        official = jolpica_source.official(season, rnd, ident)
+        tables["results"], differ = jolpica_source.overlay(tables["results"], official, ident)
+        if official is not None:
+            sources["results"] += " + Jolpica"
         if differ:
             log.warning("%s: OpenF1 and Jolpica place cars %s differently; Jolpica's order kept", key, differ)
+    tables["sources"] = sources_table(sources, tables, key)
     load_s, calls = time.time() - t, api_budget.calls_recorded() - calls_before
 
     findings = quality.check_session(tables)

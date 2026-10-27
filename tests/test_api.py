@@ -98,6 +98,8 @@ def test_session_info_carries_drivers_and_track_outline(client):
     assert len(body["outline"]) > 50           # a lap's worth of shape
     assert body["has_position_data"] is True
     assert body["bounds"]["max_x"] == pytest.approx(1000, abs=1)
+    # A lake with no sources table: everything in it came through FastF1.
+    assert body["sources"] == [{"table_name": "all", "source": "FastF1"}]
 
 
 def test_state_gives_order_gaps_and_car_positions(client):

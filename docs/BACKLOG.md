@@ -44,8 +44,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   backup when OpenF1 has no session. Checked on Singapore 2026 (exact match with the lake) and
   through the real CLI on the 2026 US GP FP1 (scratch lake).
   Not done: telemetry in the backup (per-lap, resampled files; see D-012). *idea*
-- [ ] **Step 5: show sources in the app, with credits** in the README. *ready*
-  A small `sources` table: session, table, source, date fetched.
+- [x] **Step 5: show sources in the app, with credits** in the README. Done: see `git log`
+  (D-013). `sources` table written by ingest; "Data: ..." beside the session picker; credits in
+  Settings and the README.
 - [ ] **Step 6 (optional extras): Open-Meteo weather, f1db history, team radio.** *ready*
 - [ ] **Option: record live sessions automatically.** *idea*
   F1's live timing stream still works without a login. The desktop app could record each

@@ -108,18 +108,23 @@ def markers(body: dict | None, key: str) -> tuple[pd.DataFrame, float] | None:
     return _frame(pd.concat(frames, ignore_index=True), "circuit_markers"), float(body.get("Rotation") or 0.0)
 
 
-def improve(tables: dict[str, pd.DataFrame], season: int, event: str, session: str, key: str) -> dict:
-    """An OpenF1 session with this session's corners and FastF1's tyre history, where published."""
+def improve(tables: dict[str, pd.DataFrame], season: int, event: str, session: str,
+            key: str) -> tuple[dict, set[str]]:
+    """An OpenF1 session with this session's corners and FastF1's tyre history, where
+    published; and the tables that took something from the archive."""
+    used = set()
     found = markers(_get(season, event, session, "corners.json"), key)
     if found is not None:
         tables["circuit_markers"], rotation = found
         tables["sessions"]["circuit_rotation_deg"] = rotation
+        used.add("circuit_markers")
     ti = laps(_get(season, event, session, "session_laptimes.json"), key)
     if ti is not None:
         tables["laps"], differ = tyres_over(tables["laps"], ti)
+        used.add("laps")
         if differ:
             log.info("%s: OpenF1 and TracingInsights lap times differ by over 10 ms on %d laps", key, differ)
-    return tables
+    return tables, used
 
 
 def tyres_over(openf1: pd.DataFrame, ti: pd.DataFrame) -> tuple[pd.DataFrame, int]:

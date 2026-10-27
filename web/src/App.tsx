@@ -5,6 +5,7 @@ import { openFeature, screenById, type FeatureId, type ScreenId } from "./featur
 import { useLayout } from "./layout";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
+import { DataSources } from "./panels/DataSources";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
 import { ReplayScreen } from "./screens/ReplayScreen";
 import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
@@ -180,6 +181,7 @@ export default function App() {
     <>
       {liveFlag}
       {info && !info.has_position_data && <span className="session-warn">No position data in this session</span>}
+      {info && <DataSources sources={info.sources} />}
       {customised && screen === "replay" && (
         <button type="button" className="reset-layout" onClick={resetLayout}
                 title="Put the timing tower and the driver cards back to their default size">
