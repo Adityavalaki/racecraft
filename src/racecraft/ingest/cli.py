@@ -28,7 +28,8 @@ import pandas as pd
 from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExceededError
 
 from racecraft import config, locking
-from racecraft.ingest import api_budget, fastf1_source, jolpica_source, openf1_source, quality
+from racecraft.ingest import (api_budget, fastf1_source, jolpica_source, openf1_source, quality,
+                              tracinginsights_source)
 from racecraft.store import lake
 
 log = logging.getLogger("racecraft.ingest")
@@ -222,9 +223,15 @@ def _ingest_locked(season: int, rnd: int, ident: str, session_name: str, key: st
         log.warning("%s: %s; trying OpenF1", key, error)
         try:
             tables = openf1_source.extract(season, rnd, ident, session_name, key, telemetry=telemetry)
+            # This session's corners and FastF1's tyre history, where TracingInsights has them (D-012).
+            tables = tracinginsights_source.improve(tables, season, str(tables["sessions"]["event_name"][0]),
+                                                    session_name, key)
         except openf1_source.NotAvailable as missing:
-            log.warning("%s: %s", key, missing)
-            return "locked"
+            log.warning("%s: %s; trying TracingInsights", key, missing)
+            tables = tracinginsights_source.extract(season, rnd, ident, session_name, key)
+            if tables is None:
+                log.warning("%s: TracingInsights has no such session yet either", key)
+                return "locked"
         # The official classification, points and grid over OpenF1's, as FastF1 had them (D-011).
         tables["results"], differ = jolpica_source.overlay(
             tables["results"], jolpica_source.official(season, rnd, ident), ident)

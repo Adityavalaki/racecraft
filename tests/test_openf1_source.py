@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from racecraft import config
-from racecraft.ingest import cli, fastf1_source, jolpica_source, openf1_source, quality
+from racecraft.ingest import cli, fastf1_source, jolpica_source, openf1_source, quality, tracinginsights_source
 from racecraft.store import lake
 
 START = "2026-10-25T19:00:00+00:00"
@@ -283,7 +283,10 @@ def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
                              "status": ["Finished"], "points": [25.0], "totalRaceTime": [pd.Timedelta(seconds=5716.65)],
                              "constructorId": ["red_bull"], "givenName": ["Max"], "familyName": ["Verstappen"]})
     monkeypatch.setattr(fastf1_source, "load_session", locked)
-    monkeypatch.setattr(openf1_source, "extract", lambda *a, **k: {"laps": "from openf1", "results": openf1})
+    sessions = pd.DataFrame({"event_name": ["United States Grand Prix"]})
+    monkeypatch.setattr(openf1_source, "extract",
+                        lambda *a, **k: {"laps": "from openf1", "results": openf1, "sessions": sessions})
+    monkeypatch.setattr(tracinginsights_source, "improve", lambda tables, *a: tables)
     monkeypatch.setattr(jolpica_source, "official", lambda *a: official)
     monkeypatch.setattr(quality, "check_session", lambda tables: [])
     monkeypatch.setattr(lake, "write_session", lambda tables, *a: written.update(tables) or {})

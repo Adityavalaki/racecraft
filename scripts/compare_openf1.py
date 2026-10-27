@@ -5,10 +5,11 @@ Does a session built from OpenF1 match the one FastF1 built?
 login (D-009). Models filter on fields the two sources fill differently, so each
 rule in it was checked against a session the lake already has from FastF1
 (Singapore 2026, D-010). This builds that session again as ingest would, from
-OpenF1 without telemetry and with Jolpica's results over it (D-011), and prints
-every lap and result field where the two disagree. The lake is only read.
+OpenF1 without telemetry, with TracingInsights' corners and tyres (D-012) and
+Jolpica's results (D-011) over it, and prints every lap and result field where
+the two disagree. `--openf1-only` leaves out the other two. The lake is only read.
 
-    python scripts/compare_openf1.py 2026_17_R
+    python scripts/compare_openf1.py 2026_17_R 2026_17_FP1 [--openf1-only]
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import sys
 
 import pandas as pd
 
-from racecraft.ingest import jolpica_source, openf1_source, quality
+from racecraft.ingest import jolpica_source, openf1_source, quality, tracinginsights_source
 from racecraft.store.db import connect
 
 NAMES = {"FP1": "Practice 1", "FP2": "Practice 2", "FP3": "Practice 3", "SQ": "Sprint Qualifying",
@@ -37,13 +38,14 @@ def same(a: pd.Series, b: pd.Series) -> pd.Series:
         return both_missing | (a.astype(str) == b.astype(str))
 
 
-def main(key: str) -> None:
+def main(key: str, openf1_only: bool) -> None:
     season, rnd, ident = key.split("_")
     new = openf1_source.extract(int(season), int(rnd), ident, NAMES[ident], key, telemetry=False)
-    # What ingest writes: Jolpica's official results over OpenF1's (D-011).
-    new["results"], differ = jolpica_source.overlay(new["results"], jolpica_source.official(
-        int(season), int(rnd), ident), ident)
-    print("OpenF1 and Jolpica place differently:", differ)
+    if not openf1_only:            # what ingest writes (D-011, D-012)
+        new = tracinginsights_source.improve(new, int(season), str(new["sessions"]["event_name"][0]), NAMES[ident], key)
+        new["results"], differ = jolpica_source.overlay(new["results"], jolpica_source.official(
+            int(season), int(rnd), ident), ident)
+        print("OpenF1 and Jolpica place differently:", differ)
     con = connect()
     old = {t: con.execute(f"select * from {t} where session_key = ?", [key]).df() for t in new}
     if old["sessions"].empty:
@@ -82,4 +84,6 @@ def main(key: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "2026_17_R")
+    keys = [a for a in sys.argv[1:] if not a.startswith("--")] or ["2026_17_R"]
+    for key in keys:
+        main(key, "--openf1-only" in sys.argv)

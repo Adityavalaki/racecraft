@@ -6,7 +6,7 @@ import fastf1
 import pytest
 import requests
 
-from racecraft.ingest import cli, fastf1_source, openf1_source
+from racecraft.ingest import cli, fastf1_source, openf1_source, tracinginsights_source
 
 
 class _Session:
@@ -52,11 +52,12 @@ def test_no_laps_without_the_wall_is_left_as_before(no_laps, monkeypatch, status
     assert isinstance(fastf1_source.load_session(2026, 18, "Practice 1"), _Session)
 
 
-def test_a_session_neither_f1_nor_openf1_has_is_reported_not_raised(no_laps, monkeypatch):
+def test_a_session_no_source_has_is_reported_not_raised(no_laps, monkeypatch):
     def missing(*a, **k):
         raise openf1_source.NotAvailable("OpenF1 has no drivers for 2026_18_FP1 yet")
 
     _answer(monkeypatch, status=401)
     monkeypatch.setattr(openf1_source, "extract", missing)
+    monkeypatch.setattr(tracinginsights_source, "extract", lambda *a: None)     # not published yet either
     assert cli._ingest_locked(2026, 18, "FP1", "Practice 1", "2026_18_FP1",
                               telemetry=False, force=False, prune=False) == "locked"

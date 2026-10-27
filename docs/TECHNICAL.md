@@ -73,6 +73,10 @@ minutes (2026 US GP: 209 s). Corners come from the latest session at the same
 circuit. How its fields are made to match FastF1's, and what still differs: D-010.
 Races, sprints and qualifying then get Jolpica's official results over OpenF1's
 (classification, points, grid, team ids, Q1-Q3), as FastF1 had them (D-011).
+TracingInsights' GitHub archive (FastF1's own output, about twelve hours after a
+session) adds the session's corners and FastF1's tyre history, and stands in for
+OpenF1, without telemetry, when OpenF1 has no session (D-012). Ingested before it
+publishes, a session keeps OpenF1's tyres until `--force` re-ingests it.
 
 **Always backfill with `--prune-cache`.** FastF1 keeps two caches: a parsed
 folder per session (~80-160 MB) and a shared HTTP cache file that grows about
@@ -1467,6 +1471,7 @@ src/racecraft/
   ingest/fastf1_source.py  FastF1 Session -> normalised DataFrames
   ingest/openf1_source.py  OpenF1 -> the same tables, when F1's archive refuses (D-009, D-010)
   ingest/jolpica_source.py official results over OpenF1's (D-011)
+  ingest/tracinginsights_source.py  tyres and corners over OpenF1's; OpenF1's backup (D-012)
   ingest/quality.py        pre-write checks (errors block, warnings report)
   ingest/cli.py            racecraft-ingest
   store/schema.py          Arrow schemas for every table

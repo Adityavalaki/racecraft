@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-27 (later) — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: C: caches cleaned (16.4 GB free). Steps 3 and 4: Jolpica's official results (D-011) and TracingInsights' tyres, corners and backup (D-012) over OpenF1; Singapore 2026 matches FastF1's copy; pytest 622 passed.
+- In progress: nothing. Both tried through the real CLI on the 2026 US GP into scratch lakes only (`build/tmp/cli_lake`, `cli_lake4`).
+- Broken or risky: sessions ingested before Jolpica (hours) or TracingInsights (~12 h) publish keep OpenF1's results/tyres until `--force`; backup has no telemetry.
+- Next: re-ingest the US GP weekend with `--force` (it now gets official results and FastF1 tyres); step 5, sources in the app with credits.
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-27 — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: BACKLOG §1 step 2: `ingest/openf1_source.py` builds a session F1 refuses from OpenF1, shaped to FastF1's fields (D-010); checked on Singapore 2026 with `scripts/compare_openf1.py`.
 - In progress: nothing. Real lake not refreshed: the 2026 US GP was only fetched into a scratch lake (`build/tmp/scratch_lake`, 209 s, no quality findings).

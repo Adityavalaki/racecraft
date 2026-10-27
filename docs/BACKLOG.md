@@ -30,14 +30,20 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   The "merge step" is not needed yet: one source per session. It comes with step 3 or 4.
 - [ ] **Refresh the real lake** with the 2026 US GP weekend (Refresh data, or
   `racecraft-ingest --season 2026 --rounds 18`). *waiting on Aditya* Not run: it writes to the lake.
-- [ ] **Known OpenF1 gaps** (D-010), for steps 3 and 4 to fill: practice tyre age restarts on a
-  reused set. (Lapped gaps and the sprint retirees' order: fixed by step 3.)
+- [x] **Known OpenF1 gaps** (D-010): lapped gaps and the sprint retirees' order fixed by step 3,
+  practice tyre age by step 4 (once TracingInsights has published the session).
+- [ ] **Re-ingest recent sessions with `--force` about a day later**, so they pick up
+  TracingInsights' tyres and corners and Jolpica's results if they were ingested before those
+  published. *idea* Could be automatic in the watcher.
 - [x] **Step 3: the Jolpica adapter.** Done: see `git log` (D-011). `ingest/jolpica_source.py`
   puts the official results over OpenF1's and logs cars the two place differently. Checked on
   Singapore 2026 (race and qualifying now match FastF1's results exactly) and through the real
   CLI on the 2026 US GP (scratch lake).
-- [ ] **Step 4: the TracingInsights adapter.** *ready* Backup for every table, and corner
-  positions for new circuits. GitHub archive, Apache-2.0, one event folder at a time.
+- [x] **Step 4: the TracingInsights adapter.** Done: see `git log` (D-012).
+  `ingest/tracinginsights_source.py`: corners and FastF1's tyre history over OpenF1's, and the
+  backup when OpenF1 has no session. Checked on Singapore 2026 (exact match with the lake) and
+  through the real CLI on the 2026 US GP FP1 (scratch lake).
+  Not done: telemetry in the backup (per-lap, resampled files; see D-012). *idea*
 - [ ] **Step 5: show sources in the app, with credits** in the README. *ready*
   A small `sources` table: session, table, source, date fetched.
 - [ ] **Step 6 (optional extras): Open-Meteo weather, f1db history, team radio.** *ready*

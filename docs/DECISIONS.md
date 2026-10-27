@@ -159,3 +159,29 @@ Trade-off: Jolpica publishes some hours after a session; ingested before that, a
 OpenF1's results until re-ingested with `--force`. Practice and sprint qualifying have no
 Jolpica results, so their team ids stay empty (standings fall back to team names).
 Revisit if: Jolpica's format or statuses change, or FastF1 drops its Ergast client.
+
+## D-012: TracingInsights for tyres, corners and as OpenF1's backup
+Date: 2026-10-27   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: D-009 step 4. TracingInsights publishes FastF1's own output for every session on
+GitHub (`TracingInsights/<season>`, Apache-2.0), about twelve hours after it ends: lap times
+with FastF1's tyre history, corners with the circuit's rotation, race control, weather, and
+telemetry split per lap. OpenF1 (D-010) restarts tyre age on a reused set and has no corners.
+Options:   1) A backup only, used when OpenF1 has no session.  2) Also lay its tyre fields and
+corners over every OpenF1 session.  3) Make it the main source for laps (it is FastF1's data),
+OpenF1 only before it is published.
+Chosen: 2. `ingest/tracinginsights_source.py`: after OpenF1, this session's corners and
+rotation, and compound, stint, tyre life, laps in stint and fresh tyre for every lap it has
+(laps whose times differ from OpenF1's by over 10 ms are counted in the log); when OpenF1 has
+no session, laps, weather, race control, track status (rebuilt as D-010) and corners from it,
+with Jolpica's results (D-011). Its clock is FastF1's: t0 = lap start date - lap start time.
+Why: Singapore 2026 rebuilt from it matches the lake's FastF1 copy exactly (t0 to 0.0 s; every
+lap field, flags, corners); with it on top, OpenF1 sessions' tyres match FastF1's on every lap
+(FP1 and qualifying). 3 was rejected for now: the twelve-hour lag would leave a fresh session
+without the faster source, and two primaries mean two clocks to reconcile.
+Trade-off: Ingested before TracingInsights publishes, a session keeps OpenF1's tyres and the
+lake's latest corners at that circuit (none for a new circuit) until re-ingested with `--force`.
+The backup has no telemetry: its files are per lap, resampled and merged (about 1,200
+downloads a race), not the raw samples the lake keeps. Folder names are FastF1's event and
+session names; a rename there breaks the lookup quietly (the file is just "not there").
+Revisit if: OpenF1 stops serving telemetry (then read the per-lap files), or the archive's
+format changes.
