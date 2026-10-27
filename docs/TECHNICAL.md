@@ -1296,6 +1296,41 @@ year, Norris the champion by two points) form pointed the wrong way more
 often than the points did. Three seasons are few to judge it on, two of them
 runaways.
 
+### The same test on every season since 1950 (D-017)
+
+f1db (D-016) has every championship but no lap times, so `model/title_history.py`
+reads form from results: a driver's average finishing place so far, its doubt
+measured in places the way the pace's is in seconds (race noise 3.1 places,
+lasting 0.9), each season measured on all the others, each season's own points.
+`racecraft-analyse title-history-backtest`, 1,073 checkpoints over 76 seasons:
+
+| | Chance given to the champion | Brier over every driver |
+|---|---|---|
+| Results-only model | **0.550** | **0.446** |
+| Points only | 0.488 | 0.509 |
+| Seasons the model is better in | 60 of 76 (Wilcoxon p = 3e-9) | 56 of 76 (p = 2e-5) |
+
+| How far into the season | Model | Points only |
+|---|---|---|
+| First quarter | **0.29** | 0.10 |
+| Second quarter | **0.48** | 0.40 |
+| Third quarter | 0.66 | **0.68** |
+| Last quarter | 0.80 | **0.81** |
+
+The same shape as the lap-time model: it knows most early, and late in a season
+it gives the chasers slightly too much. Better than the points in every decade;
+weakest in the 1980s (0.38) and worst in 1951, 1952 and 1958, seasons of dropped
+scores, which it does not model. On 2023-2025, the same 67 checkpoints:
+
+| | Chance given to the champion | Brier |
+|---|---|---|
+| Lap-time model (`title`) | 0.663 | 0.331 |
+| Results-only model | **0.688** | **0.319** |
+
+Results alone did as well as lap-time pace here. Three seasons cannot separate
+the two, but nothing yet shows that the lap times add to the title odds; the
+results-only model's doubt also rests on 75 seasons, the lap-time model's on two.
+
 ## Pit crews
 
 `model/pit_crews.py` ranks each team's crew from its stops. The public timing
