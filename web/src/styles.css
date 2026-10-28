@@ -2285,10 +2285,13 @@ button.standings-row:hover { background: var(--panel-2); }
 .standings-row.is-thin { opacity: 0.6; }
 
 /* ---------------------------------------------------------------- starts */
-.standings-table.is-starts { --st-cols: 2rem 4px minmax(7rem, 1fr) 5.8rem 5.4rem 10rem minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) 5.6rem 3.8rem; }
+.standings-table.is-starts { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.6rem 6rem 12rem minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) 7.4rem 3.8rem; }
 .standings-table.is-starts .is-head span { white-space: nowrap; }
+.standings-table.is-starts .mid { text-align: center; }
 .standings-row .is-quick { color: var(--green); }
 .standings-row .is-slow { color: var(--red); }
+.standings-basis .is-quick { color: var(--green); }
+.standings-basis .is-slow { color: var(--red); }
 .crew-range { position: relative; height: 1rem; background: linear-gradient(to right, transparent calc(50% - 0.5px), var(--rule-strong) calc(50% - 0.5px), var(--rule-strong) calc(50% + 0.5px), transparent calc(50% + 0.5px)); }
 .crew-range i { position: absolute; top: 0.3rem; height: 0.4rem; background: var(--ink-soft); opacity: 0.55; border-radius: 2px; }
 .crew-range b { position: absolute; top: 0.1rem; width: 2px; height: 0.8rem; margin-left: -1px; background: var(--ink); }

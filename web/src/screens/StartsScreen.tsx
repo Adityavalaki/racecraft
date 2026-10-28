@@ -55,7 +55,9 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
                 <b>{data.year} season</b>
                 {" · "}
                 {sessions ? `${sessions} ${sessions === 1 ? "start" : "starts"} so far` : "nothing run yet"}
-                {" · ranked by places gained on lap 1, against what that grid slot usually gains"}
+                <br />
+                Who makes the best starts? <b className="is-quick">Green</b> means the driver usually gains more places
+                on the first lap than others starting from the same spot; <b className="is-slow">red</b> means they lose more.
               </p>
               <div className="segmented" role="radiogroup" aria-label="Which starts">
                 {KINDS.map(([key, text]) => (
@@ -85,12 +87,12 @@ function StartsTable({ drivers }: { drivers: DriverStarts[] }) {
         <span role="columnheader" className="num">Pos</span>
         <span role="columnheader" />
         <span role="columnheader">Driver</span>
-        <span role="columnheader" className="num" title="Places gained on lap 1, on average, against what drivers gain from the same grid slots">Vs normal</span>
-        <span role="columnheader" className="num" title="Places gained on lap 1, on average">Gained</span>
-        <span role="columnheader" className="num" title="Starts where the driver gained, held or lost places">Up · held · down</span>
+        <span role="columnheader" className="num" title="Places gained on lap 1, on average, compared with other drivers starting from the same spots">Start rating</span>
+        <span role="columnheader" className="num" title="Places gained on lap 1, on average">Avg gained</span>
+        <span role="columnheader" className="mid" title="How many starts the driver gained, kept or lost places">Gained · kept · lost</span>
         <span role="columnheader">Best start</span>
         <span role="columnheader">Worst start</span>
-        <span role="columnheader" className="num" title="Out of the race on lap 1: not counted as places lost">Out lap 1</span>
+        <span role="columnheader" className="num" title="Out of the race on lap 1: not counted as places lost">Crashed lap 1</span>
         <span role="columnheader" className="num">Starts</span>
       </div>
       {drivers.map((d, i) => (
@@ -100,7 +102,7 @@ function StartsTable({ drivers }: { drivers: DriverStarts[] }) {
           <span role="cell" className="who"><b className="code">{d.abbreviation}</b><small>{d.team}</small></span>
           <span role="cell" className={`num points${tone(d.vs_normal)}`}>{places(d.vs_normal)}</span>
           <span role="cell" className="num gap">{places(d.gained)}</span>
-          <span role="cell" className="num split">{d.up} · {d.same} · {d.down}</span>
+          <span role="cell" className="mid split">{d.up} · {d.same} · {d.down}</span>
           <span role="cell" className="split">{startText(d.best)}</span>
           <span role="cell" className="split">{startText(d.worst)}</span>
           <span role="cell" className="num gap">{d.out_lap1 || ""}</span>
