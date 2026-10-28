@@ -359,6 +359,23 @@ def session_teammates(session_key: str,
     return body
 
 
+@app.get("/api/sessions/{session_key}/starts")
+def session_starts(session_key: str,
+                   moment: str = Query("before", pattern="^(before|after)$",
+                                       description="the season before this session started, or with it")) -> dict:
+    """Places each driver gained or lost on lap 1 this season, raw and against their grid slot's average."""
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for the starts")
+    _safe(session_key)
+    from racecraft.model import starts
+
+    con = connect()
+    year, as_of = _as_of(con, session_key, moment)
+    body = starts.season(con, year, as_of).as_dict()
+    body["moment"] = moment
+    return body
+
+
 @app.get("/api/sessions/{session_key}/forecast")
 def session_forecast(session_key: str) -> dict:
     """

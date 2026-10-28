@@ -130,7 +130,7 @@ describe("opening a feature", () => {
   it("has a URL for every screen that can pop out, and only those", () => {
     // Every screen but the replay and settings can have a window of its own.
     const poppable = SCREENS.filter((screen) => screen.poppable).map((screen) => screen.id);
-    expect(poppable).toEqual(["tower", "trace", "pedals", "strategy", "tyres", "prediction", "stewards", "standings", "crews", "teammates"]);
+    expect(poppable).toEqual(["tower", "trace", "pedals", "strategy", "tyres", "prediction", "stewards", "standings", "crews", "teammates", "starts"]);
     for (const id of poppable) expect(featureUrl(id as FeatureId, "x")).toBe(`/?feature=${id}&session=x`);
     expect(featureById("replay")).toBeUndefined();
     expect(featureById("settings")).toBeUndefined();

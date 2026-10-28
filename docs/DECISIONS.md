@@ -338,3 +338,23 @@ Why: Smallest thing that answers it, and every rule is one a reader can check by
 Trade-off: Recomputed per request (cheap); practice best laps ignore fuel; a pair that never shared a
 compound in a race has no race-pace figure for it.
 Revisit if: practice proves too noisy to show, or the screen needs past seasons side by side.
+
+## D-021: Starts, lap-1 places gained against what the grid slot usually gains
+Date: 2026-10-28   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: Aditya asked for start performance: who gains or loses places at the start, and how
+consistently. Raw places gained is unfair: from pole a driver can only lose, from the back it is easy
+to gain, so a driver's average mostly says where they qualified.
+Options:   1) Raw places gained only.  2) Places gained against the average for that grid slot,
+measured over every start in the lake (2023 on) up to the open session.  3) Position at the first
+timing point instead of the end of lap 1 (purer, but the free sources' mid-lap positions are not
+reliable, and OpenF1 sessions have none before the line).
+Chosen: 2, with raw gained beside it, in `model/starts.py`, worked out per request like Teammates
+(D-020). A start is grid slot minus position at the end of lap 1, Grand Prix and sprint apart (each
+against its own slot averages) and together. Left out: pit-lane starts (grid 0), cars that did not
+start (W), sessions with no published grid (grid missing or -1: Baku 2026, two sprints), each noted.
+Cars out on lap 1 are counted apart, not as places lost.
+Why: The fair number is the slot-relative one, and every figure can be checked by hand from one
+race's grid and its lap-1 order.
+Trade-off: The slot averages include the driver's own starts and the current season; a lap-1 crash
+caused by someone else still shows as places lost for the drivers caught in it.
+Revisit if: a source gives reliable first-sector positions, or the screen needs past seasons.

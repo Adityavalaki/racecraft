@@ -7,6 +7,7 @@ import { ScreenView, type ScreenContext } from "./ScreenView";
 import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
+import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
 import { ageAtLost, lostAt } from "./TyresScreen";
@@ -437,5 +438,20 @@ describe("Teammates", () => {
     // One 1.6 s round among 0.1-0.3 s ones: the scale stops at three times the median (0.2), not 2 s.
     expect(chartReach([-0.1, 0.2, -0.3, 0.2, -1.6])).toBe(1);
     expect(chartReach([-0.2, 0.3])).toBe(0.5);                           // nothing to clip
+  });
+});
+
+describe("Starts", () => {
+  it("signs places gained and keeps a level start plain", () => {
+    expect(places(1.294)).toBe("+1.29");
+    expect(places(-0.4)).toBe("−0.40");
+    expect(places(0.001)).toBe("0.00");
+    expect(places(null)).toBe("—");
+  });
+
+  it("names a start by its grid slot, lap-1 place and event", () => {
+    expect(startText({ event_name: "Chinese Grand Prix", grid: 14, lap1: 7, gain: 7 })).toBe("P14 → P7, Chinese");
+    expect(startText({ event_name: "Miami Grand Prix sprint", grid: 3, lap1: 5, gain: -2 })).toBe("P3 → P5, Miami sprint");
+    expect(startText(null)).toBe("—");
   });
 });

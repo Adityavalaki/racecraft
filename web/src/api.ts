@@ -742,6 +742,41 @@ export interface Teammates {
   notes: string[];
 }
 
+/** A start: the grid slot, the place after lap 1, and the places gained. */
+export interface StartRecord {
+  event_name: string;
+  grid: number;
+  lap1: number;
+  gain: number;
+}
+
+/** One driver's lap-1 record (see model/starts.py); vs_normal is against their grid slots' averages. */
+export interface DriverStarts {
+  abbreviation: string;
+  full_name: string | null;
+  team: string;
+  team_color: string | null;
+  starts: number;
+  gained: number | null;
+  vs_normal: number | null;
+  up: number;
+  same: number;
+  down: number;
+  best: StartRecord | null;
+  worst: StartRecord | null;
+  out_lap1: number;
+}
+
+export type StartKind = "races" | "sprints" | "both";
+
+export interface Starts {
+  year: number;
+  moment: StandingsMoment;
+  drivers: Record<StartKind, DriverStarts[]>;
+  sessions: Record<StartKind, number>;
+  notes: string[];
+}
+
 export interface PitCrews {
   year: number;
   moment: StandingsMoment;
@@ -937,6 +972,8 @@ export const api = {
     get<PitCrews>(`/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
   teammates: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<Teammates>(`/api/sessions/${key}/teammates?moment=${moment}`, signal),
+  starts: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<Starts>(`/api/sessions/${key}/starts?moment=${moment}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),

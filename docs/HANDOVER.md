@@ -5,6 +5,14 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-28 (evening) — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: `teammates` merged into `main` and pushed (39f0974, with D-019's 4c6bc8d). Race replay rerun to the end (87 races) and the Wilcoxon test applied: 2023-2025 better than the grid, p = 4e-5; 2026 alone not provable (9 of 18, p = 0.32). TECHNICAL and BACKLOG updated.
+- Also done: the Starts screen on branch `starts` (D-021, FEATURE-002), checked in a browser on the 2026 US GP. Not merged or pushed.
+- In progress: nothing.
+- Broken or risky: nothing new. The desktop app still lacks the Teammates screen until rebuilt.
+- Next: Aditya to look at Starts and merge `starts`; rebuild the app (Aditya: signing).
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-28 — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: top-up pass on `main` (4c6bc8d, D-019). Teammates screen on branch `teammates` (D-020, FEATURE-001): qualifying, race pace, practice, results, sprints and a per-round gap chart; checked in a browser on the 2026 US GP. pytest 645 passed, vitest 245 passed, web build OK.
 - In progress: nothing. Branch `teammates` not merged or pushed.

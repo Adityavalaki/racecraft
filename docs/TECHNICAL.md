@@ -1430,6 +1430,29 @@ stops at three times the median gap, so one bad round (a Q1 exit with a problem)
 not flatten the rest, and a capped bar is marked. Worked out on each request: about
 1 s for a season on the real lake.
 
+## Starts
+
+`model/starts.py`, the Starts screen in Season (D-021). A start is the grid slot
+minus the position at the end of lap 1, so positive means places gained.
+
+- **Vs normal**, the column the table is ranked by: each start minus the average
+  gain from that grid slot, over every Grand Prix (or sprint) start in the lake
+  from 2023 up to the open session. Pole can only lose places and P20 easily
+  gains, so raw places gained mostly says where a driver qualified.
+- **Left out, with a note:** pit-lane starts (grid 0), cars that did not start
+  (classified W), and sessions with no published grid (grid missing or -1:
+  Baku 2026 and two sprints).
+- **Out on lap 1:** a car that started but has no lap-1 position (0 laps,
+  retired). Counted in its own column, not as places lost.
+- Races and sprints are separate tables, each against its own slot averages,
+  plus both together.
+
+Checked on the 2026 lake: the three 2026 cars with no lap-1 position (VER twice,
+RUS once) each completed 0 laps and retired. About 0.4 s a season.
+
+Not separated: a driver caught in someone else's lap-1 crash still loses places.
+
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

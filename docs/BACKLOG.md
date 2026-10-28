@@ -108,9 +108,9 @@ Ordered as last suggested. Each one: plan, approval, build, tests, screenshot, d
 
 ### From the data we already have
 - [x] **Teammate head-to-head** (D-020): the Teammates screen in Season, with practice and a
-  per-round chart of the gap. Branch `teammates`.
-- [ ] **Start performance.** *idea*
-  Grid slot against position after lap 1, per driver, and how consistent it is.
+  per-round chart of the gap. Merged into `main` and pushed, 39f0974.
+- [x] **Start performance** (D-021): the Starts screen in Season, places gained on lap 1 against
+  what the grid slot usually gains. Branch `starts`.
 - [ ] **Corner-type strengths per team.** *idea*
   Minimum speed and braking points in slow, medium and fast corners, from telemetry and the
   marked corners. Samples are about 20 m apart at top speed, so interpolated.

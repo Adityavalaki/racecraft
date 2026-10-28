@@ -2283,6 +2283,10 @@ button.standings-row:hover { background: var(--panel-2); }
 .standings-table.is-crews { --st-cols: 2rem 4px minmax(8rem, 1fr) 4.4rem minmax(9rem, 1.4fr) 4rem 3rem 3rem; }
 .standings-table.is-trips { --st-cols: 2.4rem 4px minmax(7rem, 1fr) 5rem 5rem minmax(10rem, 1.6fr); }
 .standings-row.is-thin { opacity: 0.6; }
+
+/* ---------------------------------------------------------------- starts */
+.standings-table.is-starts { --st-cols: 2rem 4px minmax(7rem, 1fr) 5.8rem 5.4rem 10rem minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) 5.6rem 3.8rem; }
+.standings-table.is-starts .is-head span { white-space: nowrap; }
 .standings-row .is-quick { color: var(--green); }
 .standings-row .is-slow { color: var(--red); }
 .crew-range { position: relative; height: 1rem; background: linear-gradient(to right, transparent calc(50% - 0.5px), var(--rule-strong) calc(50% - 0.5px), var(--rule-strong) calc(50% + 0.5px), transparent calc(50% + 0.5px)); }
