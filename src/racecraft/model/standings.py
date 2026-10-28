@@ -47,15 +47,15 @@ class Standings:
                 "races": self.races, "sprints": self.sprints, "last": self.last, "notes": self.notes}
 
 
-def results(con, year: int) -> pd.DataFrame:
-    """Every Grand Prix and sprint result of the season, one row per driver per session, in running order."""
+def results(con, year: int, codes: tuple[str, ...] = ("R", "S")) -> pd.DataFrame:
+    """Every Grand Prix and sprint result (or `codes`') of the season, one row per driver per session, in running order."""
     df = con.execute("""
         select s.session_key, s.year, cast(s.round as integer) as round, s."session" as code, s.event_name,
                s.date_utc, r.driver_number, r.abbreviation, r.full_name, r.team_name, r.team_id, r.team_color,
-               r.position, r.classified_position, r.points
+               r.position, r.classified_position, r.points, r.q1_s, r.q2_s, r.q3_s
         from results r join sessions s using (session_key)
-        where s.year = ? and s."session" in ('R', 'S')
-        order by s.date_utc, r.position""", [int(year)]).df()
+        where s.year = ? and list_contains(?, s."session")
+        order by s.date_utc, r.position""", [int(year), list(codes)]).df()
     if df.empty:
         return df
     df["classified"] = pd.to_numeric(df["classified_position"], errors="coerce")

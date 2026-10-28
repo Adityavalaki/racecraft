@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-28 — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: top-up pass on `main` (4c6bc8d, D-019). Teammates screen on branch `teammates` (D-020, FEATURE-001): qualifying, race pace, practice, results, sprints and a per-round gap chart; checked in a browser on the 2026 US GP. pytest 645 passed, vitest 245 passed, web build OK.
+- In progress: nothing. Branch `teammates` not merged or pushed.
+- Broken or risky: the route takes about 1.2 s warm (4 s seen once cold); practice ignores fuel (labelled the noisiest line); the chart caps at 3x the median gap (ASSUMPTIONS 20).
+- Next: Aditya to look at the screen and merge `teammates`; rebuild the app to ship it (and the bundled weights file from D-019's commit).
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-27 (night) — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: BUG-006 fixed (stray CSS from PR #4's merge stacked the replay's columns); `main` pushed at 81cc6d2 by Aditya. Aditya checked the app by hand: the 2026 US GP loads and plays correctly.
 - In progress: nothing.

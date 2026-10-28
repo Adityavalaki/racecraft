@@ -688,6 +688,60 @@ export interface PitLaneTrip {
   excluded: string | null;
 }
 
+/** Who placed ahead, first driver then second, and the median gap (first minus second: negative, the first was quicker). */
+export interface TeammateQualifying {
+  ahead: [number, number];
+  sessions: number;
+  gap_s: number | null;
+  pct: number | null;
+}
+
+/** How many sessions each was quicker in, and the median gap. */
+export interface TeammateGap {
+  faster: [number, number];
+  sessions: number;
+  gap_s: number | null;
+}
+
+export interface TeammateFinishes {
+  ahead: [number, number];
+  races: number;
+  retired: [number, number];
+}
+
+/** One round's gaps for the chart; null where there was nothing to compare. */
+export interface TeammateRound {
+  round: number;
+  event_name: string;
+  quali_gap_s: number | null;
+  quali_pct: number | null;
+  race_gap_s: number | null;
+  sprint_gap_s: number | null;
+  practice_gap_s: number | null;
+}
+
+/** Two drivers of one team, over the rounds they drove together (see model/teammates.py). */
+export interface TeammatePair {
+  team: string;
+  team_color: string | null;
+  drivers: { abbreviation: string; driver_number: number; full_name: string | null }[];
+  rounds_together: number;
+  qualifying: TeammateQualifying;
+  race_pace: TeammateGap;
+  practice: TeammateGap;
+  results: TeammateFinishes & { points: [number, number] };
+  sprint: TeammateFinishes & { qualifying: TeammateQualifying; pace: TeammateGap };
+  rounds: TeammateRound[];
+}
+
+export interface Teammates {
+  year: number;
+  moment: StandingsMoment;
+  pairs: TeammatePair[];
+  rounds: number;
+  notes: string[];
+}
+
 export interface PitCrews {
   year: number;
   moment: StandingsMoment;
@@ -881,6 +935,8 @@ export const api = {
     get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
   pitCrews: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<PitCrews>(`/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
+  teammates: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<Teammates>(`/api/sessions/${key}/teammates?moment=${moment}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),

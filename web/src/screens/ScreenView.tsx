@@ -10,6 +10,7 @@ import { TowerScreen } from "./TowerScreen";
 import { StandingsScreen } from "./StandingsScreen";
 import { StewardsScreen } from "./StewardsScreen";
 import { StrategyScreen } from "./StrategyScreen";
+import { TeammatesScreen } from "./TeammatesScreen";
 import { TraceScreen } from "./TraceScreen";
 import { TyresScreen } from "./TyresScreen";
 
@@ -84,5 +85,7 @@ export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<Sc
       return <StandingsScreen ctx={ctx} header={header} />;
     case "crews":
       return <CrewsScreen ctx={ctx} header={header} />;
+    case "teammates":
+      return <TeammatesScreen ctx={ctx} header={header} />;
   }
 });

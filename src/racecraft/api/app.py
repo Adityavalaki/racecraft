@@ -339,6 +339,26 @@ def session_pit_crews(session_key: str,
     return body
 
 
+@app.get("/api/sessions/{session_key}/teammates")
+def session_teammates(session_key: str,
+                      moment: str = Query("before", pattern="^(before|after)$",
+                                          description="the season before this session started, or with it")) -> dict:
+    """
+    Each team's two drivers head to head this season: qualifying, race pace on
+    shared clean laps, practice, results and sprints, and the gaps race by race.
+    """
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for the teammates")
+    _safe(session_key)
+    from racecraft.model import teammates
+
+    con = connect()
+    year, as_of = _as_of(con, session_key, moment)
+    body = teammates.head_to_head(con, year, as_of).as_dict()
+    body["moment"] = moment
+    return body
+
+
 @app.get("/api/sessions/{session_key}/forecast")
 def session_forecast(session_key: str) -> dict:
     """

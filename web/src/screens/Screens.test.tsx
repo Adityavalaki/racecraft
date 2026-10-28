@@ -7,6 +7,7 @@ import { ScreenView, type ScreenContext } from "./ScreenView";
 import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
+import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
 import { ageAtLost, lostAt } from "./TyresScreen";
 
@@ -381,5 +382,60 @@ describe("CrewsScreen", () => {
     expect(screen.getByText(/This session's stops so far: 2 of 3/)).toBeDefined();   // VER's, at t=9000, not yet
     expect(stops.queryByText("VER")).toBeNull();
     expect(stops.getByText(/not counted: under a safety car or VSC/)).toBeDefined();
+  });
+});
+
+describe("Teammates", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const finishes = { ahead: [0, 0], races: 0, retired: [0, 0] };
+  const pair = {
+    team: "Mercedes", team_color: "00D7B6", rounds_together: 2,
+    drivers: [{ abbreviation: "ANT", driver_number: 12, full_name: "Kimi Antonelli" },
+              { abbreviation: "RUS", driver_number: 63, full_name: "George Russell" }],
+    qualifying: { ahead: [1, 1], sessions: 2, gap_s: -0.231, pct: -0.248 },
+    race_pace: { faster: [2, 0], sessions: 2, gap_s: -0.304 },
+    practice: { faster: [3, 2], sessions: 5, gap_s: 0.11 },
+    results: { ahead: [1, 0], races: 2, retired: [0, 1], points: [43, 0] },
+    sprint: { ...finishes, qualifying: { ahead: [0, 0], sessions: 0, gap_s: null, pct: null }, pace: { faster: [0, 0], sessions: 0, gap_s: null } },
+    rounds: [
+      { round: 1, event_name: "Australian Grand Prix", quali_gap_s: -0.4, quali_pct: -0.5, race_gap_s: -0.2, sprint_gap_s: null, practice_gap_s: null },
+      { round: 2, event_name: "Chinese Grand Prix", quali_gap_s: 0.1, quali_pct: 0.11, race_gap_s: null, sprint_gap_s: null, practice_gap_s: 0.11 },
+    ],
+  };
+
+  it("shows each pair head to head and charts the gap the reader picks", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      ({ ok: true, json: async () => ({ year: 2026, moment: url.endsWith("after") ? "after" : "before", rounds: 2, notes: ["a note"], pairs: [pair] }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ScreenView id="teammates" ctx={context()} />);
+
+    const table = within(await screen.findByRole("table", { name: "Mercedes: ANT against RUS, head to head" }));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/teammates?moment=before");
+    expect(table.getByText("ANT 0.231 s quicker (0.25%)")).toBeDefined();
+    expect(table.getByText("ANT 0.304 s a lap quicker · 2 sessions")).toBeDefined();
+    expect(table.getByText("RUS 0.110 s quicker · 5 sessions")).toBeDefined();
+    expect(table.getByText("retired: ANT 0, RUS 1")).toBeDefined();
+    expect(table.queryByText("Sprints")).toBeNull();                       // no sprint run yet
+    expect(screen.getByText("a note")).toBeDefined();
+
+    // Qualifying first: one round each way.
+    expect(screen.getByRole("img", { name: "Qualifying gap by round: ANT quicker in 1, RUS in 1" })).toBeDefined();
+    fireEvent.click(screen.getByRole("radio", { name: "Race pace" }));
+    expect(screen.getByRole("img", { name: "Race pace gap by round: ANT quicker in 1, RUS in 0" })).toBeDefined();
+    expect(screen.getByText("Round 2, Chinese Grand Prix: nothing to compare")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("radio", { name: "After it" }));
+    await waitFor(() => expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/teammates?moment=after"));
+  });
+
+  it("words a gap by who was quicker, and rounds the chart's reach up", () => {
+    expect(gapText(-0.2314, "ANT", "RUS")).toBe("ANT 0.231 s quicker");
+    expect(gapText(0.0004, "ANT", "RUS")).toBe("level");
+    expect(gapText(0.5, "ANT", "RUS", "a lap")).toBe("RUS 0.500 s a lap quicker");
+    expect([0.03, 0.31, 0.5, 1.2, 7].map(niceCeiling)).toEqual([0.05, 0.5, 0.5, 2, 10]);
+    // One 1.6 s round among 0.1-0.3 s ones: the scale stops at three times the median (0.2), not 2 s.
+    expect(chartReach([-0.1, 0.2, -0.3, 0.2, -1.6])).toBe(1);
+    expect(chartReach([-0.2, 0.3])).toBe(0.5);                           // nothing to clip
   });
 });

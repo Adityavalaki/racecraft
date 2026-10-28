@@ -1388,6 +1388,31 @@ team's best single stop was dropped from the table: one timing glitch (17.0 s
 in a lane whose stops take 23) decides it, where the median and spread shrug
 it off.
 
+## Teammates
+
+`model/teammates.py` (D-020) puts each team's two drivers side by side over the rounds
+they drove together, as of the open session like the standings. Teammates share a car,
+so their gap is the nearest this data gets to the driver alone.
+
+| Line | Rule |
+|---|---|
+| Qualifying | who qualified ahead; the gap in the last part both set a time in (Q3, else Q2, else Q1), seconds and % |
+| Race pace | `pace.clean_race_laps`, then only laps where both ran the same lap number on the same compound; the race's figure is the median gap over at least 5 such laps |
+| Practice | each session's best lap on the softest dry compound both set a lap on; fuel is unknown, so the noisiest line |
+| Results | who finished ahead when both were classified; retirements apart; points with sprints, as the standings count them |
+| Sprints | sprint qualifying, sprint finishes and sprint pace, by the same rules |
+
+A pair is the two drivers a team ran in a round's qualifying, sprint or Grand Prix; an
+FP1 rookie never makes one. A round where a team ran any other number of drivers is
+left out with a note, so a stand-in is compared only over the rounds they raced (2024:
+Bearman one round at Ferrari and two at Haas, Lawson six at RB, Colapinto nine at
+Williams). The first driver of a pair is the one with more points between them; gaps
+are first minus second. The season figure is the median of per-session figures, so
+each race counts once. The screen charts one line per pair round by round; its scale
+stops at three times the median gap, so one bad round (a Q1 exit with a problem) does
+not flatten the rest, and a capped bar is marked. Worked out on each request: about
+1 s for a season on the real lake.
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

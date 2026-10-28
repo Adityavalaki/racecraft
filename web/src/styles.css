@@ -2184,6 +2184,30 @@ button.prediction-row:hover { background: var(--panel-2); }
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
 
+/* ---------------------------------------------------------------- teammates */
+.teammates-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.teammates { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: 12px; align-items: start; }
+.teammates-panel { padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.teammates-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--ink); }
+.teammates-title .team-bar { display: inline-block; width: 4px; height: 16px; }
+.teammates-panel .teammates-title small { letter-spacing: 0; font-weight: 400; font-size: 0.78rem; color: var(--ink-soft); }
+.teammates-row { display: grid; grid-template-columns: 6.2rem 2.6rem 2.6rem minmax(0, 1fr); gap: 0.5rem; align-items: baseline;
+  padding: 3px 0; border-bottom: 1px solid var(--rule-soft); font-size: 0.82rem; color: var(--ink-mid); }
+.teammates-row.is-head { font-size: 0.72rem; color: var(--ink-faint); font-weight: 600; }
+.teammates-row .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.teammates-row .count.is-lead { color: var(--ink); font-weight: 700; }
+.teammates-row .gap { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teammates-chart { width: 100%; height: auto; display: block; margin-top: 4px; }
+.teammates-chart .axis { stroke: var(--rule-strong); stroke-width: 1; }
+.teammates-chart .grid { stroke: var(--rule-soft); stroke-width: 1; stroke-dasharray: 2 3; }
+.teammates-chart .hit { fill: transparent; }
+.teammates-chart .clip { stroke: var(--ink); stroke-width: 2; }
+.teammates-chart .hit:hover { fill: var(--panel-2); }
+.teammates-chart text { font-family: var(--font-mono); font-size: 10px; fill: var(--ink-faint); }
+.teammates-chart .side { fill: var(--ink-soft); text-anchor: end; font-family: var(--font-text); font-size: 11px; }
+.teammates-chart .tick { text-anchor: end; }
+.teammates-chart .round { text-anchor: middle; font-size: 9px; }
+
 /* ---------------------------------------------------------------- standings */
 .standings-basis { margin: 0; font-size: 0.8rem; color: var(--ink-soft); }
 .standings-basis b { color: var(--ink); font-weight: 600; }

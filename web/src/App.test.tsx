@@ -177,7 +177,7 @@ describe("App", () => {
     const rail = screen.getByRole("complementary", { name: /racecraft navigation/i });
     const nav = within(within(rail).getByRole("navigation", { name: "Screens" }));
     expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual(
-      ["Replay", "Timing tower", "Race trace", "Pedals and speed", "Strategy", "Tyres", "Race prediction", "Stewards", "Standings", "Pit crews"]);
+      ["Replay", "Timing tower", "Race trace", "Pedals and speed", "Strategy", "Tyres", "Race prediction", "Stewards", "Standings", "Pit crews", "Teammates"]);
     expect(nav.getByRole("button", { name: "Replay" }).getAttribute("aria-current")).toBe("page");
     expect(within(rail).getByRole("button", { name: /^refresh data$/i })).toBeDefined();
     expect(within(rail).getByRole("button", { name: "Settings" })).toBeDefined();

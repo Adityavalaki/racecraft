@@ -109,8 +109,8 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 Ordered as last suggested. Each one: plan, approval, build, tests, screenshot, docs, commit.
 
 ### From the data we already have
-- [ ] **Teammate head-to-head.** *idea, recommended next*
-  Qualifying gaps, race pace and finishes against the teammate. High accuracy (same car).
+- [x] **Teammate head-to-head** (D-020): the Teammates screen in Season, with practice and a
+  per-round chart of the gap. Branch `teammates`.
 - [ ] **Start performance.** *idea*
   Grid slot against position after lap 1, per driver, and how consistent it is.
 - [ ] **Corner-type strengths per team.** *idea*

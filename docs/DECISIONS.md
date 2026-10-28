@@ -316,3 +316,25 @@ Why: A few requests instead of a full download; nothing to remember to do.
 Trade-off: Up to three requests per gapped session on every pass until its sources publish.
 The overlays now loosen a column's type before filling it (lake tables come back as int16).
 Revisit if: a source can take longer than 14 days, or a new source adds fields to fill.
+
+## D-020: Teammate head-to-head, from the lake as it stands
+Date: 2026-10-28   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: Teammates share a car, so the gap between them is the closest the data gets to the driver
+alone. Aditya asked for a Season screen with qualifying, race pace, practice, results and sprints
+per team, and a chart of the gap race by race.
+Options:   1) Work it out on each request from `results` and `laps` (a season's laps read in
+0.07 s).  2) Precompute at ingest and store it (one more table to keep in step with top-ups and
+`--force`).  3) Reuse the race prediction's lap-effects fit per race (fits every driver at once and
+can fail on a thin race; a teammate gap needs only the two cars).
+Chosen: 1, in `model/teammates.py`. A pair is the two drivers a team ran in a round's qualifying or
+Grand Prix; a round with any other count (a stand-in mid-weekend) is left out and noted, so a
+stand-in only meets the driver they raced beside. Qualifying: the last part both set a time in, and
+who qualified ahead. Race pace (Grand Prix and sprint): `pace.clean_race_laps`, then the same lap
+number on the same compound for both, the median gap over at least 5 such laps. Practice: each
+session's best lap on the softest compound both set a lap on (programmes and fuel differ, so it is
+the noisiest line and says so). Results: who finished ahead when both were classified, retirements
+apart, points as the standings count them. As of the open session, like Standings.
+Why: Smallest thing that answers it, and every rule is one a reader can check by hand on one race.
+Trade-off: Recomputed per request (cheap); practice best laps ignore fuel; a pair that never shared a
+compound in a race has no race-pace figure for it.
+Revisit if: practice proves too noisy to show, or the screen needs past seasons side by side.

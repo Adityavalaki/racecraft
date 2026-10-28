@@ -37,6 +37,7 @@ FEATURES: dict[str, str] = {
     "stewards": "Stewards",
     "standings": "Standings",
     "crews": "Pit crews",
+    "teammates": "Teammates",
 }
 
 # A lake session code (2024_01_R) or the live key: nothing that could reach a URL oddly.
