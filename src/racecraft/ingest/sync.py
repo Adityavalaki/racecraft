@@ -28,7 +28,7 @@ import fastf1
 import pandas as pd
 
 from racecraft import config
-from racecraft.ingest import cli
+from racecraft.ingest import cli, topup
 from racecraft.ingest.fastf1_source import LOCKED
 from racecraft.store import lake
 
@@ -210,6 +210,11 @@ class Syncer:
                 if item.state == "busy" and lake.is_ingested(item.season, item.round, item.ident):
                     with self._lock:
                         item.state, item.detail = "present", ""
+            # Sessions built before Jolpica or TracingInsights had published, completed now (D-019).
+            try:
+                topup.top_up()
+            except Exception:                       # noqa: BLE001 - an extra must not fail the sync
+                log.warning("top-up failed", exc_info=True)
             if wrote:
                 try:
                     cli.compact_http_cache()        # pruned responses only free space once compacted

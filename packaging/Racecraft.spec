@@ -24,6 +24,7 @@ datas = [
     (str(REPO / "src" / "racecraft" / "model" / "prediction_weights.json"), "racecraft/model"),
     (str(REPO / "src" / "racecraft" / "model" / "sprint_weights.json"), "racecraft/model"),
     (str(REPO / "src" / "racecraft" / "model" / "title_weights.json"), "racecraft/model"),
+    (str(REPO / "src" / "racecraft" / "model" / "title_history_weights.json"), "racecraft/model"),
 ]
 binaries = []
 hiddenimports = [

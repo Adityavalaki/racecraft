@@ -63,5 +63,8 @@ def overlay(results: pd.DataFrame, jolpica: pd.DataFrame | None, ident: str) -> 
     listed = cars.isin(j.index)
     differ = sorted(int(n) for n in cars[listed & (out["position"] != cars.map(j["position"]))])
     for column, values in fields.items():
+        # Loosened first: results read back from the lake have int16 columns pandas will not
+        # fill from wider values. The lake casts them back to the schema on writing.
+        out[column] = out[column].astype(object) if column in out else None
         out.loc[listed, column] = cars[listed].map(values).to_numpy()
     return out, differ

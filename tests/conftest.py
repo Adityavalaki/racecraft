@@ -30,6 +30,21 @@ def no_real_recordings(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(recorder, "LIVE_DIR", tmp_path_factory.mktemp("no-live"))
 
 
+@pytest.fixture(autouse=True)
+def no_real_top_up(monkeypatch):
+    """
+    Keep every ingest pass in a test from topping up the machine's own lake (D-019).
+
+    The top-up runs after each pass and reads whatever lake the config points at,
+    which on a developer's machine is the real one, and it asks Jolpica and
+    TracingInsights. `tests/test_topup.py` calls the real one, as `topup.real_top_up`.
+    """
+    from racecraft.ingest import topup
+
+    monkeypatch.setattr(topup, "real_top_up", topup.top_up, raising=False)
+    monkeypatch.setattr(topup, "top_up", lambda now=None: 0)
+
+
 @pytest.fixture
 def fastf1_laps():
     """

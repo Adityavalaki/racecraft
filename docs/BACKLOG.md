@@ -33,9 +33,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
   Checked by Aditya in the app the same night: loads and plays correctly.
 - [x] **Known OpenF1 gaps** (D-010): lapped gaps and the sprint retirees' order fixed by step 3,
   practice tyre age by step 4 (once TracingInsights has published the session).
-- [ ] **Re-ingest recent sessions with `--force` about a day later**, so they pick up
-  TracingInsights' tyres and corners and Jolpica's results if they were ingested before those
-  published. *idea* Could be automatic in the watcher.
+- [x] **Top up recent sessions once Jolpica and TracingInsights publish** (D-019): automatic after
+  every ingest and Refresh data, or `racecraft-ingest --top-up`. Real lake checked 2026-10-28: no
+  gaps (the US GP was re-ingested after both). First real use: Mexico City, 1 November.
 - [x] **Step 3: the Jolpica adapter.** Done: see `git log` (D-011). `ingest/jolpica_source.py`
   puts the official results over OpenF1's and logs cars the two place differently. Checked on
   Singapore 2026 (race and qualifying now match FastF1's results exactly) and through the real

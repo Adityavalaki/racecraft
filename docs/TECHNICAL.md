@@ -77,6 +77,8 @@ TracingInsights' GitHub archive (FastF1's own output, about twelve hours after a
 session) adds the session's corners and FastF1's tyre history, and stands in for
 OpenF1, without telemetry, when OpenF1 has no session (D-012). Ingested before it
 publishes, a session keeps OpenF1's tyres until `--force` re-ingests it.
+Recent sessions ingested before Jolpica or TracingInsights published are completed
+after every pass (`ingest/topup.py`, D-019): only the gaps, a few requests each.
 Each session's `sources` table says where each of its tables came from; the app
 names them beside the session picker (D-013). Sessions without one are FastF1's.
 Team radio (`team_radio`: car, time, MP3 address) comes from OpenF1 and plays from F1's

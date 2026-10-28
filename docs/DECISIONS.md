@@ -297,3 +297,22 @@ Trade-off: Two numbers to read instead of one; they can disagree (2025 round 12:
 lap-time, 67% results-only).
 Revisit if: someone wants a blend again: restore the script from f2b8c4f and re-run it with 2026 added.
 Update 2026-10-28: Aditya dropped the blend for good; the app shows the two models side by side.
+
+## D-019: Recent sessions topped up once the slower sources publish
+Date: 2026-10-28   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: A session F1 refuses is built from OpenF1 at once; Jolpica's results come hours later
+and TracingInsights' tyres and corners about twelve. Ingested early, a session kept OpenF1's
+results (no team ids or lapped gaps) and practice tyre ages (wrong on a reused set, which the
+race prediction reads), and the lake counted it as done.
+Options:   1) Re-ingest recent sessions with `--force` a day later (telemetry again: 3-6 minutes
+a session through OpenF1's rate limit).  2) Fill only the gaps the `sources` table shows.
+Chosen: 2. `ingest/topup.py` finds sessions of the last 14 days whose results lack Jolpica (race,
+sprint, qualifying), whose laps are OpenF1's alone, or whose corners were copied; it fetches only
+those (one Jolpica request, two TracingInsights), applies the same overlays as ingest, and
+rewrites only the changed tables and `sources`, under the session's lock. It runs after every
+ingest pass, every Refresh data, and with `racecraft-ingest --top-up`; what has not published
+is asked again next time. Tests never top up the machine's lake (an autouse guard).
+Why: A few requests instead of a full download; nothing to remember to do.
+Trade-off: Up to three requests per gapped session on every pass until its sources publish.
+The overlays now loosen a column's type before filling it (lake tables come back as int16).
+Revisit if: a source can take longer than 14 days, or a new source adds fields to fill.

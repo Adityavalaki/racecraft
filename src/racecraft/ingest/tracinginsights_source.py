@@ -135,6 +135,9 @@ def tyres_over(openf1: pd.DataFrame, ti: pd.DataFrame) -> tuple[pd.DataFrame, in
     out = openf1.set_index(on)
     shared = out.index.intersection(theirs.index[theirs["compound"].notna()])
     for column in TYRES:
+        # Loosened first: read back from the lake, a column is int16 or int8, which pandas will
+        # refuse to fill from wider values. `_frame` casts the table back to the schema.
+        out[column] = out[column].astype(object)
         out.loc[shared, column] = theirs.loc[shared, column]
     both = out.index.intersection(theirs.index)
     gap = (out.loc[both, "lap_time_s"] - theirs.loc[both, "lap_time_s"]).abs()

@@ -30,7 +30,7 @@ from fastf1.exceptions import DataNotLoadedError, NoLapDataError, RateLimitExcee
 
 from racecraft import config, locking
 from racecraft.ingest import (api_budget, f1db_source, fastf1_source, jolpica_source, openf1_source, quality,
-                              tracinginsights_source)
+                              topup, tracinginsights_source)
 from racecraft.store import lake
 from racecraft.store.db import connect, has_table
 
@@ -463,6 +463,10 @@ def run_once(args) -> dict[str, int]:
 
     if args.prune_cache:
         log.info("compacted HTTP cache, %.0f MB freed", compact_http_cache())
+    # Sessions built before Jolpica or TracingInsights had published, completed now if they have (D-019).
+    topped = topup.top_up()
+    if topped:
+        log.info("topped up %d recent sessions", topped)
     return counts
 
 
@@ -514,6 +518,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the summary logged after a race is ingested")
     ap.add_argument("--radio", action="store_true",
                     help="only add team radio to sessions in the lake that have none (OpenF1, 2023 on)")
+    ap.add_argument("--top-up", action="store_true",
+                    help="only fill recent sessions' gaps from Jolpica and TracingInsights (runs after every pass too)")
     ap.add_argument("--history", action="store_true",
                     help="only fetch f1db's championship history since 1950, for the title backtest (about 5 MB)")
     args = ap.parse_args(argv)
@@ -528,6 +534,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.history:
         log.info("done: f1db %s", f1db_source.download())
+        return 0
+    if args.top_up:
+        log.info("done: topped up %d recent sessions", topup.top_up())
         return 0
 
     if args.watch:
