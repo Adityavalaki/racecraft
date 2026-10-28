@@ -1122,7 +1122,7 @@ Bahrain 2023 is skipped: there is nothing before it in the lake.
 | 2023 | 21 | **0.64** / 0.59 / 0.59 | 76% / 62% / **81%** | **2.00** / 1.90 |
 | 2024 | 24 | **0.77** / 0.73 / 0.67 | **46%** / **46%** / 30% | 2.00 / 2.00 |
 | 2025 | 24 | **0.66** / 0.65 / 0.58 | **67%** / **67%** / 32% | 2.25 / 2.25 |
-| **2026, held out** | 16 | **0.66** / 0.64 / 0.63 | **69%** / **69%** / 47% | 1.81 / **1.88** |
+| **2026, held out** | 18 | **0.69** / 0.66 / 0.65 | **72%** / **72%** / 47% | 1.89 / 1.89 |
 | 2023–2025 | 69 | **0.69** / 0.66 / 0.61 | **62%** / 58% / 47% | **2.09** / 2.06 |
 
 How honest the chances are, as Brier scores (lower is better). For the grid, a
@@ -1133,7 +1133,9 @@ slot's chance is how often that slot has won or reached the podium.
 | 2023 | **0.39** / 0.60 | **1.41** / 1.59 |
 | 2024 | **0.72** / 0.75 | **1.34** / 1.39 |
 | 2025 | **0.50** / 0.54 | **1.12** / 1.19 |
-| **2026, held out** | **0.46** / 0.50 | **1.42** / 1.47 |
+| **2026, held out** | **0.45** / 0.47 | **1.34** / 1.40 |
+
+(Replayed 2026-10-28, through the US GP: 87 races, 500 runs each.)
 
 What the replay says:
 
@@ -1141,6 +1143,21 @@ What the replay says:
 - **The margins are small.** The grid already holds most of what can be known on Saturday night.
 - **On naming the winner it ties pole** in 2024, 2025 and 2026.
 - **In 2023, form alone did better:** Verstappen won 19 of 22.
+
+**Is the gain more than luck?** Each race's model score paired with the grid's,
+Wilcoxon signed-rank, one-sided (the model better), from `--out`'s per-race file:
+
+| Score | 2023–2025 (69 races) | 2026, held out (18) | All 87 |
+|---|---|---|---|
+| Win chances, log-loss | better in 49, p = 4e-5 | better in 9, p = 0.32 | better in 58, p = 5e-5 |
+| Win chances, Brier | better in 49, p = 3e-4 | better in 11, p = 0.32 | better in 60, p = 5e-4 |
+| Podium chances, Brier | better in 46, p = 0.001 | better in 10, p = 0.25 | better in 56, p = 0.001 |
+| Order, rank corr. | better in 43, p = 3e-4 | better in 13, p = 0.07 | better in 56, p = 1e-4 |
+
+Over 2023–2025 the gain is real, not luck, and those seasons were each predicted
+with weights from the other two. On 2026 alone it is ahead on every score but
+not provably: 18 races is too few to tell a small gain from chance, and win
+log-loss is level (9 of 18). Rerun once 2026 is complete.
 
 Three things here were changed after seeing the replay:
 

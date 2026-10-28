@@ -92,11 +92,9 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 
 ## 3. Models and statistics still to finish
 
-- [ ] **Race Wilcoxon test.** *ready*
-  The sprint test is done (win log-loss better than the grid in 17 of 23 sprints, p = 0.007).
-  The race replay (`racecraft-analyse predict-backtest --out <file>`) was stopped before it
-  finished, twice. Rerun it and apply the same Wilcoxon signed-rank test, pairing each race's
-  model score with the grid's.
+- [x] **Race Wilcoxon test.** Done 2026-10-28 (TECHNICAL "Is the gain more than luck?"): win
+  log-loss better than the grid in 49 of 69 races 2023-2025 (p = 4e-5); 2026 alone 9 of 18
+  (p = 0.32), too few races to tell. Rerun when 2026 is complete. (Sprints: 17 of 23, p = 0.007.)
 - [ ] **Race model's sprint signal.** *idea*
   The race prediction still reads a sprint's pace with the lap-effects fit, which breaks when
   one driver is alone on a compound (China 2024: held at the ±2.5 s limit). Move it to
