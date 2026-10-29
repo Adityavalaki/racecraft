@@ -416,8 +416,9 @@ describe("Teammates", () => {
     expect(table.getByText("ANT 0.231 s quicker (0.25%)")).toBeDefined();
     expect(table.getByText("ANT 0.304 s a lap quicker · 2 sessions")).toBeDefined();
     expect(table.getByText("RUS 0.110 s quicker · 5 sessions")).toBeDefined();
-    expect(table.getByText("retired: ANT 0, RUS 1")).toBeDefined();
-    expect(table.queryByText("Sprints")).toBeNull();                       // no sprint run yet
+    expect(table.getByText("retirements: ANT 0, RUS 1")).toBeDefined();
+    expect(table.getByText("Qualified ahead")).toBeDefined();
+    expect(table.queryByText("Sprints ahead")).toBeNull();                 // no sprint run yet
     expect(screen.getByText("a note")).toBeDefined();
 
     // Qualifying first: one round each way.

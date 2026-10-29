@@ -59,8 +59,12 @@ export function TeammatesScreen({ ctx, header }: { ctx: ScreenContext; header: (
                 <b>{data.year} season</b>
                 {" · "}
                 {data.pairs.length ? `${data.rounds} ${data.rounds === 1 ? "round" : "rounds"} so far` : "nothing run yet"}
+                <br />
+                Each card is one team: two drivers in the same car. Each row counts how often each beat the other
+                (the winner in <b>bold</b>) and says by how much. The chart goes round by round: a coloured bar up when
+                the first driver was quicker, a grey bar down when the second was.
               </p>
-              <div className="segmented" role="radiogroup" aria-label="Gap the charts show">
+              <div className="segmented" role="radiogroup" aria-label="Gap the charts show" title="Which gap the charts show">
                 {METRICS.map(([key, text]) => (
                   <button key={key} type="button" role="radio" aria-checked={metric === key} className={metric === key ? "is-on" : ""}
                           onClick={() => setMetric(key)}>{text}</button>
@@ -100,19 +104,19 @@ function PairCard({ pair, metric }: { pair: TeammatePair; metric: Metric }) {
           <span role="columnheader" />
           <span role="columnheader" className="num">{a}</span>
           <span role="columnheader" className="num">{b}</span>
-          <span role="columnheader">Typical gap</span>
+          <span role="columnheader">By how much</span>
         </div>
-        <Row name="Qualifying" title="Who qualified ahead; the gap in the last part both reached"
+        <Row name="Qualified ahead" title="Who qualified ahead; the gap in the last part both reached"
              counts={q.ahead} gap={q.gap_s === null ? "—" : `${gapText(q.gap_s, a, b)}${q.pct === null ? "" : ` (${Math.abs(q.pct).toFixed(2)}%)`}`} />
-        <Row name="Race pace" title="Races each was quicker in, on laps both ran clean on the same tyre"
+        <Row name="Faster in races" title="Races each was quicker in, on laps both ran clean on the same tyre"
              counts={pair.race_pace.faster} gap={lapGap(pair.race_pace, a, b, "a lap")} />
-        <Row name="Practice" title="Sessions each was quicker in: best laps on the softest tyre both ran. Fuel is unknown, so it is the noisiest line"
+        <Row name="Faster in practice" title="Sessions each was quicker in: best laps on the softest tyre both ran. Fuel is unknown, so it is the noisiest line"
              counts={pair.practice.faster} gap={lapGap(pair.practice, a, b, "")} />
-        <Row name="Results" title="Grands Prix each finished ahead in, when both were classified"
+        <Row name="Finished ahead" title="Grands Prix each finished ahead in, when both were classified"
              counts={pair.results.ahead} gap={retired(pair.results.retired, a, b)} />
-        <Row name="Points" title="Sprints included" counts={pair.results.points} gap="sprints included" />
+        <Row name="Points" title="Sprints included" counts={pair.results.points} gap="includes sprints" />
         {(sprint.races > 0 || sprint.qualifying.sessions > 0) && (
-          <Row name="Sprints" title="Sprints each finished ahead in; sprint qualifying and pace beside"
+          <Row name="Sprints ahead" title="Sprints each finished ahead in; sprint qualifying and pace beside"
                counts={sprint.ahead}
                gap={[`qualifying ${sprint.qualifying.ahead[0]}–${sprint.qualifying.ahead[1]}`,
                      sprint.pace.gap_s === null ? "" : `pace ${gapText(sprint.pace.gap_s, a, b)}`].filter(Boolean).join(" · ")} />
@@ -148,7 +152,7 @@ function lapGap(line: TeammateGap, a: string, b: string, per: string): string {
 }
 
 function retired(counts: [number, number], a: string, b: string): string {
-  return counts[0] || counts[1] ? `retired: ${a} ${counts[0]}, ${b} ${counts[1]}` : "no retirements";
+  return counts[0] || counts[1] ? `retirements: ${a} ${counts[0]}, ${b} ${counts[1]}` : "no retirements";
 }
 
 const WIDTH = 640;

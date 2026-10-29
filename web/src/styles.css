@@ -2191,7 +2191,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .teammates-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--ink); }
 .teammates-title .team-bar { display: inline-block; width: 4px; height: 16px; }
 .teammates-panel .teammates-title small { letter-spacing: 0; font-weight: 400; font-size: 0.78rem; color: var(--ink-soft); }
-.teammates-row { display: grid; grid-template-columns: 6.2rem 2.6rem 2.6rem minmax(0, 1fr); gap: 0.5rem; align-items: baseline;
+.teammates-row { display: grid; grid-template-columns: 8.4rem 2.6rem 2.6rem minmax(0, 1fr); gap: 0.5rem; align-items: baseline;
   padding: 3px 0; border-bottom: 1px solid var(--rule-soft); font-size: 0.82rem; color: var(--ink-mid); }
 .teammates-row.is-head { font-size: 0.72rem; color: var(--ink-faint); font-weight: 600; }
 .teammates-row .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
