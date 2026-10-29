@@ -35,3 +35,4 @@ legacy/
 scripts/*
 !scripts/backfill.ps1
 !scripts/make_icon.py
+docs/DEPENDENCIES.md
