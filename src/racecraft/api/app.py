@@ -394,6 +394,23 @@ def session_qualifying(session_key: str,
     return body
 
 
+@app.get("/api/sessions/{session_key}/race-review")
+def session_race_review(session_key: str,
+                        moment: str = Query("before", pattern="^(before|after)$",
+                                            description="the last Grand Prix before this session started, or with it")) -> dict:
+    """Overtakes made and lost, and places lost at each pit stop, in the last Grand Prix."""
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for the race review")
+    _safe(session_key)
+    from racecraft.model import race_review
+
+    con = connect()
+    year, as_of = _as_of(con, session_key, moment)
+    body = race_review.latest(con, year, as_of)
+    body["moment"] = moment
+    return body
+
+
 @app.get("/api/sessions/{session_key}/forecast")
 def session_forecast(session_key: str) -> dict:
     """

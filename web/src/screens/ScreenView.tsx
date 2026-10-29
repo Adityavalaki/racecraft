@@ -11,6 +11,7 @@ import { StandingsScreen } from "./StandingsScreen";
 import { StewardsScreen } from "./StewardsScreen";
 import { StrategyScreen } from "./StrategyScreen";
 import { QualifyingScreen } from "./QualifyingScreen";
+import { RaceReviewScreen } from "./RaceReviewScreen";
 import { StartsScreen } from "./StartsScreen";
 import { TeammatesScreen } from "./TeammatesScreen";
 import { TraceScreen } from "./TraceScreen";
@@ -93,5 +94,7 @@ export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<Sc
       return <StartsScreen ctx={ctx} header={header} />;
     case "qualifying":
       return <QualifyingScreen ctx={ctx} header={header} />;
+    case "review":
+      return <RaceReviewScreen ctx={ctx} header={header} />;
   }
 });

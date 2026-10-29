@@ -40,6 +40,7 @@ FEATURES: dict[str, str] = {
     "teammates": "Teammates",
     "starts": "Starts",
     "qualifying": "Qualifying laps",
+    "review": "Race review",
 }
 
 # A lake session code (2024_01_R) or the live key: nothing that could reach a URL oddly.

@@ -378,3 +378,29 @@ Trade-off: The best sectors can come from different runs (Q1 and Q3), when the t
 differed, so the ideal is a little optimistic for drivers who ran longer. A driver out in Q1 has
 fewer laps to string sectors from, so looks tidier than one who reached Q3.
 Revisit if: a source gives reliable mini-sector times.
+
+## D-023: Race review, overtakes and places lost at each stop; consistency and "wrong lap" left out
+Date: 2026-10-29   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: Aditya asked for strategy review, overtakes and consistency as one screen, keeping only
+what proves accurate ("if it has higher accuracy then we will keep it otherwise we will not").
+Options and what the check over every race in the lake (2023 on) said:
+1) "Pitted on the wrong lap" from the strategy model: an opinion, not a measurement; nothing to
+check it against. Left out.
+2) Consistency, the spread of each driver's clean laps once fuel, track, compound and wear are taken
+out (`pace.partial_residuals`): split-half (odd against even rounds) r = 0.13-0.53; on clear-air
+laps only 0.58-0.61 for 2024-26 and -0.06 in 2023. Pit crews, kept, scored 0.86. Mostly the race,
+not the driver. Left out.
+3) Safety-car luck in seconds, a stop's time against the cars that stayed out: green stops agree
+(about 22 s, within 1.5 s in a race), but safety-car savings range -3 to +13.5 s, as the pack bunches.
+Left out.
+4) Places lost at each stop: cars that stayed out and were behind before the in-lap and ahead after
+the out-lap. Exact from positions, and it separates cleanly: green stops lose a median 3 places
+(16% lose none), safety-car stops 0 (69% none), VSC 1, red flag 0. Kept.
+5) Overtakes: pairs of cars that swapped places between two green laps, neither in the pit lane
+(the rule `circuit.passes_per_race` uses), counted per driver as made and lost. Kept.
+Chosen: 4 and 5, in `model/race_review.py`, for the last Grand Prix before the open session or with it.
+Why: Both are counts read straight off the timing positions; anyone can check one from the
+timing tower.
+Trade-off: A car slowing with damage counts as passed. Stops on lap 1 and stops where the car
+retired are skipped (224 of 3,388).
+Revisit if: a consistency measure reaches a split-half of 0.8.

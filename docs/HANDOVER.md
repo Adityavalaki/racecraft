@@ -5,6 +5,13 @@ Read first: TECHNICAL.md (architecture), DECISIONS.md, ROLLBACK.md, BACKLOG.md (
 discussed and not yet done). No ARCHITECTURE.md or CONSTRAINTS.md yet.
 
 <!-- Newest entry on top. Five lines, every session. -->
+## 2026-10-29 — model: Claude Opus 5.5 (claude-opus-5-5)
+- Done: Teammates in plain words (dfe1016); Qualifying laps screen (D-022, f5a8a3f); Race review screen (D-023): overtakes and places lost at each stop. Consistency, safety-car seconds and "wrong lap" checked over every race and left out as unreliable (TECHNICAL, "Race review").
+- In progress: nothing. `main` has Teammates and Qualifying laps locally; Race review is on branch `race-review`. Nothing pushed.
+- Broken or risky: the desktop app lacks Teammates, Starts, Qualifying laps and Race review until rebuilt. The one browser console error is the browser asking for /favicon.ico (404): harmless.
+- Next: Aditya to look at the two new screens, merge and push; then rebuild and sign the app. No new features (Aditya, 2026-10-29).
+- Do not touch: `store/db.py`'s one-database-per-lake design (DuckDB crash, see its docstring).
+
 ## 2026-10-28 (evening) — model: Claude Opus 5.5 (claude-opus-5-5)
 - Done: `teammates` merged into `main` and pushed (39f0974, with D-019's 4c6bc8d). Race replay rerun to the end (87 races) and the Wilcoxon test applied: 2023-2025 better than the grid, p = 4e-5; 2026 alone not provable (9 of 18, p = 0.32). TECHNICAL and BACKLOG updated.
 - Also done: the Starts screen on branch `starts` (D-021, FEATURE-002), checked in a browser on the 2026 US GP. Not merged or pushed.

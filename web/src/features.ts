@@ -11,7 +11,7 @@
 
 export type ScreenId =
   | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "standings" | "crews"
-  | "teammates" | "starts" | "qualifying" | "settings";
+  | "teammates" | "starts" | "qualifying" | "review" | "settings";
 
 /** The screens that can have a window of their own. */
 export type FeatureId = Exclude<ScreenId, "replay" | "settings">;
@@ -33,6 +33,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "tower", title: "Timing tower", hint: "Every car, every lap and sector, in race order.", group: "Race", poppable: true },
   { id: "trace", title: "Race trace", hint: "How the gaps opened and closed, lap by lap.", group: "Race", poppable: true },
   { id: "pedals", title: "Pedals and speed", hint: "Where each driver brakes, lifts and gets back on the throttle.", group: "Race", poppable: true },
+  { id: "review", title: "Race review", hint: "Who passed whom on track, and what each pit stop cost in places.", group: "Race", poppable: true },
   { id: "strategy", title: "Strategy", hint: "When each car is likely to stop, and who can jump a place.", group: "Plan", poppable: true },
   { id: "tyres", title: "Tyres", hint: "How fast each compound fades, and where every car sits on that curve.", group: "Plan", poppable: true },
   { id: "prediction", title: "Race prediction", hint: "The race, called from Friday and Saturday. Chances, not certainties.", group: "Plan", poppable: true },

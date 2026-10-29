@@ -1453,6 +1453,32 @@ RUS once) each completed 0 laps and retired. About 0.4 s a season.
 Not separated: a driver caught in someone else's lap-1 crash still loses places.
 
 
+## Race review
+
+`model/race_review.py`, the Race review screen in Race (D-023), for the last Grand
+Prix before the open session, or with it.
+
+- **Overtakes:** pairs of cars that swapped places between two laps, both green
+  for both cars, neither in the pit lane: `circuit.passes_per_race`'s rule,
+  counted per driver as passes made and lost. Lap 1 is the Starts screen's.
+- **Places lost at a stop:** cars that stayed out over the in-lap and out-lap,
+  behind before the in-lap and ahead after the out-lap. Marked green, safety
+  car, VSC, red flag or penalty (served at the stop).
+- **Left out:** stops on lap 1 and stops the car retired at (224 of 3,388).
+
+Checked over every race in the lake (2023 on), the reason the screen shows these
+two and nothing else:
+
+| Measure | Result | Kept? |
+|---|---|---|
+| Places lost at a stop | green median 3 (16% lose none), safety car 0 (69%), VSC 1 (29%), red flag 0 | yes |
+| Overtakes | counts off the timing positions | yes |
+| Consistency (clean-lap spread, fuel/track/tyre taken out) | split-half r 0.13-0.53; clear-air laps 0.58-0.61 (2024-26), -0.06 (2023) | no: mostly the race, not the driver |
+| Safety-car saving in seconds | green stops about 22 s (within 1.5 s); safety-car savings -3 to +13.5 s | no: the pack bunches |
+| "Pitted on the wrong lap" | the strategy model's opinion, nothing to check it against | no |
+
+A car slowing with damage counts as passed. About 0.2 s a request.
+
 ## Qualifying laps
 
 `model/quali_laps.py`, the Qualifying laps screen in Season (D-022). For the

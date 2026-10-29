@@ -8,6 +8,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
 import { leftText } from "./QualifyingScreen";
+import { stopText } from "./RaceReviewScreen";
 import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
@@ -488,5 +489,34 @@ describe("Qualifying laps", () => {
     expect(leftText(0.1304)).toBe("+0.130");
     expect(leftText(0.0002)).toBe("perfect");
     expect(leftText(null)).toBe("—");
+  });
+});
+
+describe("Race review", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows overtakes and what each stop cost, marking the cheap ones", async () => {
+    const drivers = [
+      { abbreviation: "BOR", full_name: null, team: "Audi", team_color: "ff0000", position: "13", status: null, passes_made: 4, passes_lost: 0,
+        stops: [{ lap: 26, kind: "green", places: 5 }, { lap: 50, kind: "VSC", places: 2 }], pit_places: 7 },
+      { abbreviation: "BOT", full_name: null, team: "Cadillac", team_color: null, position: null, status: "R", passes_made: 0, passes_lost: 4,
+        stops: [], pit_places: 0 },
+    ];
+    const fetchMock = vi.fn(async (_url: string) =>
+      ({ ok: true, json: async () => ({ year: 2026, moment: "before", session_key: "2026_18_R", event_name: "United States Grand Prix",
+                                         green_stop_places: 4, notes: [], drivers }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ScreenView id="review" ctx={context()} />);
+
+    const table = within(await screen.findByRole("table", { name: "Overtakes and pit stops" }));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/race-review?moment=before");
+    expect(table.getByText("L50 VSC −2").className).toBe("is-quick");
+    expect(table.getByText("DNF")).toBeDefined();
+    expect(screen.getByText(/a normal pit stop here cost about 4 places/)).toBeDefined();
+  });
+
+  it("words a stop", () => {
+    expect(stopText({ lap: 24, kind: "green", places: 2 })).toBe("L24 −2");
+    expect(stopText({ lap: 31, kind: "safety car", places: 0 })).toBe("L31 SC ±0");
   });
 });

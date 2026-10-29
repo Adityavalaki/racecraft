@@ -22,6 +22,7 @@ const ICONS: Record<ScreenId, ReactNode> = {
   standings: <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" />,
   teammates: <><circle cx="8" cy="8" r="3" /><circle cx="16" cy="8" r="3" /><path d="M3 20a5 5 0 0 1 10 0M11 20a5 5 0 0 1 10 0" /></>,
   starts: <path d="M5 21V4M5 4h11l-2 3.5L16 11H5M14 21l3-6 3 6" />,
+  review: <path d="M4 19V5h16v14zM8 15l3-3 2 2 3-4M8 9h3" />,
   qualifying: <><circle cx="12" cy="13" r="8" /><path d="M12 13V9M10 2h4M12 5V2" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></>,
 };

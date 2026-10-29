@@ -804,6 +804,36 @@ export interface QualiLaps {
   notes: string[];
 }
 
+/** One stop in the race review (see model/race_review.py): places lost to cars that stayed out. */
+export interface ReviewStop {
+  lap: number;
+  kind: "green" | "safety car" | "VSC" | "red flag" | "penalty";
+  places: number;
+}
+
+export interface ReviewDriver {
+  abbreviation: string;
+  full_name: string | null;
+  team: string | null;
+  team_color: string | null;
+  position: string | null;          // classified position; null with a status (R, D, W...) when not classified
+  status: string | null;
+  passes_made: number;
+  passes_lost: number;
+  stops: ReviewStop[];
+  pit_places: number;
+}
+
+export interface RaceReview {
+  year: number;
+  moment: StandingsMoment;
+  session_key: string | null;
+  event_name: string | null;
+  green_stop_places: number | null;  // the median places a green-flag stop cost in this race
+  drivers: ReviewDriver[];
+  notes: string[];
+}
+
 export interface PitCrews {
   year: number;
   moment: StandingsMoment;
@@ -1003,6 +1033,8 @@ export const api = {
     get<Starts>(`/api/sessions/${key}/starts?moment=${moment}`, signal),
   qualifying: (key: string, moment: StandingsMoment, kind: QualiKind, signal?: AbortSignal) =>
     get<QualiLaps>(`/api/sessions/${key}/qualifying?moment=${moment}&kind=${kind}`, signal),
+  raceReview: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
+    get<RaceReview>(`/api/sessions/${key}/race-review?moment=${moment}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),

@@ -105,27 +105,28 @@ the lake (D-009), on branch `free-plan` (from `audit-fixes`), including the opti
 ## 4. New features discussed
 
 Ordered as last suggested. Each one: plan, approval, build, tests, screenshot, docs, commit.
+**2026-10-29, Aditya: no more new features for now; upgrade the app with what is built. Anything
+new only if it is needed and possible.** The ideas below stay listed for that.
 
 ### From the data we already have
 - [x] **Teammate head-to-head** (D-020): the Teammates screen in Season, with practice and a
   per-round chart of the gap. Merged into `main` and pushed, 39f0974.
 - [x] **Start performance** (D-021): the Starts screen in Season, places gained on lap 1 against
-  what the grid slot usually gains. Branch `starts`.
+  what the grid slot usually gains. Merged into `main` and pushed, cfce13d.
 - [ ] **Corner-type strengths per team.** *idea*
   Minimum speed and braking points in slow, medium and fast corners, from telemetry and the
   marked corners. Samples are about 20 m apart at top speed, so interpolated.
-- [ ] **Strategy review.** *idea*
-  Who pitted on the wrong lap, and who gained or lost from safety-car timing, in seconds.
-- [ ] **Qualifying: ideal lap against actual.** *idea*
-  Best sectors summed against the best real lap: time left on the table.
+- [x] **Strategy review** (D-023): in the Race review screen as places lost at each stop, marked
+  under a safety car, VSC or red flag. Left out after checking: safety-car luck in seconds (too
+  noisy) and "pitted on the wrong lap" (a model opinion, nothing to check it against).
+- [x] **Qualifying: ideal lap against actual** (D-022): the Qualifying laps screen in Season.
 - [ ] **Tyre management.** *idea*
   Each driver's tyre wear against their teammate's.
-- [ ] **Overtakes made and lost.** *idea*
-  Position changes lap by lap, with pit-stop shuffles removed (GPS positions for exact passes).
+- [x] **Overtakes made and lost** (D-023): in the Race review screen.
 - [ ] **Penalty and track-limits record.** *idea*
   Offences per driver and team from race control, and how penalties changed results.
-- [ ] **Consistency.** *idea*
-  Spread of clean lap times per driver.
+- [ ] **Consistency.** *tried, left out (D-023)*
+  Spread of clean lap times per driver: split-half 0.6 at best, so mostly the race, not the driver.
 - [ ] **Weather effects.** *idea*
   Track temperature and rain against pace and tyre wear. Lower accuracy (confounded).
 
