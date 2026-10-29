@@ -17,3 +17,21 @@ packaging/msix/Assets/
 
 # Packaging tools fetched from NuGet by build_msix.ps1
 packaging/.tools/
+
+# Kept on the maintainer's machine, not published: the working notes behind the
+# project (handover, decisions, assumptions, backlog, rollback, bug and feature
+# write-ups), the validation scripts that re-check the figures in TECHNICAL.md,
+# the write-ups of the earlier projects, and editor settings.
+docs/HANDOVER.md
+docs/ASSUMPTIONS.md
+docs/BACKLOG.md
+docs/DECISIONS.md
+docs/ROLLBACK.md
+docs/bugs/
+docs/features/
+docs/defense/
+legacy/
+.vscode/
+scripts/*
+!scripts/backfill.ps1
+!scripts/make_icon.py
