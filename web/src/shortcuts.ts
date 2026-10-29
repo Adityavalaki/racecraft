@@ -18,6 +18,7 @@ export const SHORTCUTS: readonly [string, string][] = [
   ["Home", "Back to the start"],
   ["L", "Driver names on the map"],
   ["D", "DRS zones on the map (2026: overtake mode)"],
+  ["Ctrl K", "Search sessions, drivers and screens"],
 ];
 
 /** Where typing means typing: a key there is the field's, not a shortcut. */

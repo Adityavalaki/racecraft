@@ -12,6 +12,7 @@ import { lapStartTime, useMessagesAt, useSession, useSessionList, useStateAt, ty
 import { useSettings } from "./settings";
 import { Rail } from "./shell/Rail";
 import { SessionPicker } from "./shell/ScreenHeader";
+import { CommandPalette } from "./shell/CommandPalette";
 import { SessionBar } from "./shell/SessionBar";
 import { StatusBar } from "./shell/StatusBar";
 import { useShortcuts } from "./shortcuts";
@@ -45,6 +46,18 @@ export default function App() {
   // rides the newest lap; scrubbing back stops following, because someone
   // looking at lap 12 does not want to be yanked to lap 40 a second later.
   const [following, setFollowing] = useState(true);
+  const [palette, setPalette] = useState(false);
+  // Ctrl K (Cmd K on a Mac) opens the search from anywhere, and closes it again.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPalette((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const { settings, update: updateSettings } = useSettings();
   const isLive = sessionKey === LIVE_KEY;
 
@@ -227,7 +240,12 @@ export default function App() {
       <SessionBar picker={sessions.length > 0 ? picker : null} info={info} state={state} t={coarseT}
                   showClock={settings.clock === "race"} extra={status}
                   onPopOut={screenById(screen)?.poppable ? () => popOut(screen as FeatureId) : undefined}
-                  popOutLabel={screenById(screen)?.title} />
+                  popOutLabel={screenById(screen)?.title} onSearch={() => setPalette(true)} />
+      {palette && (
+        <CommandPalette sessions={sessions} drivers={info?.drivers ?? []} onScreen={setScreen} onSession={setSessionKey}
+                        onFollow={(n) => { if (!selected.includes(n)) toggleDriver(n); setScreen("replay"); }}
+                        onClose={() => setPalette(false)} />
+      )}
       <div className="app-body">
       <Rail screen={screen} onScreen={setScreen} />
       <div className="shell-main">

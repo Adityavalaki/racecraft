@@ -15,6 +15,8 @@ interface Props {
   extra?: ReactNode;
   onPopOut?: () => void;
   popOutLabel?: string;
+  /** Opens the Ctrl K search. */
+  onSearch?: () => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * One bar for the whole app, so the session is chosen in one place and the
  * screens below keep their height for data.
  */
-export function SessionBar({ picker, info, state, t, showClock, extra, onPopOut, popOutLabel }: Props) {
+export function SessionBar({ picker, info, state, t, showClock, extra, onPopOut, popOutLabel, onSearch }: Props) {
   const weather = state?.weather;
   const status = state?.track_status ?? null;
   const figure = (value: number | null | undefined, unit: string, digits = 0) =>
@@ -37,6 +39,15 @@ export function SessionBar({ picker, info, state, t, showClock, extra, onPopOut,
       {picker}
       {/* Where it is, as well as what it is called: a Grand Prix is not always at the circuit its name suggests. */}
       {info && <span className="session-meta">{info.session.location} · {info.drivers.length} cars</span>}
+      {onSearch && (
+        <button type="button" className="search-button" onClick={onSearch} aria-keyshortcuts="Control+K">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+          </svg>
+          <span>Search sessions, drivers, screens</span>
+          <kbd>Ctrl</kbd><kbd>K</kbd>
+        </button>
+      )}
       {extra}
       <span className="bar-spacer" />
       {info && (
