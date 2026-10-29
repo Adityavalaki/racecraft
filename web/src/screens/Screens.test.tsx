@@ -8,7 +8,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
 import { leftText } from "./QualifyingScreen";
-import { placesText, stopText } from "./RaceReviewScreen";
+import { placesText, stopSentence, stopText } from "./RaceReviewScreen";
 import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
@@ -513,12 +513,19 @@ describe("Race review", () => {
     expect(table.getByText("L50 VSC −2").className).toBe("is-quick");
     expect(table.getByText("DNF")).toBeDefined();
     expect(screen.getByText(/a normal pit stop here cost about 4 places/)).toBeDefined();
+
+    // A driver opens in the inspector: the stop as a sentence, against a normal one.
+    fireEvent.click(screen.getByRole("button", { name: "Inspect BOR" }));
+    const inspector = within(screen.getByRole("complementary", { name: "BOR in detail" }));
+    expect(inspector.getByText("Lap 50 under the VSC: cost 2 places, against about 4 places for a normal stop.")).toBeDefined();
+    expect(inspector.getByText("Lap 26: cost 5 places.")).toBeDefined();
   });
 
   it("words a stop", () => {
     expect(stopText({ lap: 24, kind: "green", places: 2 })).toBe("L24 −2");
     expect(stopText({ lap: 31, kind: "safety car", places: 0 })).toBe("L31 SC ±0");
     expect(placesText(1)).toBe("1 place");
+    expect(stopSentence({ lap: 31, kind: "safety car", places: 0 }, 3)).toBe("Lap 31 under the safety car: cost no places, against about 3 places for a normal stop.");
     expect(placesText(3)).toBe("3 places");
   });
 });

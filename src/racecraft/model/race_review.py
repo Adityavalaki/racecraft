@@ -35,7 +35,7 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None) -> dict:
         key = races["session_key"].iloc[-1]
         laps = con.execute("select * from laps where session_key = ?", [key]).df()
     if laps.empty:
-        return {"year": int(year), "session_key": None, "event_name": None, "drivers": [], "green_stop_places": None,
+        return {"year": int(year), "session_key": None, "event_name": None, "laps": None, "drivers": [], "green_stop_places": None,
                 "notes": ["no Grand Prix has been run yet this season"]}
 
     made, lost = passes(laps)
@@ -53,7 +53,8 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None) -> dict:
             "passes_made": made.get(row.driver_number, 0), "passes_lost": lost.get(row.driver_number, 0),
             "stops": mine, "pit_places": sum(s["places"] for s in mine),
         })
-    return {"year": int(year), "session_key": key, "event_name": races["event_name"].iloc[-1], "drivers": drivers,
+    return {"year": int(year), "session_key": key, "event_name": races["event_name"].iloc[-1],
+            "laps": int(laps["lap_number"].max()), "drivers": drivers,
             "green_stop_places": float(np.median(green)) if green else None, "notes": []}
 
 

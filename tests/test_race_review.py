@@ -65,7 +65,7 @@ def _row(body, code):
 
 def test_overtakes_on_track_only(con):
     body = race_review.latest(con, 2024, pd.Timestamp("2024-03-05", tz="UTC"))
-    assert body["session_key"] == "2024_01_R"
+    assert body["session_key"] == "2024_01_R" and body["laps"] == 10
     assert {c: (_row(body, c)["passes_made"], _row(body, c)["passes_lost"]) for c in ("AAA", "BBB", "CCC", "DDD")} == \
         {"AAA": (0, 0), "BBB": (1, 1), "CCC": (1, 1), "DDD": (0, 0)}
 

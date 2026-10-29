@@ -117,8 +117,37 @@ export function SettingsScreen({ settings, update, picker, onSynced }: {
               ))}
             </dl>
           </section>
+          <section className="panel" aria-label="Models">
+            <div className="panel-bar"><h2>Models</h2><span className="panel-meta">Each replayed over past races it never saw.</span></div>
+            <ul className="model-list">
+              {MODELS.map((m) => (
+                <li key={m.name}><b>{m.name}</b><span>{m.what}</span><span className="num model-score">{m.score}</span></li>
+              ))}
+            </ul>
+          </section>
+          <section className="panel" aria-label="About">
+            <div className="panel-bar"><h2>About</h2></div>
+            <p className="settings-about">
+              Racecraft: an independent, non-commercial F1 replay and strategy workbench. Not affiliated with Formula 1,
+              the FIA or any team. Copyright © 2026 Aditya Valaki, all rights reserved. It keeps no personal data and
+              answers this computer only, unless opened to the network on purpose.
+            </p>
+          </section>
         </div>
       </main>
     </div>
   );
 }
+
+/**
+ * What each model does and how it scored when replayed, each race predicted
+ * only from what came before it. The figures are the replays' own, written up
+ * in docs/TECHNICAL.md and the README; they change only when a replay is rerun.
+ */
+export const MODELS: readonly { name: string; what: string; score: string }[] = [
+  { name: "Race prediction", what: "Finishing order and chances, from practice, qualifying and form", score: "0.69 v grid 0.66" },
+  { name: "Sprint prediction", what: "The sprint, from sprint qualifying", score: "Brier 0.53 v 0.59" },
+  { name: "Title odds", what: "The rest of the season simulated 10,000 times", score: "66% v 49% on the champion" },
+  { name: "Pit crews", what: "Each crew's stops against each race's typical stop", score: "split-half r 0.80-0.91" },
+  { name: "Race review", what: "Passes on track; places lost at each stop", score: "counts from timing" },
+];

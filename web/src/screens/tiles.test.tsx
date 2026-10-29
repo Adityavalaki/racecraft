@@ -8,7 +8,7 @@ import { reviewTiles } from "./RaceReviewScreen";
 import { standingsTiles } from "./StandingsScreen";
 import { startsTiles } from "./StartsScreen";
 import { stewardsTiles } from "./StewardsScreen";
-import { towerTiles } from "./TowerScreen";
+import { spread, towerTiles } from "./TowerScreen";
 
 const shown = (tiles: (Kpi | null | false | undefined)[]) => tiles.filter((t): t is Kpi => Boolean(t && t.value));
 
@@ -24,6 +24,16 @@ describe("headline tiles", () => {
     const tiles = shown(towerTiles([d(1, 95.2, 0, null), d(2, 94.8, 0.6, 0.6), d(3, null, 12.4, 11.8)], 94.5));
     expect(tiles.map((t) => [t.label, t.value])).toEqual([
       ["Fastest lap", "1:34.800"], ["Ideal lap", "1:34.500"], ["Leader to last", "+12.400"], ["Within 1 s", "1 car"]]);
+  });
+
+  it("field spread: the leader at 0, lapped cars left out", () => {
+    const d = (n: number, pos: number, gap: number | null, down = 0) =>
+      ({ driver_number: n, position: pos, status: "racing", laps_down: down, gap_to_leader_s: gap }) as DriverTiming;
+    expect(spread([d(1, 1, null), d(2, 2, 3.5), d(3, 3, null, 1)]).map((c) => [c.driver.driver_number, c.gap])).toEqual([[1, 0], [2, 3.5]]);
+    // Past the chequered flag the cars are "finished", and still count.
+    const done = (n: number, pos: number, gap: number | null) => ({ ...d(n, pos, gap), status: "finished" }) as DriverTiming;
+    expect(spread([done(1, 1, null), done(2, 2, 13.2)]).length).toBe(2);
+    expect(shown(towerTiles([done(1, 1, null), done(2, 2, 13.2)], null)).find((t) => t.label === "Leader to last")?.note).toBe("2 cars on the lead lap");
   });
 
   it("race review: ties named together, safety-car stops counted", () => {

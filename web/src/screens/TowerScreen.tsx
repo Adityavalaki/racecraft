@@ -110,14 +110,20 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
             {hasOvertake && <span><i className="is-ring" />Overtake eligible, estimated from the interval</span>}
           </div>
         </section>
-        <section className="panel">
-          <div className="panel-bar"><h2>Best sectors</h2><span className="panel-meta">and the lap they would make</span></div>
-          <BestSectors sectors={ctx.state?.best_sectors ?? []} idealLap={ctx.state?.ideal_lap_s ?? null} fastestLap={ctx.sessionBest} />
-        </section>
+        <div className="tower-lower">
+          <FieldSpread drivers={drivers} selected={ctx.selected} />
+          <section className="panel">
+            <div className="panel-bar"><h2>Best sectors</h2><span className="panel-meta">and the lap they would make</span></div>
+            <BestSectors sectors={ctx.state?.best_sectors ?? []} idealLap={ctx.state?.ideal_lap_s ?? null} fastestLap={ctx.sessionBest} />
+          </section>
+        </div>
       </main>
     </div>
   );
 }
+
+/** Still running, or past the chequered flag: a car that has not retired or failed to start. */
+const onTrack = (d: DriverTiming) => d.status === "racing" || d.status === "finished";
 
 /**
  * The tower's headline figures, all from the timing at the clock's moment:
@@ -128,13 +134,56 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
 export function towerTiles(drivers: DriverTiming[], idealLap: number | null) {
   const timed = drivers.filter((d) => d.best_lap_s != null);
   const fastest = timed.reduce<DriverTiming | null>((a, d) => (a && a.best_lap_s! <= d.best_lap_s! ? a : d), null);
-  const running = drivers.filter((d) => d.status === "racing" && d.laps_down === 0 && d.gap_to_leader_s != null);
+  const running = drivers.filter((d) => onTrack(d) && d.laps_down === 0 && (d.position === 1 || d.gap_to_leader_s != null));
   const last = running[running.length - 1];
-  const close = drivers.filter((d) => d.status === "racing" && d.interval_s != null && d.interval_s > 0 && d.interval_s < 1).length;
+  const close = drivers.filter((d) => onTrack(d) && d.interval_s != null && d.interval_s > 0 && d.interval_s < 1).length;
   return [
     fastest && { label: "Fastest lap", value: formatLapTime(fastest.best_lap_s), note: fastest.abbreviation ?? String(fastest.driver_number) },
     idealLap != null && { label: "Ideal lap", value: formatLapTime(idealLap), note: "the session's best sectors together" },
-    last && running.length > 1 && { label: "Leader to last", value: `+${last.gap_to_leader_s!.toFixed(3)}`, note: `${running.length} cars on the lead lap` },
+    last && running.length > 1 && last.gap_to_leader_s != null && { label: "Leader to last", value: `+${last.gap_to_leader_s.toFixed(3)}`, note: `${running.length} cars on the lead lap` },
     drivers.length > 0 && { label: "Within 1 s", value: `${close} ${close === 1 ? "car" : "cars"}`, note: "of the car ahead" },
   ];
+}
+
+/** The cars on the lead lap with a gap to place: the leader at 0, then each by its gap. */
+export function spread(drivers: DriverTiming[]): { driver: DriverTiming; gap: number }[] {
+  return drivers
+    .filter((d) => onTrack(d) && d.laps_down === 0 && (d.position === 1 || d.gap_to_leader_s != null))
+    .map((d) => ({ driver: d, gap: d.position === 1 ? 0 : d.gap_to_leader_s! }));
+}
+
+/**
+ * The field on one line: every car on the lead lap placed by its gap to the
+ * leader, so trains and gaps show at a glance. Lapped cars are counted, not
+ * drawn: their gap is a lap, not a distance on this scale.
+ */
+function FieldSpread({ drivers, selected }: { drivers: DriverTiming[]; selected: number[] }) {
+  const cars = spread(drivers);
+  const lapped = drivers.filter((d) => onTrack(d) && d.laps_down > 0).length;
+  const reach = Math.max(10, ...cars.map((c) => c.gap));
+  const x = (gap: number) => 20 + (gap / reach) * 960;
+  return (
+    <section className="panel field-spread" aria-label="Field spread">
+      <div className="panel-bar">
+        <h2>Field spread</h2>
+        <span className="panel-meta">gap to the leader, lead lap{lapped ? ` · ${lapped} lapped ${lapped === 1 ? "car" : "cars"} not drawn` : ""}</span>
+      </div>
+      {cars.length === 0 ? <p className="panel-note">No gaps yet.</p> : (
+        <svg viewBox="0 0 1000 92" className="spread-plot" role="img"
+             aria-label={`Gap to the leader: ${cars.map((c) => `${c.driver.abbreviation} ${c.gap.toFixed(1)} s`).join(", ")}`}>
+          <line x1="20" x2="980" y1="46" y2="46" className="spread-axis" />
+          {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+            <text key={f} x={x(f * reach)} y="88" textAnchor="middle" className="spread-tick">+{(f * reach).toFixed(0)} s</text>
+          ))}
+          {cars.map((c, i) => (
+            <g key={c.driver.driver_number}>
+              <circle cx={x(c.gap)} cy="46" r={selected.includes(c.driver.driver_number) ? 7 : 5}
+                      fill={`#${c.driver.team_color ?? "8E959F"}`} stroke="#07080A" strokeWidth="2" />
+              <text x={x(c.gap)} y={i % 2 ? 70 : 30} textAnchor="middle" className="spread-code">{c.driver.abbreviation}</text>
+            </g>
+          ))}
+        </svg>
+      )}
+    </section>
+  );
 }

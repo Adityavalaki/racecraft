@@ -830,6 +830,8 @@ export interface RaceReview {
   session_key: string | null;
   event_name: string | null;
   green_stop_places: number | null;  // the median places a green-flag stop cost in this race
+  /** The race's laps, for drawing each driver's stops along it. */
+  laps: number | null;
   drivers: ReviewDriver[];
   notes: string[];
 }
