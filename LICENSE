@@ -1,0 +1,27 @@
+Copyright (c) 2026 Aditya Valaki. All rights reserved.
+
+Racecraft ("the Software") is the source code, interface, documentation and
+screenshots in this repository, except where noted below.
+
+The Software is published so that it can be read and reviewed. No licence is
+granted to copy, modify, merge, publish, distribute, sublicense or sell the
+Software, in whole or in part, or to use it commercially, without the copyright
+holder's prior written permission. Viewing the source on GitHub, and forking it
+there as GitHub's Terms of Service allow, do not grant any further rights.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Third-party material
+--------------------
+Libraries, data sources and fonts used by the Software remain under their own
+licences, listed in README.md under "Data, credits and trademarks". No race data
+is included in this repository.
+
+F1, FORMULA 1, the F1 logo and related marks are trademarks of Formula One
+Licensing B.V. The Software is not affiliated with, endorsed by or connected to
+Formula 1, the FIA or any team.

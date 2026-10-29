@@ -5,6 +5,10 @@ the measurements behind every number the app shows, the dead ends, and the
 known data gaps. The [README](../README.md) is the place to start; this is the
 place to look something up.
 
+References such as *D-021* point to the project's decision log, and the
+`scripts/validate_*` and `compare_*` commands named here are the checks behind
+the figures. Both are kept by the maintainer and are not published with the code.
+
 ## Setup
 
 ```sh
@@ -1627,11 +1631,11 @@ sessions, including every race file written before those columns existed.
 
 ## Where this came from
 
-`legacy/` holds the two projects Racecraft replaced: an earlier strategy
+Racecraft replaced two earlier projects: an earlier strategy
 engine and a single-page live pit wall. They are kept for their mistakes,
 which shaped this one — a pit model that scored 1.22 laps of error while
-knowing nothing, and the second leak found inside its own replacement. See
-[legacy/README.md](../legacy/README.md).
+knowing nothing, and the second leak found inside its own replacement. Their
+write-ups are kept privately; the code is in the git history.
 
 ## Layout
 
