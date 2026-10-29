@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type DriverStarts, type StandingsMoment, type StartKind, type StartRecord, type Starts } from "../api";
+import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 const KINDS: [StartKind, string][] = [["races", "Races"], ["sprints", "Sprints"], ["both", "Both"]];
@@ -66,6 +67,7 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
                 ))}
               </div>
             </div>
+            <KpiRow tiles={startsTiles(drivers)} />
             <section className="panel standings-panel" aria-label="Starts">
               <StartsTable drivers={drivers} />
             </section>
@@ -127,4 +129,19 @@ export function startText(start: StartRecord | null): string {
 
 function tone(value: number | null): string {
   return value === null || Math.abs(value) < 0.005 ? "" : value > 0 ? " is-quick" : " is-slow";
+}
+
+/** The starts' headline figures, for the races, sprints or both on show. */
+export function startsTiles(drivers: DriverStarts[]) {
+  const rated = drivers.filter((d) => d.vs_normal !== null);
+  const best = rated[0];
+  const worst = rated[rated.length - 1];
+  const gainer = [...drivers].filter((d) => d.gained !== null).sort((a, b) => b.gained! - a.gained!)[0];
+  const out = drivers.reduce((n, d) => n + d.out_lap1, 0);
+  return [
+    best && { label: "Best starter", value: `${best.abbreviation} · ${places(best.vs_normal)}`, note: "places a start against the grid slot's normal", tone: "good" as const },
+    worst && worst !== best && { label: "Worst starter", value: `${worst.abbreviation} · ${places(worst.vs_normal)}`, note: "places a start against the grid slot's normal", tone: "bad" as const },
+    gainer && { label: "Most places gained", value: `${gainer.abbreviation} · ${places(gainer.gained)}`, note: "a start, on average, raw" },
+    drivers.length > 0 && { label: "Out on lap 1", value: String(out), note: "not counted as places lost" },
+  ];
 }

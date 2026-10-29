@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { COMPOUND_COLORS, formatLapTime, formatSector, type DriverTiming, type SectorTime } from "../api";
 import { BestSectors } from "../panels/BestSectors";
 import { PenaltyChip } from "../panels/PenaltyChip";
+import { KpiRow } from "../shell/KpiRow";
 import { LapCounter } from "../shell/ScreenHeader";
 import type { ScreenContext } from "./ScreenView";
 
@@ -48,6 +49,7 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     <div className="screen">
       {header(switcher)}
       <main className="screen-body">
+        <KpiRow tiles={towerTiles(drivers, ctx.state?.ideal_lap_s ?? null)} />
         <section className="panel tower" aria-label="Timing tower">
           <div className="tower-scroll">
             <table className="tower-table">
@@ -115,4 +117,24 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
       </main>
     </div>
   );
+}
+
+/**
+ * The tower's headline figures, all from the timing at the clock's moment:
+ * the fastest lap so far and who set it, the ideal lap (the session's best
+ * sectors strung together), the spread from leader to last car running, and
+ * how many cars are within a second of the one ahead.
+ */
+export function towerTiles(drivers: DriverTiming[], idealLap: number | null) {
+  const timed = drivers.filter((d) => d.best_lap_s != null);
+  const fastest = timed.reduce<DriverTiming | null>((a, d) => (a && a.best_lap_s! <= d.best_lap_s! ? a : d), null);
+  const running = drivers.filter((d) => d.status === "racing" && d.laps_down === 0 && d.gap_to_leader_s != null);
+  const last = running[running.length - 1];
+  const close = drivers.filter((d) => d.status === "racing" && d.interval_s != null && d.interval_s > 0 && d.interval_s < 1).length;
+  return [
+    fastest && { label: "Fastest lap", value: formatLapTime(fastest.best_lap_s), note: fastest.abbreviation ?? String(fastest.driver_number) },
+    idealLap != null && { label: "Ideal lap", value: formatLapTime(idealLap), note: "the session's best sectors together" },
+    last && running.length > 1 && { label: "Leader to last", value: `+${last.gap_to_leader_s!.toFixed(3)}`, note: `${running.length} cars on the lead lap` },
+    drivers.length > 0 && { label: "Within 1 s", value: `${close} ${close === 1 ? "car" : "cars"}`, note: "of the car ahead" },
+  ];
 }

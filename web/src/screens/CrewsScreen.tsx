@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type CrewStanding, type PitCrews, type PitLaneTrip, type StandingsMoment } from "../api";
 import { percent } from "../panels/PredictionBoard";
+import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 /** Why a trip down the pit lane is not counted as a crew's stop, as the screen says it. */
@@ -62,6 +63,7 @@ export function CrewsScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
         {crews && (
           <>
             <p className="standings-basis">{basisLine(crews)}</p>
+            <KpiRow tiles={crewTiles(crews)} />
             {crews.teams.length > 0 && <CrewTable teams={crews.teams} />}
             {crews.session_stops.length > 0 && <SessionStops trips={sofar} total={crews.session_stops.length} />}
             <ul className="prediction-notes">
@@ -175,4 +177,27 @@ export function basisLine(crews: PitCrews): string {
     .map(([why, n]) => `${n} ${EXCLUDED[why] ?? why}`);
   return `${crews.year} season · ${crews.stops} green-flag stops in ${crews.races} races and sprints`
     + (left.length ? `; left out: ${left.join(", ")}` : "");
+}
+
+/** "−0.42 s" quicker than a race's typical stop, "+0.31 s" slower. */
+function versus(seconds: number): string {
+  return `${seconds < 0 ? "−" : "+"}${Math.abs(seconds).toFixed(2)} s`;
+}
+
+/**
+ * The crews' headline figures. The public timing gives pit-lane time, line to
+ * line, not how long a car stood still, so every figure is a team's typical
+ * stop against each race's typical stop (see model/pit_crews.py).
+ */
+export function crewTiles(crews: PitCrews) {
+  const ranked = crews.teams.filter((t) => !t.thin);
+  const quickest = ranked[0];
+  const steadiest = [...ranked].sort((a, b) => a.spread_s - b.spread_s)[0];
+  const slowest = [...ranked].sort((a, b) => b.slow_share - a.slow_share)[0];
+  return [
+    quickest && { label: "Quickest crew", value: `${quickest.team} · ${versus(quickest.typical_s)}`, note: "typical stop against the race's", tone: "good" as const },
+    steadiest && { label: "Most consistent", value: `${steadiest.team} · ±${steadiest.spread_s.toFixed(2)} s`, note: "spread of its stops" },
+    slowest && slowest.slow_share > 0 && { label: "Most slow stops", value: `${slowest.team} · ${percent(slowest.slow_share)}`, note: "of its stops went slow", tone: "bad" as const },
+    crews.stops > 0 && { label: "Stops counted", value: String(crews.stops), note: `green flag, new tyres, ${crews.races} ${crews.races === 1 ? "race" : "races"}` },
+  ];
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, formatLapTime, type QualiDriver, type QualiKind, type QualiLaps, type StandingsMoment } from "../api";
+import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 const KINDS: [QualiKind, string][] = [["Q", "Qualifying"], ["SQ", "Sprint qualifying"]];
@@ -62,6 +63,7 @@ export function QualifyingScreen({ ctx, header }: { ctx: ScreenContext; header: 
                 ))}
               </div>
             </div>
+            <KpiRow tiles={qualiTiles(data.drivers)} />
             <section className="panel standings-panel" aria-label="Qualifying laps">
               <QualiTable drivers={data.drivers} />
             </section>
@@ -115,4 +117,20 @@ function QualiTable({ drivers }: { drivers: QualiDriver[] }) {
 export function leftText(value: number | null): string {
   if (value === null) return "—";
   return value < 0.0005 ? "perfect" : `+${value.toFixed(3)}`;
+}
+
+/** Qualifying's headline figures: pole, the most left on the table, the perfect laps, and the season's tidiest. */
+export function qualiTiles(drivers: QualiDriver[]) {
+  const pole = drivers.find((d) => d.position === 1 && d.best_s !== null);
+  const timed = drivers.filter((d) => d.left_s !== null);
+  const loosest = [...timed].sort((a, b) => b.left_s! - a.left_s!)[0];
+  const perfect = timed.filter((d) => d.left_s! < 0.0005).map((d) => d.abbreviation);
+  const tidiest = drivers.filter((d) => d.season_left_s !== null && d.season_sessions >= 3)
+    .sort((a, b) => a.season_left_s! - b.season_left_s!)[0];
+  return [
+    pole && { label: "Pole", value: `${pole.abbreviation} · ${formatLapTime(pole.best_s)}`, note: pole.left_s ? `left ${leftText(pole.left_s)} on the table` : "a perfect lap" },
+    loosest && loosest.left_s! >= 0.0005 && { label: "Most left on the table", value: `${loosest.abbreviation} · ${leftText(loosest.left_s)}`, note: "best lap against own best sectors", tone: "bad" as const },
+    timed.length > 0 && { label: "Perfect laps", value: String(perfect.length), note: perfect.join(", ") || "nobody put it all together", tone: perfect.length ? "good" as const : undefined },
+    tidiest && { label: "Tidiest this season", value: `${tidiest.abbreviation} · ${leftText(tidiest.season_left_s)}`, note: `average over ${tidiest.season_sessions} sessions` },
+  ];
 }

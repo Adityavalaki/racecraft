@@ -4,6 +4,7 @@ import {
   type TitleOdds,
 } from "../api";
 import { percent } from "../panels/PredictionBoard";
+import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 /**
@@ -77,6 +78,7 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
                 : "nothing run yet"}
             </p>
             <p className="standings-basis" role="status">{oddsLine(odds, oddsError)}</p>
+            <KpiRow tiles={standingsTiles(table, odds)} />
             {table.drivers.length > 0 && (
               <div className="standings">
                 <DriversTable drivers={table.drivers} selected={ctx.selected} onSelect={ctx.onSelect} odds={odds} />
@@ -284,4 +286,25 @@ function formLabel(form: StandingsFinish[]): string {
 function isStandings(body: unknown): body is Standings {
   const value = body as Standings | null;
   return !!value && Array.isArray(value.drivers) && Array.isArray(value.constructors);
+}
+
+/**
+ * The championships' headline figures: each leader and their margin, the
+ * most wins, and the points a driver can still score (25 a Grand Prix and 8 a
+ * sprint still to run, as the odds line counts them).
+ */
+export function standingsTiles(table: Standings, odds: TitleOdds | null) {
+  const [d1, d2] = table.drivers;
+  const [c1, c2] = table.constructors;
+  const wins = Math.max(0, ...table.drivers.map((d) => d.wins));
+  const winners = table.drivers.filter((d) => d.wins === wins).map((d) => d.abbreviation);
+  const races = odds ? odds.remaining.filter((e) => e.session !== "sprint").length : null;
+  const sprints = odds && races !== null ? odds.remaining.length - races : null;
+  return [
+    d1 && { label: "Drivers' leader", value: `${d1.abbreviation} · ${d1.points}`, note: d2 ? `${d1.points - d2.points} ahead of ${d2.abbreviation}` : "" },
+    c1 && { label: "Constructors' leader", value: `${c1.team} · ${c1.points}`, note: c2 ? `${c1.points - c2.points} ahead of ${c2.team}` : "" },
+    wins > 0 && { label: "Most wins", value: `${winners.join(", ")} · ${wins}`, note: "Grands Prix" },
+    races !== null && sprints !== null && { label: "Points still to win", value: String(races * 25 + sprints * 8),
+      note: `${races} ${races === 1 ? "Grand Prix" : "Grands Prix"}, ${sprints} ${sprints === 1 ? "sprint" : "sprints"} to run` },
+  ];
 }

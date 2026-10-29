@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { KpiRow } from "../shell/KpiRow";
 import {
   api, type Prediction, type PredictionDriver, type PredictionKind, type PredictionScore, type WeekendInfo,
 } from "../api";
@@ -121,6 +122,7 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
           : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
       </p>
 
+      <KpiRow tiles={predictionTiles(answer, sprint)} />
       <Headline answer={answer} event={event} />
 
       <div className="prediction-table" role="table" aria-label="Predicted finishing order">
@@ -369,4 +371,22 @@ export function percent(value: number): string {
 
 function signed(value: number): string {
   return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}`;
+}
+
+/**
+ * The prediction's headline figures, beside the favourite and podium cards:
+ * the closest fight for the win, the car most likely to retire, and how the
+ * model has done when replayed over every race (or sprint) since 2023, each
+ * predicted only from what was known before it (docs/TECHNICAL.md).
+ */
+export function predictionTiles(answer: Prediction, sprint: boolean) {
+  const [first, second] = [...answer.drivers].sort((a, b) => b.win - a.win);
+  const risk = [...answer.drivers].sort((a, b) => b.dnf - a.dnf)[0];
+  return [
+    first && second && { label: "Closest fight", value: `${first.abbreviation} v ${second.abbreviation}`, note: `${percent(first.win)} against ${percent(second.win)} to win` },
+    risk && risk.dnf > 0 && { label: "Most likely to retire", value: `${risk.abbreviation} · ${percent(risk.dnf)}`, note: "retirements at the season's rate", tone: "bad" as const },
+    sprint
+      ? { label: "Held-out accuracy", value: "Brier 0.53 v 0.59", note: "win chances against the grid, every sprint 2023-25" }
+      : { label: "Held-out accuracy", value: "0.69 v 0.66", note: "order against the grid, every race 2023-25" },
+  ];
 }

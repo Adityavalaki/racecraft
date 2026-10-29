@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type RaceReview, type ReviewDriver, type ReviewStop, type StandingsMoment } from "../api";
+import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 const SHORT: Record<ReviewStop["kind"], string> = { green: "", "safety car": "SC", VSC: "VSC", "red flag": "red", penalty: "pen" };
@@ -54,6 +55,7 @@ export function RaceReviewScreen({ ctx, header }: { ctx: ScreenContext; header: 
               the Starts screen). Each pit stop shows its lap and how many cars that stayed out got past. A stop under
               a safety car (SC), VSC or red flag usually costs far fewer places: that is the luck.
             </p>
+            <KpiRow tiles={reviewTiles(data)} />
             <section className="panel standings-panel" aria-label="Race review">
               <ReviewTable drivers={data.drivers} />
             </section>
@@ -110,4 +112,22 @@ export function stopText(stop: ReviewStop): string {
 /** "1 place", "3 places". */
 export function placesText(n: number): string {
   return `${n} ${n === 1 ? "place" : "places"}`;
+}
+
+/** The leaders of one count: "RUS, HAD · 6", ties named together; nothing when nobody scored. */
+function leaders(drivers: ReviewDriver[], count: (d: ReviewDriver) => number): string {
+  const top = Math.max(0, ...drivers.map(count));
+  if (!top) return "";
+  return `${drivers.filter((d) => count(d) === top).map((d) => d.abbreviation).join(", ")} · ${top}`;
+}
+
+/** Race review's headline figures, from the review itself. */
+export function reviewTiles(data: RaceReview) {
+  const cheap = data.drivers.flatMap((d) => d.stops.filter((s) => CHEAP.has(s.kind)).map(() => d.abbreviation));
+  return [
+    data.green_stop_places !== null && { label: "A normal stop cost", value: placesText(Math.round(data.green_stop_places)), note: "median of green-flag stops" },
+    { label: "Most passes made", value: leaders(data.drivers, (d) => d.passes_made), note: "on track, green flag" },
+    { label: "Most times passed", value: leaders(data.drivers, (d) => d.passes_lost), note: "on track, green flag", tone: "bad" as const },
+    cheap.length > 0 && { label: "Stops under SC / VSC", value: `${cheap.length}`, note: [...new Set(cheap)].join(", "), tone: "good" as const },
+  ];
 }

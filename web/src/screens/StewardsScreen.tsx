@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { KpiRow } from "../shell/KpiRow";
 import { formatClock, type RaceControlEvent } from "../api";
 import { sentence, tone } from "../panels/RaceControl";
 import { verdictLabel } from "../panels/Stewards";
@@ -143,6 +144,7 @@ export function StewardsScreen({ ctx, header }: { ctx: ScreenContext; header: (c
     <div className="screen">
       {header(switcher)}
       <main className="screen-body">
+        <KpiRow tiles={stewardsTiles(ctx.stewards ?? [])} />
         <div className="stewards-grid">
           <section className="panel" aria-label="Race control messages">
             <div className="panel-bar">
@@ -215,4 +217,28 @@ export function StewardsScreen({ ctx, header }: { ctx: ScreenContext; header: (c
       </main>
     </div>
   );
+}
+
+const PENALTY_KINDS = new Set(["time_penalty", "stop_go", "drive_through", "disqualified"]);
+const VERDICT_KINDS = new Set([...PENALTY_KINDS, "no_further_action", "reprimand", "warning", "served"]);
+
+/**
+ * The stewards' headline figures as of the clock: incidents still open (an
+ * investigation with no verdict since, matched by the incident or, without
+ * one, by the cars), penalties given, no further action, and lap times deleted.
+ */
+export function stewardsTiles(events: RaceControlEvent[]) {
+  const key = (e: RaceControlEvent) => e.incident ?? [...e.cars].sort().join(",");
+  const open = new Set<string>();
+  for (const e of [...events].sort((a, b) => a.t - b.t)) {
+    if (e.kind === "under_investigation" || e.kind === "investigate_after_race") open.add(key(e));
+    else if (VERDICT_KINDS.has(e.kind)) open.delete(key(e));
+  }
+  const count = (test: (e: RaceControlEvent) => boolean) => events.filter(test).length;
+  return [
+    { label: "Under investigation", value: String(open.size), note: "no verdict yet", tone: open.size ? "bad" as const : undefined },
+    { label: "Penalties", value: String(count((e) => PENALTY_KINDS.has(e.kind))), note: "time, stop/go, drive-through" },
+    { label: "No further action", value: String(count((e) => e.kind === "no_further_action")), note: "investigated and cleared" },
+    { label: "Lap times deleted", value: String(count((e) => e.kind === "lap_deleted")), note: "track limits, mostly" },
+  ];
 }
