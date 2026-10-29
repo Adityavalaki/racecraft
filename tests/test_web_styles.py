@@ -26,5 +26,8 @@ def test_every_brace_closes_a_block():
     assert depth == 0
 
 
-def test_the_workspace_is_a_row():
-    assert re.search(r"\n\.workspace \{\s*display: flex;", CSS)
+def test_the_replay_is_a_grid():
+    # The replay's pit wall (D-024): the rule a stray brace would drop, as one once dropped `.workspace`.
+    rule = re.search(r"\n\.pitwall \{([^}]*)\}", CSS)
+    assert rule and "display: grid;" in rule.group(1)
+    assert '"tower map dashA" "rc tel dashB"' in rule.group(1)
