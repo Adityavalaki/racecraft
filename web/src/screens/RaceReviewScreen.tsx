@@ -3,6 +3,8 @@ import { api, type RaceReview, type ReviewDriver, type ReviewStop, type Standing
 import type { ScreenContext } from "./ScreenView";
 
 const SHORT: Record<ReviewStop["kind"], string> = { green: "", "safety car": "SC", VSC: "VSC", "red flag": "red", penalty: "pen" };
+/** Stops made while the field was slowed: the cheap ones, shown in green. A penalty stop is not luck. */
+const CHEAP = new Set<ReviewStop["kind"]>(["safety car", "VSC", "red flag"]);
 
 /**
  * The last Grand Prix, driver by driver: overtakes made and lost on track, and
@@ -46,7 +48,7 @@ export function RaceReviewScreen({ ctx, header }: { ctx: ScreenContext; header: 
           <>
             <p className="standings-basis">
               <b>{data.event_name ?? `${data.year} season`}</b>
-              {data.green_stop_places !== null && ` · a normal pit stop here cost about ${Math.round(data.green_stop_places)} places`}
+              {data.green_stop_places !== null && ` · a normal pit stop here cost about ${placesText(Math.round(data.green_stop_places))}`}
               <br />
               <b>Passed</b> and <b>passed by</b> count overtakes on track: green flag, neither car in the pits (lap 1 is on
               the Starts screen). Each pit stop shows its lap and how many cars that stayed out got past. A stop under
@@ -89,7 +91,7 @@ function ReviewTable({ drivers }: { drivers: ReviewDriver[] }) {
           <span role="cell" className="split stops">
             {d.stops.length
               ? d.stops.map((s, i) => (
-                  <span key={s.lap}>{i > 0 && " · "}<span className={s.kind === "green" ? "" : "is-quick"}>{stopText(s)}</span></span>
+                  <span key={s.lap}>{i > 0 && " · "}<span className={CHEAP.has(s.kind) ? "is-quick" : ""}>{stopText(s)}</span></span>
                 ))
               : "—"}
           </span>
@@ -103,4 +105,9 @@ function ReviewTable({ drivers }: { drivers: ReviewDriver[] }) {
 export function stopText(stop: ReviewStop): string {
   const kind = SHORT[stop.kind];
   return `L${stop.lap}${kind ? ` ${kind}` : ""} ${stop.places ? `−${stop.places}` : "±0"}`;
+}
+
+/** "1 place", "3 places". */
+export function placesText(n: number): string {
+  return `${n} ${n === 1 ? "place" : "places"}`;
 }

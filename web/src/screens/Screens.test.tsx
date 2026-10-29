@@ -8,7 +8,7 @@ import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
 import { leftText } from "./QualifyingScreen";
-import { stopText } from "./RaceReviewScreen";
+import { placesText, stopText } from "./RaceReviewScreen";
 import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
@@ -518,5 +518,7 @@ describe("Race review", () => {
   it("words a stop", () => {
     expect(stopText({ lap: 24, kind: "green", places: 2 })).toBe("L24 −2");
     expect(stopText({ lap: 31, kind: "safety car", places: 0 })).toBe("L31 SC ±0");
+    expect(placesText(1)).toBe("1 place");
+    expect(placesText(3)).toBe("3 places");
   });
 });
