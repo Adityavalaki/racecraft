@@ -70,20 +70,22 @@ before it.
 
 ## The screens
 
-A navigation rail runs down the left and a playback bar along the bottom. Every
-screen except the replay and settings can pop out into a window of its own (the ↗
-button) that follows the main window's clock, so the timing tower can sit on a
-second monitor.
+A session bar runs across the top: the session, the lap, the race time, the track
+status, the weather and a search (Ctrl K) that jumps to any screen, driver or
+session. A slim icon rail runs down the left, and the playback bar and a status
+bar along the bottom. Every screen except the replay and settings can pop out into
+a window of its own (the ↗ button) that follows the main window's clock, so the
+timing tower can sit on a second monitor.
 
 ### Race
 
 | | |
 |---|---|
-| **Replay**: the circuit coloured by a followed car's last lap (green flat out, red braking), cards for up to two followed drivers, the timing tower and race control. | ![Replay](docs/screenshots/replay.png) |
+| **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), and a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side); race control and team radio; and the followed drivers' last laps, channel by channel against lap distance. | ![Replay](docs/screenshots/replay.png) |
 | **Timing tower**: every car's gap, interval, last and best lap, sectors in timing colours, tyre and age, stops and penalties. | ![Timing tower](docs/screenshots/timing-tower.png) |
 | **Race trace**: the gap to the leader lap by lap, drawn only up to the lap on the clock. Safety-car laps are shaded. | ![Race trace](docs/screenshots/race-trace.png) |
 | **Pedals and speed**: one driver's lap against another's by distance: the time between them, speed, throttle, brake, gear and every brake zone. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
-| **Race review**: per driver, overtakes made and lost on track, and each pit stop's lap and the places it cost, marked when made under a safety car, VSC or red flag. | ![Race review](docs/screenshots/race-review.png) |
+| **Race review**: per driver, overtakes made and lost on track, and each pit stop's lap and the places it cost, marked when made under a safety car, VSC or red flag. Click a driver to see their stops along the race, each in a sentence. | ![Race review](docs/screenshots/race-review.png) |
 
 ### Plan
 
@@ -285,6 +287,7 @@ they need is missing.
 
 - **Pick a session** at the top, **play** with Space, and **scrub** on the timeline,
   which is coloured by flags and safety cars.
+- **Search** with Ctrl K: type part of a screen, a driver or a session, then Enter.
 - **Follow a driver** by clicking them in the timing tower (up to two).
 - **Pop out** any screen with ↗; it stays in step with the main window.
 - On season screens, choose **Going into this session** (no spoilers) or **After it**.
@@ -297,6 +300,7 @@ they need is missing.
 | Home | Back to the start |
 | L | Driver names on the map |
 | D | DRS zones on the map (2026: overtake rings) |
+| Ctrl K | Search screens, drivers and sessions |
 
 ---
 
