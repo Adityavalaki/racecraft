@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DriverTiming } from "../api";
 import { ClockBar, statusBands } from "./ClockBar";
 import { DriverCards, drsLabel, overtakeLabel } from "./DriverCards";
+import { channelPath, cursorIndex } from "./TelemetryStrip";
 import { Leaderboard } from "./Leaderboard";
 
 function driver(n: number, code: string, position: number, over: Partial<DriverTiming> = {}): DriverTiming {
@@ -186,5 +187,26 @@ describe("overtake mode (2026)", () => {
   it("keeps DRS for a session that has it", () => {
     render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} />);
     expect(within(screen.getByRole("article", { name: /LEC telemetry/ })).getByText("DRS off")).toBeDefined();   // code 0
+  });
+});
+
+describe("the telemetry strip", () => {
+  const trace = {
+    driver_number: 16, abbreviation: "LEC", lap: 12, lap_time_s: 90, compound: "MEDIUM", tyre_life: 5, start_t: 0, length_m: 1000, step_m: 500,
+    distance: [0, 500, 1000], t: [0, 45, 90], speed: [100, 300, 200], throttle: [0, 100, 50], brake: [true, false, false],
+    gear: [1, 8, 4], x: [0, 100, 200], y: [0, 0, 0], brake_zones: [], corners: [],
+    summary: { top_speed: 300, min_speed: 100, full_throttle_share: 0.3, braking_share: 0.1, brake_zones: 1 },
+  };
+
+  it("puts each car's cursor at the nearest point of its lap", () => {
+    expect(cursorIndex(trace, { x: 90, y: 5 })).toBe(1);
+    expect(cursorIndex(trace, { x: 190, y: 0 })).toBe(2);
+    expect(cursorIndex(trace, undefined)).toBeNull();
+  });
+
+  it("draws a channel across the full width, scaled to its range", () => {
+    // Speed 300 of a 300 top reaches the top padding; the lap ends at x = 1000.
+    expect(channelPath(trace, "speed", 100, 300)).toBe("M0.0 64.0L500.0 8.0L1000.0 36.0");
+    expect(channelPath(trace, "brake", 30, 300).startsWith("M0.0 2.4")).toBe(true);    // on: at the top
   });
 });

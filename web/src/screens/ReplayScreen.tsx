@@ -1,11 +1,10 @@
 import { useMemo } from "react";
 import { type RaceControlEvent, type SessionInfo, type SessionState } from "../api";
-import type { Layout } from "../layout";
-import { Workspace } from "../layout";
 import { DriverCards } from "../panels/DriverCards";
 import { Leaderboard } from "../panels/Leaderboard";
 import { RaceControl } from "../panels/RaceControl";
 import { TeamRadio } from "../panels/TeamRadio";
+import { TelemetryStrip } from "../panels/TelemetryStrip";
 import { TrackMap } from "../panels/TrackMap";
 import type { Settings } from "../settings";
 import { useLapTrace } from "../telemetryData";
@@ -25,16 +24,15 @@ interface Props {
   trackLog: RaceControlEvent[];
   codes: Record<number, string>;
   onOpenTower: () => void;
-  layout: Layout;
-  onLayout: (next: Layout) => void;
   /** Playback speed: the cards fetch telemetry further ahead the faster it runs. */
   playbackSpeed?: number;
 }
 
 /**
- * The replay: the pedal map in the middle, the followed drivers' cards under
- * it, and the timing tower and race control beside it. The lap, the clock and
- * the weather are in the app's session bar above.
+ * The replay, laid out as a pit wall: the timing tower, the pedal map and the
+ * first followed driver's dashboard across the top; race control and team
+ * radio, the followed drivers' telemetry by lap distance and the second
+ * dashboard below. The lap, the clock and the weather are in the session bar.
  *
  * The pedal map colours the circuit by one car's last full lap: the first
  * followed driver, or the leader while nobody is followed.
@@ -50,14 +48,16 @@ export function ReplayScreen(props: Props) {
   const { trace } = useLapTrace(props.sessionKey, mapDriver, mapTiming?.laps_completed ?? null);
   const code = mapDriver == null ? "" : props.codes[mapDriver] ?? String(mapDriver);
   const aidOn = settings.rings && (hasDrs || hasOvertake);
+  const names = useMemo(() => Object.fromEntries(info.drivers.map((d) => [d.driver_number, d.full_name ?? ""])), [info.drivers]);
 
   return (
     <div className="screen replay">
-      <Workspace
-        layout={props.layout}
-        onChange={props.onLayout}
-        map={
-          <section className="panel panel-map" aria-label="Pedal map">
+      <div className="pitwall">
+        <section className="panel pw-tower">
+          <Leaderboard drivers={drivers} selected={selected} onSelect={props.onSelect}
+                       onOpenTower={props.onOpenTower} lap={state?.leader_lap} />
+        </section>
+          <section className="panel panel-map pw-map" aria-label="Pedal map">
             <div className="panel-bar">
               <h2>Pedal map</h2>
               <span className="panel-meta">
@@ -87,25 +87,21 @@ export function ReplayScreen(props: Props) {
               {hasDrs && aidOn && <span><i className="is-drs" />DRS zones</span>}
             </div>
           </section>
-        }
-        below={
-          <section className="followed" aria-label="Followed drivers">
-            <DriverCards selected={selected} drivers={drivers} cars={state?.cars ?? {}} hasDrs={hasDrs}
+        {([0, 1] as const).map((slot) => (
+          <div key={slot} className={`pw-dash pw-dash-${slot === 0 ? "a" : "b"}`} aria-label={`Followed driver ${slot === 0 ? "A" : "B"}`}>
+            <DriverCards slot={slot} selected={selected} drivers={drivers} cars={state?.cars ?? {}} hasDrs={hasDrs}
                          hasOvertake={hasOvertake} onUnpick={props.onSelect} sessionKey={props.sessionKey} t={props.t}
-                         units={settings.units} playbackSpeed={props.playbackSpeed ?? 1} />
-          </section>
-        }
-        right={
-          <div className="replay-right">
-            <section className="panel">
-              <Leaderboard drivers={drivers} selected={selected} onSelect={props.onSelect}
-                           onOpenTower={props.onOpenTower} lap={state?.leader_lap} />
-            </section>
-            <RaceControl stewards={props.stewards} trackLog={props.trackLog} start={info.t_start} codes={props.codes} />
-            <TeamRadio clips={info.radio} t={props.t} start={info.t_start} codes={props.codes} />
+                         units={settings.units} playbackSpeed={props.playbackSpeed ?? 1} names={names} />
           </div>
-        }
-      />
+        ))}
+        <div className="pw-rc">
+          <RaceControl stewards={props.stewards} trackLog={props.trackLog} start={info.t_start} codes={props.codes} />
+          <TeamRadio clips={info.radio} t={props.t} start={info.t_start} codes={props.codes} />
+        </div>
+        <div className="pw-tel">
+          <TelemetryStrip sessionKey={props.sessionKey} followed={selected.slice(-2)} drivers={drivers} cars={props.cars} />
+        </div>
+      </div>
     </div>
   );
 }

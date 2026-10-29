@@ -171,7 +171,7 @@ describe("App", () => {
   it("lays out the design: the rail, the session bar, the pedal map and cards, the tower and race control", async () => {
     mockApi();
     const { container } = render(<App />);
-    await waitFor(() => expect(container.querySelector(".workspace")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".pitwall")).not.toBeNull());
 
     // The rail: every screen, grouped, named in full for assistive technology and shortened under its icon;
     // the replay marked as the one on show, settings at its foot. Refresh is in the status bar.
@@ -190,15 +190,15 @@ describe("App", () => {
     expect(within(bar).getByRole("combobox", { name: /choose a session/i })).toBeDefined();
     await waitFor(() => expect(bar.textContent).toContain("12/57"));
 
-    const columns = Array.from(container.querySelectorAll(".workspace > .col")).map((col) => col.className);
-    expect(columns).toEqual(["col col-map", "col col-right"]);
-    const middle = container.querySelector(".col-map") as HTMLElement;
-    expect(middle.querySelector(".map-area canvas.track-map")).not.toBeNull();
-    expect(middle.querySelector(".below-map [aria-label='Followed drivers']")).not.toBeNull();
-    expect(middle.querySelector('[role="separator"][aria-orientation="horizontal"]')).not.toBeNull();
-    const right = container.querySelector(".col-right") as HTMLElement;
-    expect(right.querySelector(".leaderboard")).not.toBeNull();
-    expect(within(right).getByRole("region", { name: "Race control" })).toBeDefined();
+    // The pit wall: the tower, the map and driver A on top; race control, telemetry and driver B below.
+    const wall = container.querySelector(".pitwall") as HTMLElement;
+    expect(Array.from(wall.children).map((el) => el.className.split(" ").find((c) => c.startsWith("pw-")) ?? el.className))
+      .toEqual(["pw-tower", "pw-map", "pw-dash", "pw-dash", "pw-rc", "pw-tel"]);
+    expect(wall.querySelector(".pw-tower .leaderboard")).not.toBeNull();
+    expect(wall.querySelector(".pw-map canvas.track-map")).not.toBeNull();
+    expect(within(wall.querySelector(".pw-rc") as HTMLElement).getByRole("region", { name: "Race control" })).toBeDefined();
+    expect(within(wall.querySelector(".pw-tel") as HTMLElement).getByRole("region", { name: /telemetry for the followed drivers/i })).toBeDefined();
+    expect(within(wall.querySelector(".pw-dash-a") as HTMLElement).getByText(/click a driver in the timing tower/i)).toBeDefined();
   });
 
   it("selecting a driver in the leaderboard marks that row", async () => {

@@ -4,11 +4,14 @@ import { speedIn, type Settings } from "../settings";
 import { useTelemetry } from "../telemetryData";
 import { PedalTrace } from "./PedalTrace";
 
-/** How many drivers can be followed at once: a card each, side by side. */
+/** How many drivers can be followed at once: a dashboard each. */
 export const MAX_FOLLOWED = 2;
 
+/** The regulated rev limit, the full scale of the RPM bar (Technical Regulations, 15,000 rpm). */
+export const RPM_LIMIT = 15000;
+
 interface Props {
-  /** Followed drivers, oldest first; a card each, the newest two. */
+  /** Followed drivers, oldest first; a dashboard each, the newest two. */
   selected: number[];
   drivers: DriverTiming[];
   cars: Record<string, CarState>;
@@ -17,12 +20,16 @@ interface Props {
   /** True when the session has overtake mode instead (2026 on). */
   hasOvertake?: boolean;
   onUnpick: (driverNumber: number) => void;
-  /** For the half-minute of telemetry under each card. */
+  /** For the half-minute of telemetry at the foot of each dashboard. */
   sessionKey?: string | null;
   t?: number;
   units?: Settings["units"];
   /** Playback speed, so the telemetry is fetched far enough ahead to keep up. */
   playbackSpeed?: number;
+  /** One dashboard only, for a place of its own in the replay's grid: 0 the older followed, 1 the newer. */
+  slot?: 0 | 1;
+  /** Full names by number, for the dashboard's header. */
+  names?: Record<number, string>;
 }
 
 /** DRS codes in the feed: 8 is within a second with the flap shut; 10 and up is open. */
@@ -47,38 +54,48 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
 }
 
 /**
- * A card for each followed driver: where they stand (position, tyre, the cars
- * either side), what the car is doing now (speed, gear, DRS or overtake mode),
- * and the last half-minute of speed, throttle and brake beneath. Gaps are the
- * timing's, exact at each crossing of the line; the telemetry is the car's
- * own, at the clock's time.
+ * A dashboard for each followed driver, read like a steering wheel: speed,
+ * gear, revs, throttle and brake now; where they stand (position, tyre, the
+ * cars either side, DRS or overtake mode); and the last half-minute of speed,
+ * throttle and brake beneath. Gaps are the timing's, exact at each crossing of
+ * the line; the telemetry is the car's own, at the clock's time. No shift
+ * lights: the feed gives revs but not where each car changes gear.
  */
-export const DriverCards = memo(function DriverCards({ selected, drivers, cars, hasDrs, hasOvertake = false,
-                                                        onUnpick, sessionKey = null, t = 0, units = "metric",
-                                                        playbackSpeed = 1 }: Props) {
-  if (!selected.length) {
+export const DriverCards = memo(function DriverCards(props: Props) {
+  const { selected, drivers, slot } = props;
+  const shown = selected.slice(-MAX_FOLLOWED);
+  const byNumber = new Map(drivers.map((driver, index) => [driver.driver_number, index]));
+  const card = (number: number) => {
+    const index = byNumber.get(number);
+    const driver = index === undefined ? undefined : drivers[index];
+    return (
+      <DriverCard key={number} number={number} driver={driver}
+                  ahead={index !== undefined && index > 0 ? drivers[index - 1] : undefined}
+                  behind={index !== undefined ? drivers[index + 1] : undefined}
+                  car={props.cars[String(number)] ?? {}} hasDrs={props.hasDrs} hasOvertake={props.hasOvertake ?? false}
+                  onUnpick={props.onUnpick} sessionKey={props.sessionKey ?? null} t={props.t ?? 0}
+                  units={props.units ?? "metric"} playbackSpeed={props.playbackSpeed ?? 1} name={props.names?.[number]} />
+    );
+  };
+  if (slot !== undefined) {
+    const number = shown[slot];
+    if (number !== undefined) return card(number);
+    return (
+      <section className="panel dash-empty" aria-label={`Driver ${slot === 0 ? "A" : "B"}`}>
+        <p className="cards-empty">
+          {slot === 0 || shown.length === 0 ? "Click a driver in the timing tower to follow them here, up to two." : "Follow a second driver to compare them here."}
+        </p>
+      </section>
+    );
+  }
+  if (!shown.length) {
     return <p className="cards-empty">Click a driver in the timing tower to follow them here, up to two.</p>;
   }
-  const byNumber = new Map(drivers.map((driver, index) => [driver.driver_number, index]));
-  return (
-    <div className="driver-cards">
-      {selected.slice(-MAX_FOLLOWED).map((number) => {
-        const index = byNumber.get(number);
-        const driver = index === undefined ? undefined : drivers[index];
-        return (
-          <DriverCard key={number} number={number} driver={driver}
-                      ahead={index !== undefined && index > 0 ? drivers[index - 1] : undefined}
-                      behind={index !== undefined ? drivers[index + 1] : undefined}
-                      car={cars[String(number)] ?? {}} hasDrs={hasDrs} hasOvertake={hasOvertake}
-                      onUnpick={onUnpick} sessionKey={sessionKey} t={t} units={units} playbackSpeed={playbackSpeed} />
-        );
-      })}
-    </div>
-  );
+  return <div className="driver-cards">{shown.map(card)}</div>;
 });
 
 function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, onUnpick, sessionKey, t, units,
-                      playbackSpeed }: {
+                      playbackSpeed, name }: {
   number: number;
   driver: DriverTiming | undefined;
   ahead: DriverTiming | undefined;
@@ -91,28 +108,35 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   t: number;
   units: Settings["units"];
   playbackSpeed: number;
+  name?: string;
 }) {
   const { trace, now } = useTelemetry(sessionKey, number, t, playbackSpeed);
-  // Speed and gear from the buffered telemetry, read at this very frame; the
-  // state's own figures, a few times a second, until it arrives.
+  // Speed, gear and pedals from the buffered telemetry, read at this very
+  // frame; the state's own figures, a few times a second, until it arrives.
   const speed = speedIn(now?.speed ?? car.speed, units);
   const gear = now?.gear ?? car.gear;
+  const throttle = now?.throttle ?? car.throttle ?? null;
+  const braking = Boolean(now?.brake ?? car.brake);
+  const rpm = car.rpm ?? null;
   const code = driver?.abbreviation ?? String(number);
   const aid = !hasDrs && hasOvertake ? overtakeLabel(driver?.overtake) : drsLabel(car.drs, hasDrs);
   const colour = `#${driver?.team_color ?? "555555"}`;
+  const pct = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
   return (
-    <article className="driver-card" aria-label={`${code} telemetry`}>
+    <article className="panel driver-card" aria-label={`${code} telemetry`} style={{ ["--team" as string]: colour }}>
       <header className="card-head">
-        <span className="card-team-bar" style={{ background: colour }} />
         <span className="card-pos">{driver ? `P${driver.position}` : "—"}</span>
-        <span className="card-code display">{code}</span>
-        <span className="card-team">{driver?.team_name ?? ""}</span>
+        <span className="card-team-bar" />
+        <span className="card-who">
+          <span className="card-code">{code} <small>#{number}</small></span>
+          <span className="card-team">{[name, driver?.team_name].filter(Boolean).join(" · ")}</span>
+        </span>
         {driver?.compound && (
           <span className="card-tyre">
             <span className="tyre-chip small" style={{ background: COMPOUND_COLORS[driver.compound] ?? "#888" }}>
               {driver.compound[0]}
             </span>
-            {driver.tyre_life != null ? `${driver.tyre_life} laps` : ""}
+            {driver.tyre_life != null ? `${driver.tyre_life} L` : ""}
           </span>
         )}
         <button type="button" className="card-close" onClick={() => onUnpick(number)}
@@ -122,24 +146,34 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
           </svg>
         </button>
       </header>
-      <div className="card-now">
-        <div className="card-speed display">
-          {speed.value}<small> {speed.unit}</small>
+      <div className="card-body">
+        <div className="card-now">
+          <div className="card-speed num">{speed.value}<small> {speed.unit}</small></div>
+          <div className="card-gear"><span>Gear</span><b>{gear != null ? Math.round(gear) : "—"}</b></div>
         </div>
-        <div className="card-gear">
-          <span>Gear</span>
-          <b className="display">{gear != null ? Math.round(gear) : "—"}</b>
+        <div className="card-meters">
+          <span className="cap">RPM</span>
+          <span className="meter" title={`Full scale: the ${RPM_LIMIT.toLocaleString("en")} rpm limit`}>
+            <i style={{ width: rpm == null ? "0%" : pct((rpm / RPM_LIMIT) * 100), background: "#A78BFA" }} />
+          </span>
+          <span className="num meter-value">{rpm == null ? "—" : Math.round(rpm).toLocaleString("en")}</span>
+          <span className="cap">Throttle</span>
+          <span className="meter"><i style={{ width: throttle == null ? "0%" : pct(throttle), background: "#22C55E" }} /></span>
+          <span className="num meter-value">{throttle == null ? "—" : `${Math.round(throttle)}%`}</span>
+          <span className="cap">Brake</span>
+          <span className="meter"><i style={{ width: braking ? "100%" : "0%", background: "#EF4444" }} /></span>
+          <span className={`num meter-value${braking ? " is-on" : ""}`}>{braking ? "ON" : "OFF"}</span>
         </div>
         <div className="card-gaps">
+          <span className="num">{ahead ? `Ahead ${ahead.abbreviation ?? ahead.driver_number}` : "Ahead"} {driver?.interval_text || "—"}</span>
+          <span className="num">{behind ? `Behind ${behind.abbreviation ?? behind.driver_number}` : "Behind"} {behind?.interval_text || "—"}</span>
           <span className={`aid is-${aid.state}`}
                 title={!hasDrs && hasOvertake ? "Estimated from the timing gap: the feed does not say when it was used" : undefined}>
             {aid.text}
           </span>
-          <span className="num">{ahead ? `Ahead ${ahead.abbreviation ?? ahead.driver_number}` : "Ahead"} {driver?.interval_text || "—"}</span>
-          <span className="num">{behind ? `Behind ${behind.abbreviation ?? behind.driver_number}` : "Behind"} {behind?.interval_text || "—"}</span>
         </div>
+        <PedalTrace trace={trace} code={code} />
       </div>
-      <PedalTrace trace={trace} code={code} />
     </article>
   );
 }

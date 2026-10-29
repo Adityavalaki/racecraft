@@ -153,60 +153,47 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   min-height: 0;
 }
 /*
-  The workspace: the track map in the middle, the left column (session,
-  weather, driver cards, the feature launcher) and the leaderboard beside it.
-  The two side columns are the user's to size by dragging (see layout.tsx);
-  each width is a custom property set from the saved layout, and the
-  fallbacks below are the defaults a fresh install and "Reset layout" give.
-  The map takes whatever is left, and never less than its floor.
+  The replay is a pit wall: a fixed grid, the tower, the map and driver A
+  across the top, race control, telemetry and driver B below, every panel
+  scrolling inside itself. Narrower windows stack it, as the design shows.
 */
-.workspace {
-  display: flex;
+.pitwall {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 6px;
   padding: 6px;
-  min-height: 0;
-  min-width: 0;
+  grid-template-columns: 300px minmax(0, 1fr) 296px;
+  grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas: "tower map dashA" "rc tel dashB";
 }
-.col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
+.pw-tower { grid-area: tower; display: flex; flex-direction: column; min-height: 0; }
+.pw-map { grid-area: map; }
+.pw-dash-a { grid-area: dashA; }
+.pw-dash-b { grid-area: dashB; }
+.pw-dash { display: flex; min-width: 0; min-height: 0; }
+.pw-dash > .panel { flex: 1; }
+.pw-rc { grid-area: rc; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.pw-rc > .race-control { flex: 1 1 auto; }
+.pw-rc > .team-radio { flex: 0 1 34%; min-height: 0; }
+.pw-tel { grid-area: tel; display: flex; min-width: 0; min-height: 0; }
+.pw-tel > .panel { flex: 1; }
+@media (max-width: 1279px) { .pitwall { grid-template-columns: 272px minmax(0, 1fr) 268px; } }
+@media (max-width: 1099px) {
+  .screen.replay { overflow: auto; }
+  .pitwall { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: auto;
+    grid-template-areas: "map map" "tel tel" "dashA dashB" "tower rc"; }
+  .pw-map { height: 340px; }
+  .pw-tel { height: 360px; }
+  .pw-tower, .pw-rc { height: 440px; }
+  .pw-dash { min-height: 300px; }
 }
-.col-map { flex: 1 1 0; min-width: 20rem; }
-.col-right { flex: 0 1 var(--right-w, max(17rem, 17%)); min-width: 15rem; }
-.col > .panel { flex: 1; }
+@media (max-width: 760px) {
+  .pitwall { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "tel" "dashA" "dashB" "tower" "rc"; }
+  .pw-map { height: 260px; }
+}
 .panel-bar h2 { border-bottom: 0; }
 
-/*
-  A splitter is the 6px gap between two panels, so it costs no space. The line
-  is drawn only on hover, focus or drag, in the signal colour, so a resting
-  layout looks the same as before. touch-action: none keeps a touch drag from
-  scrolling the page instead.
-*/
-.splitter {
-  flex: none;
-  position: relative;
-  touch-action: none;
-}
-.splitter-vertical { width: 6px; cursor: col-resize; }
-.splitter-horizontal { height: 6px; cursor: row-resize; }
-.splitter::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  border-radius: 1px;
-  transition: background 0.12s;
-}
-.splitter-vertical::after { width: 2px; }
-.splitter-horizontal::after { height: 2px; }
-.splitter:hover::after,
-.splitter:focus-visible::after,
-.splitter.is-dragging::after { background: var(--signal); }
-.splitter:focus-visible { outline: none; }
-@media (prefers-reduced-motion: reduce) {
-  .splitter::after { transition: none; }
-}
 
 .reset-layout {
   background: none;
@@ -837,22 +824,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .omissions ul { margin: 0; padding-left: 1rem; font-size: 0.75rem; line-height: 1.55; }
 .omissions b { color: var(--ink-mid); font-weight: 600; }
 
-/*
-  Too narrow for three columns side by side: the panels stack in one scrolling
-  column at fixed heights, and the splitters step aside. A layout dragged on a
-  wider window is kept, and comes back when the window is wide again.
-*/
+/* Too narrow for three columns side by side: the panels stack and the page scrolls. */
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
   .panel-tower, .panel-map, .panel-trace, .panel-stewards, .panel-track { grid-column: 1; grid-row: auto; }
   .panel-stewards, .panel-track { height: 280px; }
-  .workspace { flex-direction: column; gap: 6px; }
-  .col { flex: none; width: 100%; min-width: 0; }
-  .splitter { display: none; }
-  .col-map { height: 62vh; }
-  .col-right { height: 70vh; }
   body { overflow: auto; }
-  .app { height: auto; }
+  .app { height: auto; min-height: 100vh; }
 }
 
 /* ---------------------------------------------------------------- tyre sets */
@@ -1344,22 +1322,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 
 /* ---------------------------------------------------------------- the middle column */
 
-/*
-  The middle column, top to bottom: the map with the session strip at its foot,
-  a splitter, then the stewards and the track log side by side. The row under
-  the map is the user's to size (--lower-h, from the saved layout); the map
-  takes the rest and never drops below its floor.
-*/
-.col-map { gap: 0; }
-.map-area { flex: 1 1 0; min-height: 14rem; display: flex; flex-direction: column; }
-.map-area > .panel { flex: 1; }
-.below-map {
-  flex: 0 1 var(--lower-h, 30%);
-  min-height: 7rem;
-  display: flex;
-  gap: 6px;
-}
-.below-map > .panel { flex: 1 1 0; min-width: 0; }
 .panel-bar .pop-out {
   margin-left: auto;
   background: none;
@@ -1377,15 +1339,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 
 /* The left column: sync at the top, as the first thing to reach for. */
 
-@media (max-width: 1100px) {
-  .col-map { height: auto; }
-  .map-area { height: 62vh; flex: none; }
-  .below-map { height: 40vh; flex: none; }
-}
-@media (max-width: 640px) {
-  .below-map { flex-direction: column; height: auto; }
-  .below-map > .panel { height: 36vh; flex: none; }
-}
 
 /* ================================================================ the redesign: pedal-first pit wall */
 
@@ -1680,15 +1633,8 @@ button.prediction-row:hover { background: var(--panel-2); }
 .map-legend i.is-lift { background: #62626E; }
 
 /* ---- the replay */
-.replay .workspace { flex: 1 1 auto; padding: 12px; gap: 0; }
-.replay .col-map { min-width: 24rem; }
-.replay .map-area > .panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.replay .panel-map { display: flex; flex-direction: column; min-height: 0; }
 .replay .panel-map .track-map { flex: 1; min-height: 0; }
-.replay .below-map { flex: 0 1 var(--lower-h, 244px); min-height: 12rem; display: flex; }
-.followed { flex: 1; min-width: 0; display: flex; }
-.replay-right { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.replay-right > .panel:first-child { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.col-right { flex: 0 1 var(--right-w, 316px); min-width: 15rem; }
 
 /* The compact timing tower. */
 .leaderboard { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -1785,37 +1731,70 @@ button.prediction-row:hover { background: var(--panel-2); }
 .rc-tag.is-yellow { background: rgba(255, 214, 10, 0.14); color: var(--worse); }
 .rc-tag.is-red { background: rgba(255, 77, 94, 0.14); color: var(--red); }
 
-/* The followed drivers' cards. */
-.cards-empty { margin: 0; flex: 1; display: grid; place-items: center; padding: 16px; font-size: 13px; color: var(--ink-soft);
-  border: 1px dashed var(--rule-strong); border-radius: 12px; }
-.driver-cards { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.driver-card {
-  min-width: 0;
+/* The followed drivers' dashboards, read like a steering wheel. */
+.cards-empty { margin: 0; flex: 1; display: grid; place-items: center; padding: 16px; font-size: 12px; color: var(--ink-faint); text-align: center; }
+.dash-empty { border-style: dashed; }
+.driver-cards { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.driver-card { min-width: 0; display: flex; flex-direction: column; }
+.card-head {
+  flex: none;
+  min-height: 40px;
   display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  overflow: hidden;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--team) 18%, transparent), var(--panel-2) 65%);
 }
-.card-head { flex: none; height: 44px; display: flex; align-items: center; gap: 10px; padding-right: 8px; border-bottom: 1px solid var(--rule); }
-.card-team-bar { width: 6px; align-self: stretch; }
-.card-pos { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
-.card-code { font-size: 26px; }
-.card-team { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.card-tyre { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #D0D0D6; white-space: nowrap; }
-.card-close { width: 28px; height: 28px; display: grid; place-items: center; background: transparent; border: 0;
-  border-radius: 6px; color: var(--ink-soft); }
-.card-close:hover { color: var(--ink); background: var(--panel-2); }
-.card-now { flex: none; display: flex; align-items: flex-end; gap: 18px; padding: 10px 14px 0; }
-.card-speed { font-size: 46px; line-height: 0.9; }
-.card-speed small { font-size: 15px; font-weight: 600; color: var(--ink-soft); font-style: italic; }
-.card-gear { text-align: center; padding: 3px 10px; border-radius: 8px; background: var(--ground); border: 1px solid var(--rule-strong); }
-.card-gear span { display: block; font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-soft); }
-.card-gear b { font-size: 24px; line-height: 1; }
-.card-gaps { margin-left: auto; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; text-align: right; color: #D0D0D6; }
-.card-gaps .aid { font-weight: 600; color: var(--ink-soft); }
-.card-gaps .aid.is-eligible, .card-gaps .aid.is-open { color: var(--overtake-ink); }
+.card-pos { font: italic 900 19px var(--font-display); line-height: 1; color: #F2F3F5; }
+.card-team-bar { width: 3px; height: 22px; flex: none; border-radius: 1px; background: var(--team); box-shadow: 0 0 8px var(--team); }
+.card-who { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.card-code { font: 700 13px var(--font-mono); white-space: nowrap; }
+.card-code small { font-size: 11px; font-weight: 500; color: var(--ink-faint); }
+.card-team { font-size: 11px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-tyre { margin-left: auto; display: flex; align-items: center; gap: 5px; font: 500 11px var(--font-mono); color: var(--ink-soft); white-space: nowrap; }
+.card-close { width: 26px; height: 26px; flex: none; display: grid; place-items: center; background: transparent; border: 0;
+  border-radius: 5px; color: var(--ink-soft); }
+.card-close:hover { color: var(--ink); background: #1A1E24; }
+.card-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.card-now { display: flex; align-items: center; gap: 12px; }
+.card-speed { font-size: 38px; font-weight: 700; line-height: 0.9; letter-spacing: -0.02em; }
+.card-speed small { font: 600 9px var(--font-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+.card-gear { width: 46px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid var(--rule-strong); border-radius: 5px; background: var(--ground); }
+.card-gear span { font: 600 7.5px var(--font-text); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+.card-gear b { font: 900 28px var(--font-display); line-height: 1; }
+.card-meters { display: grid; grid-template-columns: 54px minmax(0, 1fr) 48px; gap: 9px 8px; align-items: center; }
+.meter { position: relative; height: 10px; border-radius: 2px; background: #07080A; border: 1px solid var(--rule); overflow: hidden; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; }
+.meter-value { font-size: 11px; font-weight: 600; text-align: right; }
+.meter-value.is-on { color: #FF6B6B; }
+.card-gaps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding-top: 8px; border-top: 1px solid var(--rule-soft); font-size: 11px; color: var(--ink-mid); }
+.card-gaps > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-gaps .aid { grid-column: 1 / -1; font-weight: 600; color: var(--ink-soft); }
+.card-gaps .aid.is-eligible, .card-gaps .aid.is-open { color: #38BDF8; }
+.driver-card .pedal-trace { margin: 0 0 0 52px; min-height: 64px; }
+
+/* The telemetry strip: the followed drivers' last full laps, channel by channel. */
+.telemetry-strip { display: flex; flex-direction: column; }
+.tel-keys { margin-left: auto; display: flex; gap: 12px; }
+.tel-key { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-faint); }
+.tel-key i { width: 14px; height: 2px; }
+.tel-key b { color: var(--ink); }
+.tel-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 4px 8px 6px 0; }
+.tel-ruler { position: relative; height: 16px; margin-left: 112px; flex: none; }
+.tel-ruler span { position: absolute; top: 0; transform: translateX(-50%); font: 700 9.5px var(--font-mono); color: var(--ink-mid); }
+.tel-ch { display: flex; min-height: 0; border-bottom: 1px solid var(--rule-soft); }
+.tel-ch.tel-speed { flex: 1.7 1 0; }
+.tel-ch.tel-throttle, .tel-ch.tel-gear { flex: 1 1 0; }
+.tel-ch.tel-brake { flex: 0.55 1 0; }
+.tel-label { width: 112px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 10px; border-right: 1px solid var(--rule); }
+.tel-label small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.tel-values { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; font-weight: 600; }
+.tel-graph { position: relative; flex: 1 1 auto; min-width: 0; }
+.tel-graph svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tel-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.05); }
+.tel-cursor { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; }
 .pedal-trace { flex: 1 1 auto; min-height: 70px; position: relative; margin: 8px 14px 10px 62px; }
 .pedal-trace svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .pedal-trace.is-empty { margin-left: 14px; display: grid; place-items: center; font-size: 12px; color: var(--ink-faint); }
@@ -1968,30 +1947,23 @@ button.prediction-row:hover { background: var(--panel-2); }
 .shortcuts dt kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--rule-strong); }
 .shortcuts dd { margin: 0; color: var(--ink-mid); }
 
-/* ---- narrow windows: the rail folds to icons, then to a strip across the top */
+/* ---- narrow windows: under 760 px the rail becomes a strip across the top, the weather goes */
 @media (max-width: 1100px) {
-  .rail { width: 64px; }
-  .rail-brand span, .rail-item span, .rail-group-label, .rail-foot .sync-status { display: none; }
-  .rail-brand, .rail-item { justify-content: center; padding: 0; }
-  .rail-foot .sync-button { padding: 0; font-size: 0; }
   .pedals-grid { grid-template-columns: minmax(0, 1fr); }
-  .replay .workspace { overflow: auto; }
-  .weather { margin-left: 0; }
 }
-@media (max-width: 640px) {
-  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .rail { width: auto; flex-direction: row; border-right: 0; border-bottom: 1px solid #26262C; overflow-x: auto; }
-  .rail-nav { flex-direction: row; padding: 4px; }
+@media (max-width: 760px) {
+  .app-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .rail { width: auto; flex-direction: row; padding: 4px; border-right: 0; border-bottom: 1px solid #1A1D22; overflow-x: auto; }
+  .rail-nav { flex-direction: row; }
   .rail-group { flex-direction: row; }
-  .rail-foot { flex-direction: row; border-top: 0; padding: 4px 8px; }
+  .rail-group + .rail-group { margin: 0 0 0 5px; padding: 0 0 0 5px; border-top: 0; border-left: 1px solid #1C2026; }
+  .rail-item { width: 60px; }
+  .rail-item.is-current::before { display: none; }
+  .rail-foot { padding: 0 0 0 5px; border-top: 0; border-left: 1px solid #1C2026; }
+  .session-bar .weather, .session-bar .session-meta { display: none; }
   .driver-cards { grid-template-columns: minmax(0, 1fr); }
-  .clockbar { height: auto; flex-wrap: wrap; padding: 10px 12px; }
   .screen-columns { grid-template-columns: minmax(0, 1fr); }
 }
-
-/* The rail's refresh: full width, icon and label, the status above it. */
-.rail-foot .sync { margin: 0; }
-.rail-foot .sync-button { width: 100%; }
 .timeline-bands { border-radius: 7px; background: #26262D; }
 
 /* ================================================================ the screens */

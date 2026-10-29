@@ -126,7 +126,8 @@ class SessionData:
             f"select t, air_temp, track_temp, rainfall, wind_speed from weather where session_key = '{session_key}' order by t").df()
 
         self.position = self._load_channels(con, "pos_data", ["x", "y"])
-        self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs"])
+        # rpm for the dashboards' rev bar: in the schema and filled by both sources.
+        self.car = self._load_channels(con, "car_data", ["speed", "gear", "throttle", "brake", "drs", "rpm"])
         # Corner numbers and where they fall along the lap, for the traces.
         try:
             self.markers = con.sql(f"""select kind, number, letter, distance from circuit_markers

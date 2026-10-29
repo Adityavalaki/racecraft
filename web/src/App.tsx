@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LIVE_KEY } from "./api";
 import { useClock } from "./clock";
 import { openFeature, screenById, type FeatureId, type ScreenId } from "./features";
-import { useLayout } from "./layout";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
@@ -48,8 +47,6 @@ export default function App() {
   const [following, setFollowing] = useState(true);
   const { settings, update: updateSettings } = useSettings();
   const isLive = sessionKey === LIVE_KEY;
-  // How wide the timing tower is and how tall the cards: the user's to drag, remembered.
-  const { layout, setLayout, reset: resetLayout, customised } = useLayout();
 
   const setScreen = useCallback((next: ScreenId) => {
     setScreenState(next);
@@ -182,12 +179,6 @@ export default function App() {
     <>
       {liveFlag}
       {info && !info.has_position_data && <span className="session-warn">No position data in this session</span>}
-      {customised && screen === "replay" && (
-        <button type="button" className="reset-layout" onClick={resetLayout}
-                title="Put the timing tower and the driver cards back to their default size">
-          Reset layout
-        </button>
-      )}
       {error && <span className="error">{error}</span>}
     </>
   );
@@ -223,7 +214,7 @@ export default function App() {
         <ReplayScreen sessionKey={sessionKey} info={info} state={state} t={clock.t} cars={cars} selected={selected}
                       onSelect={toggleDriver} settings={settings} onToggleNames={toggleNames} onToggleRings={toggleRings}
                       stewards={stewards} trackLog={trackLog} codes={driverCodes} onOpenTower={openTower}
-                      layout={layout} onLayout={setLayout} playbackSpeed={clock.speed} />
+                      playbackSpeed={clock.speed} />
       );
     }
     return (
