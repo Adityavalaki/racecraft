@@ -182,20 +182,20 @@ export const TrackMap = memo(function TrackMap({
       context.stroke();
       const code = driver?.abbreviation ?? number;
       if (isSelected) {
-        // A followed car is named on a white tag, in the display face.
-        context.font = "italic 800 15px 'Barlow Condensed', 'Arial Narrow', sans-serif";
-        const width = context.measureText(code).width + 14;
+        // A followed car is named on a white tag, in the timing face.
+        context.font = "700 11px 'JetBrains Mono', monospace";
+        const width = context.measureText(code).width + 12;
         const left = px + 12;
-        context.fillStyle = "#F4F4F6";
+        context.fillStyle = "#F2F3F5";
         context.beginPath();
-        context.roundRect?.(left, py - 10, width, 20, 5);
-        if (!context.roundRect) context.rect(left, py - 10, width, 20);
+        context.roundRect?.(left, py - 9, width, 18, 3);
+        if (!context.roundRect) context.rect(left, py - 9, width, 18);
         context.fill();
-        context.fillStyle = "#0A0A0C";
-        context.fillText(code, left + 7, py + 5);
+        context.fillStyle = "#07080A";
+        context.fillText(code, left + 6, py + 4);
       } else if (showNames) {
-        context.fillStyle = "#C4C4CC";
-        context.font = "italic 700 12px 'Barlow Condensed', 'Arial Narrow', sans-serif";
+        context.fillStyle = "#C9CED6";
+        context.font = "600 10px 'JetBrains Mono', monospace";
         context.fillText(code, px + 8, py + 4);
       }
     }

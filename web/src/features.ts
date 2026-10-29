@@ -21,6 +21,8 @@ export type ScreenGroup = "Race" | "Plan" | "Control" | "Season";
 export interface Screen {
   id: ScreenId;
   title: string;
+  /** The rail's label, under the icon: the title, cut to fit 68 px. */
+  short: string;
   /** One line under the title, saying what the screen is for. */
   hint: string;
   group: ScreenGroup | null;
@@ -29,21 +31,21 @@ export interface Screen {
 }
 
 export const SCREENS: readonly Screen[] = [
-  { id: "replay", title: "Replay", hint: "The race on the map, with the cars you follow.", group: "Race", poppable: false },
-  { id: "tower", title: "Timing tower", hint: "Every car, every lap and sector, in race order.", group: "Race", poppable: true },
-  { id: "trace", title: "Race trace", hint: "How the gaps opened and closed, lap by lap.", group: "Race", poppable: true },
-  { id: "pedals", title: "Pedals and speed", hint: "Where each driver brakes, lifts and gets back on the throttle.", group: "Race", poppable: true },
-  { id: "review", title: "Race review", hint: "Who passed whom on track, and what each pit stop cost in places.", group: "Race", poppable: true },
-  { id: "strategy", title: "Strategy", hint: "When each car is likely to stop, and who can jump a place.", group: "Plan", poppable: true },
-  { id: "tyres", title: "Tyres", hint: "How fast each compound fades, and where every car sits on that curve.", group: "Plan", poppable: true },
-  { id: "prediction", title: "Race prediction", hint: "The race, called from Friday and Saturday. Chances, not certainties.", group: "Plan", poppable: true },
-  { id: "stewards", title: "Stewards", hint: "Every race control message, with what it means for the result.", group: "Control", poppable: true },
-  { id: "standings", title: "Standings", hint: "The drivers' and constructors' championships, as they stood.", group: "Season", poppable: true },
-  { id: "crews", title: "Pit crews", hint: "Which teams turn a car round fastest, from every green-flag stop.", group: "Season", poppable: true },
-  { id: "teammates", title: "Teammates", hint: "Each team's two drivers head to head, in the same car.", group: "Season", poppable: true },
-  { id: "starts", title: "Starts", hint: "Places each driver gains or loses on lap 1.", group: "Season", poppable: true },
-  { id: "qualifying", title: "Qualifying laps", hint: "How close each driver got to their own perfect lap.", group: "Season", poppable: true },
-  { id: "settings", title: "Settings", hint: "How Racecraft looks, and where its data comes from.", group: null, poppable: false },
+  { id: "replay", title: "Replay", short: "Replay", hint: "The race on the map, with the cars you follow.", group: "Race", poppable: false },
+  { id: "tower", title: "Timing tower", short: "Timing", hint: "Every car, every lap and sector, in race order.", group: "Race", poppable: true },
+  { id: "trace", title: "Race trace", short: "Race trace", hint: "How the gaps opened and closed, lap by lap.", group: "Race", poppable: true },
+  { id: "pedals", title: "Pedals and speed", short: "Pedals", hint: "Where each driver brakes, lifts and gets back on the throttle.", group: "Race", poppable: true },
+  { id: "review", title: "Race review", short: "Review", hint: "Who passed whom on track, and what each pit stop cost in places.", group: "Race", poppable: true },
+  { id: "strategy", title: "Strategy", short: "Strategy", hint: "When each car is likely to stop, and who can jump a place.", group: "Plan", poppable: true },
+  { id: "tyres", title: "Tyres", short: "Tyres", hint: "How fast each compound fades, and where every car sits on that curve.", group: "Plan", poppable: true },
+  { id: "prediction", title: "Race prediction", short: "Predict", hint: "The race, called from Friday and Saturday. Chances, not certainties.", group: "Plan", poppable: true },
+  { id: "stewards", title: "Stewards", short: "Stewards", hint: "Every race control message, with what it means for the result.", group: "Control", poppable: true },
+  { id: "standings", title: "Standings", short: "Standings", hint: "The drivers' and constructors' championships, as they stood.", group: "Season", poppable: true },
+  { id: "crews", title: "Pit crews", short: "Pit crews", hint: "Which teams turn a car round fastest, from every green-flag stop.", group: "Season", poppable: true },
+  { id: "teammates", title: "Teammates", short: "Teammates", hint: "Each team's two drivers head to head, in the same car.", group: "Season", poppable: true },
+  { id: "starts", title: "Starts", short: "Starts", hint: "Places each driver gains or loses on lap 1.", group: "Season", poppable: true },
+  { id: "qualifying", title: "Qualifying laps", short: "Quali laps", hint: "How close each driver got to their own perfect lap.", group: "Season", poppable: true },
+  { id: "settings", title: "Settings", short: "Settings", hint: "How Racecraft looks, and where its data comes from.", group: null, poppable: false },
 ];
 
 export const RAIL_GROUPS: readonly ScreenGroup[] = ["Race", "Plan", "Control", "Season"];

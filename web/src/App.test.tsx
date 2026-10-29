@@ -159,11 +159,11 @@ describe("App", () => {
     await waitFor(() => expect(board.getByText("VER")).toBeDefined());
     expect(board.getByText("LEADER")).toBeDefined();
     expect(board.getAllByText("+6.213").length).toBe(2);   // the gap, and the interval to the leader
-    // The flag shows in the playback bar; lap, clock and weather in the session bar.
-    expect(within(container.querySelector(".clockbar") as HTMLElement).getByText("TRACK CLEAR")).toBeDefined();
+    // The flag, the lap, the clock and the weather are all in the session bar.
     const bar = container.querySelector(".session-bar") as HTMLElement;
-    await waitFor(() => expect(bar.textContent).toContain("12/ 57"));
-    expect(within(bar).getByText("32°C")).toBeDefined();
+    await waitFor(() => expect(within(bar).getByText("TRACK CLEAR")).toBeDefined());
+    await waitFor(() => expect(bar.textContent).toContain("12/57"));
+    expect(within(bar).getByText("32°")).toBeDefined();
     expect(within(bar).getByText(/Sakhir · \d+ cars/)).toBeDefined();
     expect(screen.getByRole("slider", { name: /session time/i })).toBeDefined();
   });
@@ -173,19 +173,22 @@ describe("App", () => {
     const { container } = render(<App />);
     await waitFor(() => expect(container.querySelector(".workspace")).not.toBeNull());
 
-    // The rail: every screen, grouped, the replay marked as the one on show; refresh and settings at its foot.
+    // The rail: every screen, grouped, named in full for assistive technology and shortened under its icon;
+    // the replay marked as the one on show, settings at its foot. Refresh is in the status bar.
     const rail = screen.getByRole("complementary", { name: /racecraft navigation/i });
     const nav = within(within(rail).getByRole("navigation", { name: "Screens" }));
-    expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual(
+    expect(nav.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(
       ["Replay", "Timing tower", "Race trace", "Pedals and speed", "Race review", "Strategy", "Tyres", "Race prediction", "Stewards", "Standings", "Pit crews", "Teammates", "Starts", "Qualifying laps"]);
+    expect(nav.getAllByRole("button").map((b) => b.textContent)).toEqual(
+      ["Replay", "Timing", "Race trace", "Pedals", "Review", "Strategy", "Tyres", "Predict", "Stewards", "Standings", "Pit crews", "Teammates", "Starts", "Quali laps"]);
     expect(nav.getByRole("button", { name: "Replay" }).getAttribute("aria-current")).toBe("page");
-    expect(within(rail).getByRole("button", { name: /^refresh data$/i })).toBeDefined();
     expect(within(rail).getByRole("button", { name: "Settings" })).toBeDefined();
+    expect(within(container.querySelector(".status-bar") as HTMLElement).getByRole("button", { name: /^refresh data$/i })).toBeDefined();
 
     // The session bar: the picker, the lap, the clock and the weather.
     const bar = container.querySelector(".session-bar") as HTMLElement;
     expect(within(bar).getByRole("combobox", { name: /choose a session/i })).toBeDefined();
-    await waitFor(() => expect(bar.textContent).toContain("12/ 57"));
+    await waitFor(() => expect(bar.textContent).toContain("12/57"));
 
     const columns = Array.from(container.querySelectorAll(".workspace > .col")).map((col) => col.className);
     expect(columns).toEqual(["col col-map", "col col-right"]);

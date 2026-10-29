@@ -1,5 +1,5 @@
-import { useMemo, type ReactNode } from "react";
-import { formatClock, type RaceControlEvent, type SessionInfo, type SessionState } from "../api";
+import { useMemo } from "react";
+import { type RaceControlEvent, type SessionInfo, type SessionState } from "../api";
 import type { Layout } from "../layout";
 import { Workspace } from "../layout";
 import { DriverCards } from "../panels/DriverCards";
@@ -8,7 +8,6 @@ import { RaceControl } from "../panels/RaceControl";
 import { TeamRadio } from "../panels/TeamRadio";
 import { TrackMap } from "../panels/TrackMap";
 import type { Settings } from "../settings";
-import { LapCounter } from "../shell/ScreenHeader";
 import { useLapTrace } from "../telemetryData";
 
 interface Props {
@@ -28,17 +27,14 @@ interface Props {
   onOpenTower: () => void;
   layout: Layout;
   onLayout: (next: Layout) => void;
-  /** The session picker, the live flag and the reset button, for the session bar. */
-  picker: ReactNode;
-  status?: ReactNode;
   /** Playback speed: the cards fetch telemetry further ahead the faster it runs. */
   playbackSpeed?: number;
 }
 
 /**
  * The replay: the pedal map in the middle, the followed drivers' cards under
- * it, the timing tower and race control beside it, and the session bar above
- * with the lap, the clock and the weather.
+ * it, and the timing tower and race control beside it. The lap, the clock and
+ * the weather are in the app's session bar above.
  *
  * The pedal map colours the circuit by one car's last full lap: the first
  * followed driver, or the leader while nobody is followed.
@@ -52,29 +48,11 @@ export function ReplayScreen(props: Props) {
   const mapDriver = selected[0] ?? drivers.find((d) => d.position === 1)?.driver_number ?? null;
   const mapTiming = drivers.find((d) => d.driver_number === mapDriver);
   const { trace } = useLapTrace(props.sessionKey, mapDriver, mapTiming?.laps_completed ?? null);
-  const weather = state?.weather;
   const code = mapDriver == null ? "" : props.codes[mapDriver] ?? String(mapDriver);
   const aidOn = settings.rings && (hasDrs || hasOvertake);
-  const figure = (value: number | null | undefined, unit: string, digits = 0) =>
-    value == null ? "—" : `${value.toFixed(digits)}${unit}`;
 
   return (
     <div className="screen replay">
-      <header className="session-bar">
-        {props.picker}
-        <LapCounter lap={state?.leader_lap ?? 0} total={info.total_laps} />
-        {settings.clock === "race" && <span className="session-clock num">{formatClock(props.t - info.t_start)}</span>}
-        {/* Where it is, as well as what it is called: a Grand Prix is not always at the circuit its name suggests. */}
-        <span className="session-meta">{info.session.location} · {info.drivers.length} cars</span>
-        {props.status}
-        <dl className="weather">
-          <div><dt>Track</dt><dd className="num">{figure(weather?.track_temp, "°C")}</dd></div>
-          <div><dt>Air</dt><dd className="num">{figure(weather?.air_temp, "°C")}</dd></div>
-          <div><dt>Wind</dt><dd className="num">{figure(weather?.wind_speed, " m/s", 1)}</dd></div>
-          <div><dt>Rain</dt><dd className={`num${weather?.rainfall ? " wet" : ""}`}>{weather ? (weather.rainfall ? "Wet" : "Dry") : "—"}</dd></div>
-        </dl>
-      </header>
-
       <Workspace
         layout={props.layout}
         onChange={props.onLayout}

@@ -1,11 +1,10 @@
-import { formatClock, TRACK_STATUS } from "../api";
+import { formatClock } from "../api";
 import type { Clock } from "../clock";
 
 interface Props {
   clock: Clock;
   start: number;
   end: number;
-  trackStatus: { status: string; message: string } | null;
   loading: boolean;
   /** Every change of track status, for the coloured timeline. */
   statuses?: { t: number; status: string }[];
@@ -57,26 +56,20 @@ export function statusBands(statuses: { t: number; status: string }[], start: nu
 }
 
 /**
- * The spine: one scrubber driving every panel, plus the flag state. The
+ * The spine: one scrubber driving every panel (the flag state is in the session bar). The
  * scrubber sits on the race's own timeline: yellow, safety car, VSC and red
  * flag periods coloured in, and the leader's laps marked beneath, so an
  * incident is something to see and jump to rather than hunt for.
  */
-export function ClockBar({ clock, start, end, trackStatus, loading, statuses = [], crossings = null }: Props) {
+export function ClockBar({ clock, start, end, loading, statuses = [], crossings = null }: Props) {
   const bands = statusBands(statuses, start, end);
   const span = end - start;
   const laps = crossings && span > 0
     ? crossings.laps.map((lap, i) => ({ lap, at: (crossings.t[i]! - start) / span }))
         .filter((mark) => mark.at >= 0 && mark.at <= 1)
     : [];
-  const flag = trackStatus ? TRACK_STATUS[trackStatus.status] : undefined;
   return (
     <div className="clockbar">
-      <div className={`flag ${flagClass(trackStatus?.status)}`}>
-        <span className="flag-dot" aria-hidden="true" />
-        {flag?.label ?? trackStatus?.message ?? "—"}
-      </div>
-
       <div className="transport-group">
         <button className="transport" onClick={() => clock.nudge(-30)} aria-label="Back 30 seconds">
           −30s

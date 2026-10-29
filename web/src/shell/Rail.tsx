@@ -1,11 +1,9 @@
 import { memo, type ReactNode } from "react";
 import { RAIL_GROUPS, SCREENS, type ScreenId } from "../features";
-import { SyncButton } from "../panels/SyncButton";
 
 interface Props {
   screen: ScreenId;
   onScreen: (screen: ScreenId) => void;
-  onSynced: () => void;
 }
 
 /** Line icons for the rail, one per screen, drawn at 20 px. */
@@ -48,37 +46,34 @@ export function BrandMark({ size = 30 }: { size?: number }) {
 }
 
 /**
- * The navigation rail: every screen, grouped as a race engineer would (the
- * race as it runs, the plan, race control), with refreshing the data and the
- * settings at its foot. The screen on show is marked for assistive technology
- * as well as by eye.
+ * The navigation rail: a 68 px column of icons, each with a short label, in
+ * the groups a race engineer would use (the race as it runs, the plan, race
+ * control, the season), split by thin rules, with the settings at its foot.
+ * The full title is each button's accessible name and its tooltip; the screen
+ * on show is marked for assistive technology as well as by eye.
  */
-export const Rail = memo(function Rail({ screen, onScreen, onSynced }: Props) {
-  const item = (id: ScreenId, title: string) => (
-    <button key={id} type="button" className={`rail-item${screen === id ? " is-current" : ""}`}
-            aria-current={screen === id ? "page" : undefined} onClick={() => onScreen(id)}>
-      <ScreenIcon id={id} />
-      <span>{title}</span>
-    </button>
-  );
+export const Rail = memo(function Rail({ screen, onScreen }: Props) {
+  const item = (id: ScreenId) => {
+    const s = SCREENS.find((x) => x.id === id)!;
+    return (
+      <button key={id} type="button" className={`rail-item${screen === id ? " is-current" : ""}`}
+              aria-current={screen === id ? "page" : undefined} aria-label={s.title} title={s.title}
+              onClick={() => onScreen(id)}>
+        <ScreenIcon id={id} />
+        <span aria-hidden="true">{s.short}</span>
+      </button>
+    );
+  };
   return (
     <aside className="rail" aria-label="Racecraft navigation">
-      <button type="button" className="rail-brand" onClick={() => onScreen("replay")} aria-label="Racecraft: back to the replay">
-        <BrandMark />
-        <span className="display">RACECRAFT</span>
-      </button>
       <nav className="rail-nav" aria-label="Screens">
         {RAIL_GROUPS.map((group) => (
           <div key={group} className="rail-group" role="group" aria-label={group}>
-            <span className="rail-group-label">{group}</span>
-            {SCREENS.filter((s) => s.group === group).map((s) => item(s.id, s.title))}
+            {SCREENS.filter((s) => s.group === group).map((s) => item(s.id))}
           </div>
         ))}
       </nav>
-      <div className="rail-foot">
-        <SyncButton onSynced={onSynced} />
-        {item("settings", "Settings")}
-      </div>
+      <div className="rail-foot">{item("settings")}</div>
     </aside>
   );
 });

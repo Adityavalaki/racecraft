@@ -5,7 +5,6 @@ import { openFeature, screenById, type FeatureId, type ScreenId } from "./featur
 import { useLayout } from "./layout";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
-import { DataSources } from "./panels/DataSources";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
 import { ReplayScreen } from "./screens/ReplayScreen";
 import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
@@ -14,6 +13,8 @@ import { lapStartTime, useMessagesAt, useSession, useSessionList, useStateAt, ty
 import { useSettings } from "./settings";
 import { Rail } from "./shell/Rail";
 import { SessionPicker } from "./shell/ScreenHeader";
+import { SessionBar } from "./shell/SessionBar";
+import { StatusBar } from "./shell/StatusBar";
 import { useShortcuts } from "./shortcuts";
 import { useReplayBroadcast } from "./sync";
 
@@ -29,9 +30,9 @@ function loadScreen(): ScreenId {
 }
 
 /**
- * The main window: the navigation rail on the left, the screen it picks
- * beside it, and the playback bar along the foot of every screen that follows
- * the clock.
+ * The main window: the session bar across the top, the navigation rail on
+ * the left, the screen it picks beside it with the playback bar along its
+ * foot, and the status bar along the bottom.
  *
  * This window owns the clock. Every screen here reads it, and every screen
  * popped out into a window of its own follows it (see sync.ts): its controls
@@ -181,7 +182,6 @@ export default function App() {
     <>
       {liveFlag}
       {info && !info.has_position_data && <span className="session-warn">No position data in this session</span>}
-      {info && <DataSources sources={info.sources} />}
       {customised && screen === "replay" && (
         <button type="button" className="reset-layout" onClick={resetLayout}
                 title="Put the timing tower and the driver cards back to their default size">
@@ -199,20 +199,19 @@ export default function App() {
   const coarseT = state?.t ?? info?.t_start ?? 0;
   const screenContext = useMemo(() => (info && sessionKey ? {
     session: sessionKey, t: coarseT, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
-    insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker,
-    onPopOut: screen === "replay" || screen === "settings" ? undefined : () => popOut(screen), extra: liveFlag,
+    insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker: null,
+    onPopOut: undefined, extra: liveFlag,
   } : null), [sessionKey, coarseT, info, state, laps, crossings, selected, toggleDriver, seekToLap, insight, insightError,
-              actualStops, sessionBest, stewards, trackLog, driverCodes, picker, screen, popOut, liveFlag]);
+              actualStops, sessionBest, stewards, trackLog, driverCodes, liveFlag]);
 
   const body = () => {
     if (screen === "settings") {
-      return <SettingsScreen settings={settings} update={updateSettings} picker={picker} onSynced={reloadSessions} />;
+      return <SettingsScreen settings={settings} update={updateSettings} onSynced={reloadSessions} />;
     }
     if (!info || !sessionKey) {
       // The picker stays on screen while a session loads, or fails to: another can always be chosen.
       return (
         <div className="screen">
-          {sessions.length > 0 && <header className="session-bar">{picker}{status}</header>}
           <main className="grid loading">
             <Placeholder list={listState} empty={sessions.length === 0} waiting={waiting} error={error} />
           </main>
@@ -224,8 +223,7 @@ export default function App() {
         <ReplayScreen sessionKey={sessionKey} info={info} state={state} t={clock.t} cars={cars} selected={selected}
                       onSelect={toggleDriver} settings={settings} onToggleNames={toggleNames} onToggleRings={toggleRings}
                       stewards={stewards} trackLog={trackLog} codes={driverCodes} onOpenTower={openTower}
-                      layout={layout} onLayout={setLayout} picker={picker} status={status}
-                      playbackSpeed={clock.speed} />
+                      layout={layout} onLayout={setLayout} playbackSpeed={clock.speed} />
       );
     }
     return (
@@ -235,7 +233,12 @@ export default function App() {
 
   return (
     <div className={`app density-${settings.density}`}>
-      <Rail screen={screen} onScreen={setScreen} onSynced={reloadSessions} />
+      <SessionBar picker={sessions.length > 0 ? picker : null} info={info} state={state} t={coarseT}
+                  showClock={settings.clock === "race"} extra={status}
+                  onPopOut={screenById(screen)?.poppable ? () => popOut(screen as FeatureId) : undefined}
+                  popOutLabel={screenById(screen)?.title} />
+      <div className="app-body">
+      <Rail screen={screen} onScreen={setScreen} />
       <div className="shell-main">
         {body()}
         {info && screen !== "settings" && (
@@ -243,13 +246,14 @@ export default function App() {
             clock={handClock}
             start={info.t_start}
             end={info.t_end}
-            trackStatus={state?.track_status ?? null}
             loading={positions.loading}
             statuses={info.track_status}
             crossings={crossings}
           />
         )}
       </div>
+      </div>
+      <StatusBar sessions={sessions.length} info={info} onSynced={reloadSessions} />
     </div>
   );
 }

@@ -154,7 +154,7 @@ describe("the timeline", () => {
                     seek: vi.fn(), nudge: vi.fn(), setSpeed: vi.fn() };
     const crossings = { laps: Array.from({ length: 20 }, (_, i) => i + 1), t: Array.from({ length: 20 }, (_, i) => 1000 + (i + 1) * 45) };
     const { container } = render(
-      <ClockBar clock={clock} start={1000} end={2000} trackStatus={null}
+      <ClockBar clock={clock} start={1000} end={2000}
                 loading={false} statuses={statuses} crossings={crossings} />,
     );
     expect(Array.from(container.querySelectorAll(".band")).map((b) => b.className))
