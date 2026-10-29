@@ -358,3 +358,23 @@ race's grid and its lap-1 order.
 Trade-off: The slot averages include the driver's own starts and the current season; a lap-1 crash
 caused by someone else still shows as places lost for the drivers caught in it.
 Revisit if: a source gives reliable first-sector positions, or the screen needs past seasons.
+
+## D-022: Qualifying, time left on the table, from each driver's own best sectors
+Date: 2026-10-29   Model: Claude Opus 5.5 (claude-opus-5-5)
+Context: Aditya asked for "qualifying, time left on the table": how much quicker each driver's
+best lap could have been. The timing view already strings the session's three quickest sectors
+into an ideal lap, but nothing says how close each driver came to their own.
+Options:   1) Against the session's ideal lap (everyone's best sectors): mixes speed with
+execution, so the slowest car always looks worst.  2) Against the driver's own ideal lap: their
+best three sectors added together, minus their best lap.  3) Mini-sectors from telemetry: finer,
+but the free sources' position samples are too sparse to time 20-odd slices reliably.
+Chosen: 2, in `model/quali_laps.py`, worked out per request like Starts (D-021): the latest
+qualifying (or sprint qualifying) before the open session, or with it, each driver's best lap,
+own ideal lap, the gap split by sector, and their season average gap. Deleted laps (track
+limits) are left out for both the best lap and the sectors, as they do not count.
+Why: It measures execution only, every number can be checked by hand from the timing screen,
+and 2026's data is clean (median 0.04 s, largest 1.16 s, none below zero).
+Trade-off: The best sectors can come from different runs (Q1 and Q3), when the track and tyres
+differed, so the ideal is a little optimistic for drivers who ran longer. A driver out in Q1 has
+fewer laps to string sectors from, so looks tidier than one who reached Q3.
+Revisit if: a source gives reliable mini-sector times.

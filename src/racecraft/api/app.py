@@ -376,6 +376,24 @@ def session_starts(session_key: str,
     return body
 
 
+@app.get("/api/sessions/{session_key}/qualifying")
+def session_qualifying(session_key: str,
+                       moment: str = Query("before", pattern="^(before|after)$",
+                                           description="the last qualifying before this session started, or with it"),
+                       kind: str = Query("Q", pattern="^(Q|SQ)$", description="qualifying or sprint qualifying")) -> dict:
+    """Each driver's best lap against their own best sectors added up, in the last qualifying: time left on the table."""
+    if session_key == live_store.SESSION_KEY:
+        raise HTTPException(status_code=422, detail="open a session from the session list for qualifying")
+    _safe(session_key)
+    from racecraft.model import quali_laps
+
+    con = connect()
+    year, as_of = _as_of(con, session_key, moment)
+    body = quali_laps.latest(con, year, as_of, kind)
+    body["moment"] = moment
+    return body
+
+
 @app.get("/api/sessions/{session_key}/forecast")
 def session_forecast(session_key: str) -> dict:
     """

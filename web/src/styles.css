@@ -2285,9 +2285,10 @@ button.standings-row:hover { background: var(--panel-2); }
 .standings-row.is-thin { opacity: 0.6; }
 
 /* ---------------------------------------------------------------- starts */
+.standings-table.is-quali { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.4rem 6.4rem 6rem 13rem 7.4rem; }
 .standings-table.is-starts { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.6rem 6rem 12rem minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) 7.4rem 3.8rem; }
-.standings-table.is-starts .is-head span { white-space: nowrap; }
-.standings-table.is-starts .mid { text-align: center; }
+.standings-table.is-starts .is-head span, .standings-table.is-quali .is-head span { white-space: nowrap; }
+.standings-table.is-starts .mid, .standings-table.is-quali .mid { text-align: center; }
 .standings-row .is-quick { color: var(--green); }
 .standings-row .is-slow { color: var(--red); }
 .standings-basis .is-quick { color: var(--green); }

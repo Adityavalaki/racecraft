@@ -777,6 +777,33 @@ export interface Starts {
   notes: string[];
 }
 
+/** One driver in the last qualifying (see model/quali_laps.py): best lap against their own best sectors added up. */
+export interface QualiDriver {
+  abbreviation: string;
+  full_name: string | null;
+  team: string | null;
+  team_color: string | null;
+  position: number | null;
+  best_s: number | null;
+  ideal_s: number | null;
+  left_s: number | null;
+  sectors_left: number[] | null;    // add up to left_s
+  season_left_s: number | null;
+  season_sessions: number;
+}
+
+export type QualiKind = "Q" | "SQ";
+
+export interface QualiLaps {
+  year: number;
+  moment: StandingsMoment;
+  session_key: string | null;
+  event_name: string | null;
+  sessions: number;
+  drivers: QualiDriver[];
+  notes: string[];
+}
+
 export interface PitCrews {
   year: number;
   moment: StandingsMoment;
@@ -974,6 +1001,8 @@ export const api = {
     get<Teammates>(`/api/sessions/${key}/teammates?moment=${moment}`, signal),
   starts: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<Starts>(`/api/sessions/${key}/starts?moment=${moment}`, signal),
+  qualifying: (key: string, moment: StandingsMoment, kind: QualiKind, signal?: AbortSignal) =>
+    get<QualiLaps>(`/api/sessions/${key}/qualifying?moment=${moment}&kind=${kind}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
     get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),

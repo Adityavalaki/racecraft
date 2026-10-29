@@ -7,6 +7,7 @@ import { ScreenView, type ScreenContext } from "./ScreenView";
 import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
+import { leftText } from "./QualifyingScreen";
 import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
@@ -454,5 +455,38 @@ describe("Starts", () => {
     expect(startText({ event_name: "Chinese Grand Prix", grid: 14, lap1: 7, gain: 7 })).toBe("P14 → P7, Chinese");
     expect(startText({ event_name: "Miami Grand Prix sprint", grid: 3, lap1: 5, gain: -2 })).toBe("P3 → P5, Miami sprint");
     expect(startText(null)).toBe("—");
+  });
+});
+
+describe("Qualifying laps", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const driver = (abbreviation: string, position: number, left: number, split: number[]) => ({
+    abbreviation, full_name: null, team: "Mercedes", team_color: "00D7B6", position, best_s: 94.035,
+    ideal_s: 94.035 - left, left_s: left, sectors_left: split, season_left_s: 0.049, season_sessions: 18 });
+
+  it("shows each driver's best lap against their perfect lap, and asks for sprint qualifying", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      ({ ok: true, json: async () => ({ year: 2026, moment: "before", session_key: "2026_18_Q", event_name: "United States Grand Prix",
+                                         sessions: 18, notes: [], drivers: [driver("ANT", 1, 0.13, [0.018, 0.112, 0]), driver("HAD", 3, 0, [0, 0, 0])] }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ScreenView id="qualifying" ctx={context()} />);
+
+    const table = within(await screen.findByRole("table", { name: "Time left on the table" }));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/qualifying?moment=before&kind=Q");
+    expect(table.getByText("+0.130")).toBeDefined();
+    expect(table.getByText("perfect")).toBeDefined();
+    expect(table.getByText("0.112").tagName).toBe("B");                  // the sector that cost most
+    expect(table.getAllByText("1:34.035")).toHaveLength(3);          // ANT best, HAD best and perfect
+    expect(screen.getByText("United States Grand Prix, qualifying")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sprint qualifying" }));
+    await waitFor(() => expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/qualifying?moment=before&kind=SQ"));
+  });
+
+  it("words the time left", () => {
+    expect(leftText(0.1304)).toBe("+0.130");
+    expect(leftText(0.0002)).toBe("perfect");
+    expect(leftText(null)).toBe("—");
   });
 });

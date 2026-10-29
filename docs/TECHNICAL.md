@@ -1453,6 +1453,26 @@ RUS once) each completed 0 laps and retired. About 0.4 s a season.
 Not separated: a driver caught in someone else's lap-1 crash still loses places.
 
 
+## Qualifying laps
+
+`model/quali_laps.py`, the Qualifying laps screen in Season (D-022). For the
+last qualifying (or sprint qualifying) before the open session, or with it:
+
+- **Perfect lap:** the driver's own three best sectors of the session added
+  together. Against their own sectors, not the session's, so it measures the
+  lap, not the car.
+- **Time left:** best lap minus perfect lap, split by sector (the best lap's
+  sector minus the driver's best in it; the three add up to the total).
+- **Deleted laps** (track limits) count for neither the best lap nor the sectors.
+- **Season average:** the mean time left over that year's sessions of the kind,
+  up to the one shown.
+
+Checked on the 2026 lake: median 0.04 s, largest 1.16 s, none below zero; deleted
+laps changed a sector best for 15 of 393 driver-sessions. About 1 s a request.
+
+Not separated: sectors from different runs (Q1 against Q3) on a track getting
+quicker, so the perfect lap is a little optimistic for drivers who ran on.
+
 ## Tyre sets
 
 Nothing in the feed numbers a set of tyres. Every lap does carry its compound,

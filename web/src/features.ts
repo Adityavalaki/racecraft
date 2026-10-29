@@ -11,7 +11,7 @@
 
 export type ScreenId =
   | "replay" | "tower" | "trace" | "pedals" | "strategy" | "tyres" | "prediction" | "stewards" | "standings" | "crews"
-  | "teammates" | "starts" | "settings";
+  | "teammates" | "starts" | "qualifying" | "settings";
 
 /** The screens that can have a window of their own. */
 export type FeatureId = Exclude<ScreenId, "replay" | "settings">;
@@ -41,6 +41,7 @@ export const SCREENS: readonly Screen[] = [
   { id: "crews", title: "Pit crews", hint: "Which teams turn a car round fastest, from every green-flag stop.", group: "Season", poppable: true },
   { id: "teammates", title: "Teammates", hint: "Each team's two drivers head to head, in the same car.", group: "Season", poppable: true },
   { id: "starts", title: "Starts", hint: "Places each driver gains or loses on lap 1.", group: "Season", poppable: true },
+  { id: "qualifying", title: "Qualifying laps", hint: "How close each driver got to their own perfect lap.", group: "Season", poppable: true },
   { id: "settings", title: "Settings", hint: "How Racecraft looks, and where its data comes from.", group: null, poppable: false },
 ];
 
