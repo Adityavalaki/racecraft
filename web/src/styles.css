@@ -2372,3 +2372,69 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .settings-about { margin: 0; padding: 10px 12px; font-size: 12px; line-height: 1.55; color: var(--ink-soft); }
 /* A setting whose right-hand side is a long line (the sources) stacks under its title instead of squeezing it. */
 .setting-row:has(.settings-credits) { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+/* ---- the replay's tower, as the board draws it: three views, a sticky head, a legend foot */
+.leaderboard .panel-bar .lb-open { margin-left: auto; }
+.leaderboard-head, .leaderboard-row { grid-template-columns: 20px 3px 36px minmax(0, 1fr) 56px 38px 22px; }
+.leaderboard-head.is-sectors, .leaderboard-row.is-sectors { grid-template-columns: 20px 3px 36px repeat(3, minmax(0, 1fr)); }
+.leaderboard-head.is-tyres, .leaderboard-row.is-tyres { grid-template-columns: 20px 3px 36px minmax(0, 1fr) 48px 40px; }
+.leaderboard-head { position: sticky; top: 0; z-index: 2; }
+.leaderboard-head > :nth-child(n+4) { text-align: right; }
+.leaderboard-row > .num { text-align: right; }
+.leaderboard-row .tyre { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.leaderboard-row .tyre-age { font-size: 10px; color: var(--ink-faint); min-width: 12px; text-align: left; }
+.leaderboard-row .sector { font-size: 11px; color: var(--ink-mid); }
+.leaderboard-row .sector.is-purple { color: #C084FC; }
+.leaderboard-row .sector.is-pb { color: #4ADE80; }
+.leaderboard-row .sector.is-slower { color: #FBBF24; }
+.leaderboard-row .pen { font-size: 10px; text-align: center; }
+.leaderboard-foot { display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 3px 10px; background: #0C0E11;
+  font-size: 10px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; }
+.lb-key { display: inline-flex; align-items: center; gap: 5px; }
+.lb-key i.is-following { width: 8px; height: 8px; border-radius: 2px; background: #14223A; border: 1px solid #2D5A96; }
+.lb-key i.is-investigation { width: 6px; height: 6px; border-radius: 50%; background: #FBBF24; }
+.lb-key b { color: #38BDF8; font-weight: 600; }
+/* The dashboard's readouts: three columns, each a small-caps label over a bold figure (the board's .dinfo). */
+.card-gaps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 8px; border-top: 1px solid var(--rule-soft); }
+.card-gaps > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.card-gaps b { font: 600 11.5px var(--font-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-gaps b.aid { text-align: left; grid-column: auto; }
+.card-gaps b.aid.is-eligible, .card-gaps b.aid.is-open { color: #38BDF8; }
+
+/* ---- race control, as the board draws it */
+.rc-open { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; margin-left: auto; border-radius: 3px;
+  background: #2E2108; color: #FBBF24; box-shadow: inset 0 0 0 1px #5C4310; font-size: 10.5px; font-weight: 600; }
+.rc-filters { display: flex; align-items: center; min-height: 34px; padding: 4px 6px 4px 8px; border-bottom: 1px solid var(--rule); background: #0C0E11; }
+.tab-count { margin-left: 5px; font-size: 10px; color: var(--ink-faint); }
+.race-control .rc-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; padding: 7px 8px 7px 10px; border-bottom: 1px solid var(--rule-soft); }
+.race-control .rc-row:hover { background: #13161A; }
+.rc-when { display: flex; flex-direction: column; gap: 1px; padding-top: 1px; }
+.rc-when b { font-size: 11.5px; font-weight: 700; color: var(--ink-mid); }
+.rc-when small { font-size: 9.5px; color: var(--ink-faint); }
+.rc-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rc-cat { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: 10.5px; font-weight: 600; color: var(--ink-mid); letter-spacing: 0.02em; }
+.rc-cat i { width: 7px; height: 7px; border-radius: 1px; flex: none; }
+.rc-chip { height: 16px; padding: 0 5px; border-radius: 3px; background: #2E2108; color: #FBBF24; font-size: 9.5px; line-height: 16px; }
+.race-control .rc-text { font-size: 11.5px; line-height: 1.45; color: #D6DAE0; overflow-wrap: anywhere; }
+
+/* ---- the replay's map, as the board draws it: a faint grid, a legend foot */
+.pw-map .map-toggles { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.pw-map .map-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex;
+  background-color: #090B0E;
+  background-image: radial-gradient(ellipse 60% 70% at 50% 50%, rgba(56, 189, 248, 0.045), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+  background-size: 100% 100%, 80px 80px, 80px 80px, 20px 20px, 20px 20px; background-position: center; }
+.pw-map .map-body .track-map { flex: 1; min-height: 0; width: 100%; }
+.pw-map .map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-height: 32px; padding: 4px 10px;
+  border-top: 1px solid var(--rule); background: #0C0E11; font-size: 10.5px; color: var(--ink-soft); }
+.pw-map .map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.pw-map .map-legend > span > i { width: 14px; height: 3px; border-radius: 2px; }
+.legend-scale { display: inline-flex; align-items: center; gap: 2px; }
+.legend-scale > i { width: 18px; height: 4px; }
+.legend-scale .num { font-size: 10px; color: var(--ink-faint); margin: 0 4px; }
+.gear-key { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; font: 600 10px var(--font-mono); color: var(--ink-faint); }
+.gear-key i { width: 10px; height: 4px; border-radius: 1px; }
+.replay-chip { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; border-radius: 3px; background: #15181D;
+  color: var(--ink-mid); box-shadow: inset 0 0 0 1px var(--rule-strong); font: 600 10.5px var(--font-text); letter-spacing: 0.04em; white-space: nowrap; }
+.replay-chip .live-pip { color: var(--signal); }

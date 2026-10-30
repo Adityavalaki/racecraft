@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DriverTiming } from "../api";
 import { ClockBar, statusBands } from "./ClockBar";
@@ -59,10 +59,10 @@ describe("DriverCards", () => {
     expect(card.getByText("P3")).toBeDefined();
     expect(container.querySelector(".card-speed")?.textContent).toBe("287 km/h");   // whole km/h
     expect(container.querySelector(".card-gear b")?.textContent).toBe("7");
-    expect(card.getByText("DRS open")).toBeDefined();                                // DRS 12
+    expect(card.getByText("Open")).toBeDefined();                                    // DRS 12, under a DRS label
     // Ahead is NOR, by LEC's own interval; behind is HAM, by HAM's interval.
-    expect(card.getByText("Ahead NOR +3.500")).toBeDefined();
-    expect(card.getByText("Behind HAM +4.500")).toBeDefined();
+    expect(card.getByText("NOR +3.500")).toBeDefined();
+    expect(card.getByText("HAM +4.500")).toBeDefined();
   });
 
   it("shows speed in the chosen units", () => {
@@ -88,7 +88,7 @@ describe("DriverCards", () => {
     expect(drsLabel(12, false).text).toBe("—");             // no DRS this session
   });
 
-  it("draws the last half-minute of speed, throttle and brake under each card", async () => {
+  it("reads the car's telemetry at the clock's time", async () => {
     const trace = { driver_number: 16, seconds: 30, t: [-30, -20, -10, 0], speed: [300, 120, 200, 310],
                     throttle: [100, 0, 60, 100], brake: [false, true, false, false], gear: [8, 3, 5, 8] };
     const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => trace }) as Response);
@@ -96,12 +96,10 @@ describe("DriverCards", () => {
     try {
       const { container } = render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()}
                                                 sessionKey="2025_17_R" t={4000} />);
-      expect(await screen.findByRole("img", { name: /last 30 seconds of speed, throttle and brake for LEC/i })).toBeDefined();
       // Fetched in one go: the half-minute behind the clock and fifteen seconds ahead of it.
-      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4015.00&seconds=47");
-      // One brake block, for the one second-sample on the brake.
-      const paths = Array.from(container.querySelectorAll(".pedal-trace path")).map((path) => path.getAttribute("d") ?? "");
-      expect(paths.some((d) => (d.match(/M/g) ?? []).length === 1 && d.endsWith("Z") && d.includes("V98"))).toBe(true);
+      await waitFor(() => expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4015.00&seconds=47"));
+      // Read at the clock's own time: answered from 4015, so 4000 is halfway from 120 at 3995 to 200 at 4005.
+      await waitFor(() => expect(container.querySelector(".card-speed")?.textContent).toBe("160 km/h"));
     } finally {
       vi.unstubAllGlobals();
     }
@@ -118,9 +116,8 @@ describe("the card's telemetry, as the clock runs", () => {
     try {
       const props = { selected: [16], drivers: field, cars: {}, hasDrs: true, onUnpick: vi.fn(), sessionKey: "2025_17_R" };
       const { container, rerender } = render(<DriverCards {...props} t={4000} />);
-      await screen.findByRole("img", { name: /speed, throttle and brake for LEC/i });
       const speedAt = () => container.querySelector(".card-speed")?.textContent;
-      expect(speedAt()).toBe("150 km/h");                    // halfway from 100 at 3995 to 200 at 4005
+      await waitFor(() => expect(speedAt()).toBe("150 km/h"));   // halfway from 100 at 3995 to 200 at 4005
       rerender(<DriverCards {...props} t={4002} />);
       expect(speedAt()).toBe("170 km/h");
       expect(fetchMock).toHaveBeenCalledTimes(1);             // still inside what was fetched
@@ -173,7 +170,7 @@ describe("overtake mode (2026)", () => {
     const field2026 = [driver(1, "VER", 1, { overtake: "not_eligible" }), driver(16, "LEC", 2, { overtake: "eligible" })];
     render(<DriverCards selected={[16]} drivers={field2026} cars={cars} hasDrs={false} hasOvertake onUnpick={vi.fn()} />);
     const card = within(screen.getByRole("article", { name: /LEC telemetry/ }));
-    expect(card.getByText("Overtake eligible").className).toContain("is-eligible");
+    expect(card.getByText("Eligible").className).toContain("is-eligible");
     expect(card.queryByText(/DRS/)).toBeNull();
   });
 
@@ -186,7 +183,7 @@ describe("overtake mode (2026)", () => {
 
   it("keeps DRS for a session that has it", () => {
     render(<DriverCards selected={[16]} drivers={field} cars={cars} hasDrs onUnpick={vi.fn()} />);
-    expect(within(screen.getByRole("article", { name: /LEC telemetry/ })).getByText("DRS off")).toBeDefined();   // code 0
+    expect(within(screen.getByRole("article", { name: /LEC telemetry/ })).getByText("Off")).toBeDefined();   // code 0
   });
 });
 

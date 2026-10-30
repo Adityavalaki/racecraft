@@ -18,6 +18,8 @@ interface Props {
    * flat out, red where the brake was on. The pedal map.
    */
   pedalLap?: LapTrace | null;
+  /** What colours the lap: the pedals (flat out, partial, braking), the speed, or the gear. */
+  colourBy?: ColourBy;
   /** Where to draw the safety car while it is out; simulated by the server. */
   safetyCar?: { x: number; y: number } | null;
 }
@@ -47,9 +49,35 @@ const NONE: number[] = [];
 /** Throttle at or above this is flat out, for the pedal map. */
 export const FLAT_OUT = 97;
 
+export type ColourBy = "throttle" | "speed" | "gear";
+/** Slow to fast, in six steps across the lap's own range of speed. */
+export const SPEED_COLOURS = ["#3B82F6", "#06B6D4", "#22C55E", "#EAB308", "#F97316", "#EF4444"];
+/** First gear to eighth. */
+export const GEAR_COLOURS = ["#6366F1", "#3B82F6", "#06B6D4", "#14B8A6", "#22C55E", "#84CC16", "#EAB308", "#F97316"];
+
+/** Which colour band each point of the lap falls in, for the chosen colouring. */
+export function bands(lap: LapTrace, by: ColourBy): { colour: string; on: (i: number) => boolean }[] {
+  if (by === "throttle") {
+    const braking = (i: number) => Boolean(lap.brake[i]);
+    const flat = (i: number) => !braking(i) && (lap.throttle[i] ?? 0) >= FLAT_OUT;
+    return [
+      { colour: "#22C55E", on: flat },
+      { colour: "#F5C518", on: (i) => !braking(i) && !flat(i) },
+      { colour: "#EF4444", on: braking },
+    ];
+  }
+  if (by === "speed") {
+    const low = Math.min(...lap.speed);
+    const span = Math.max(1, Math.max(...lap.speed) - low);
+    const step = (i: number) => Math.min(SPEED_COLOURS.length - 1, Math.floor(((lap.speed[i]! - low) / span) * SPEED_COLOURS.length));
+    return SPEED_COLOURS.map((colour, b) => ({ colour, on: (i: number) => step(i) === b }));
+  }
+  return GEAR_COLOURS.map((colour, g) => ({ colour, on: (i: number) => Math.round(lap.gear[i] ?? 0) === g + 1 }));
+}
+
 export const TrackMap = memo(function TrackMap({
   info, cars, drivers, selected, showNames = false, showDrs = true, safetyCar = null, overtakeEligible = NONE,
-  pedalLap = null,
+  pedalLap = null, colourBy = "throttle",
 }: Props) {
   const { ref, size } = useCanvasSize<HTMLCanvasElement>();
   const byNumber = useMemo(() => new Map(drivers.map((d) => [d.driver_number, d])), [drivers]);
@@ -94,31 +122,35 @@ export const TrackMap = memo(function TrackMap({
     return { project, path, drs, hasDrs: (info.drs_zones ?? []).length > 0 };
   }, [info, size.width, size.height]);
 
-  // The pedal map: runs of flat-out throttle and of braking along the lap, as paths.
+  // The coloured lap: for each colour, its runs along the lap as one path. A run
+  // starts from the point before it, so the bands meet without a gap.
   const pedals = useMemo(() => {
     if (!projection || !pedalLap) return null;
-    const runs = (on: (i: number) => boolean) => {
+    const point = (i: number) => {
+      const x = pedalLap.x[i];
+      const y = pedalLap.y[i];
+      return x == null || y == null ? null : projection.project(x, y);
+    };
+    return bands(pedalLap, colourBy).map(({ colour, on }) => {
       const path = new Path2D();
       let open = false;
       for (let i = 0; i < pedalLap.distance.length; i += 1) {
-        const x = pedalLap.x[i];
-        const y = pedalLap.y[i];
-        if (!on(i) || x == null || y == null) {
+        const here = point(i);
+        if (!on(i) || !here) {
           open = false;
           continue;
         }
-        const [px, py] = projection.project(x, y);
-        if (open) path.lineTo(px, py);
-        else path.moveTo(px, py);
+        if (!open) {
+          const before = i > 0 ? point(i - 1) : null;
+          if (before) path.moveTo(before[0], before[1]);
+          else path.moveTo(here[0], here[1]);
+        }
+        path.lineTo(here[0], here[1]);
         open = true;
       }
-      return path;
-    };
-    return {
-      throttle: runs((i) => (pedalLap.throttle[i] ?? 0) >= FLAT_OUT),
-      brake: runs((i) => Boolean(pedalLap.brake[i])),
-    };
-  }, [projection, pedalLap]);
+      return { colour, path };
+    });
+  }, [projection, pedalLap, colourBy]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -141,19 +173,26 @@ export const TrackMap = memo(function TrackMap({
 
     context.lineJoin = "round";
     context.lineCap = "round";
-    context.strokeStyle = "#1E1E24";
-    context.lineWidth = 18;
+    // The circuit as the board draws it: a soft shadow, the kerb edge, the surface.
+    context.strokeStyle = "rgba(0, 0, 0, 0.55)";
+    context.lineWidth = 22;
     context.stroke(projection.path);
-    context.strokeStyle = "#62626E";
-    context.lineWidth = 2;
+    context.strokeStyle = "#2C333D";
+    context.lineWidth = 14;
+    context.stroke(projection.path);
+    context.strokeStyle = "#14181E";
+    context.lineWidth = 10;
     context.stroke(projection.path);
     if (pedals) {
-      context.strokeStyle = "#1FD17B";
-      context.lineWidth = 5;
-      context.stroke(pedals.throttle);
-      context.strokeStyle = "#FF3B30";
-      context.lineWidth = 8;
-      context.stroke(pedals.brake);
+      context.lineWidth = 3.5;
+      for (const band of pedals) {
+        context.strokeStyle = band.colour;
+        context.stroke(band.path);
+      }
+    } else {
+      context.strokeStyle = "#5B626C";
+      context.lineWidth = 1.5;
+      context.stroke(projection.path);
     }
     if (showDrs && projection.hasDrs) {
       context.strokeStyle = "rgba(0, 194, 255, 0.85)";

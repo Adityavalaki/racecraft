@@ -134,6 +134,7 @@ export function ClockBar({ clock, start, end, loading, statuses = [], crossings 
       <div className="readout">
         <span className="time num">{formatClock(clock.t - start)}</span>
         <span className={`dot${loading ? " is-loading" : ""}`} title={loading ? "buffering" : "buffered"} />
+        <span className="replay-chip"><span className="live-pip" aria-hidden="true" />REPLAY {clock.speed}×</span>
       </div>
     </div>
   );

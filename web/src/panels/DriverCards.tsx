@@ -2,7 +2,6 @@ import { memo } from "react";
 import { COMPOUND_COLORS, type CarState, type DriverTiming } from "../api";
 import { speedIn, type Settings } from "../settings";
 import { useTelemetry } from "../telemetryData";
-import { PedalTrace } from "./PedalTrace";
 
 /** How many drivers can be followed at once: a dashboard each. */
 export const MAX_FOLLOWED = 2;
@@ -20,7 +19,7 @@ interface Props {
   /** True when the session has overtake mode instead (2026 on). */
   hasOvertake?: boolean;
   onUnpick: (driverNumber: number) => void;
-  /** For the half-minute of telemetry at the foot of each dashboard. */
+  /** For the car's own telemetry, read at each frame of the clock. */
   sessionKey?: string | null;
   t?: number;
   units?: Settings["units"];
@@ -56,8 +55,8 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
 /**
  * A dashboard for each followed driver, read like a steering wheel: speed,
  * gear, revs, throttle and brake now; where they stand (position, tyre, the
- * cars either side, DRS or overtake mode); and the last half-minute of speed,
- * throttle and brake beneath. Gaps are the timing's, exact at each crossing of
+ * cars either side, DRS or overtake mode). The lap's traces are in the
+ * telemetry strip beside the dashboards. Gaps are the timing's, exact at each crossing of
  * the line; the telemetry is the car's own, at the clock's time. No shift
  * lights: the feed gives revs but not where each car changes gear.
  */
@@ -110,7 +109,7 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   playbackSpeed: number;
   name?: string;
 }) {
-  const { trace, now } = useTelemetry(sessionKey, number, t, playbackSpeed);
+  const { now } = useTelemetry(sessionKey, number, t, playbackSpeed);
   // Speed, gear and pedals from the buffered telemetry, read at this very
   // frame; the state's own figures, a few times a second, until it arrives.
   const speed = speedIn(now?.speed ?? car.speed, units);
@@ -165,14 +164,16 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
           <span className={`num meter-value${braking ? " is-on" : ""}`}>{braking ? "ON" : "OFF"}</span>
         </div>
         <div className="card-gaps">
-          <span className="num">{ahead ? `Ahead ${ahead.abbreviation ?? ahead.driver_number}` : "Ahead"} {driver?.interval_text || "—"}</span>
-          <span className="num">{behind ? `Behind ${behind.abbreviation ?? behind.driver_number}` : "Behind"} {behind?.interval_text || "—"}</span>
-          <span className={`aid is-${aid.state}`}
-                title={!hasDrs && hasOvertake ? "Estimated from the timing gap: the feed does not say when it was used" : undefined}>
-            {aid.text}
-          </span>
+          <div><span className="cap">Ahead</span>
+            <b className="num">{ahead ? `${ahead.abbreviation ?? ahead.driver_number} ${driver?.interval_text || "—"}` : "—"}</b></div>
+          <div><span className="cap">Behind</span>
+            <b className="num">{behind ? `${behind.abbreviation ?? behind.driver_number} ${behind.interval_text || "—"}` : "—"}</b></div>
+          <div><span className="cap">{!hasDrs && hasOvertake ? "Overtake" : "DRS"}</span>
+            <b className={`aid is-${aid.state}`}
+               title={!hasDrs && hasOvertake ? "Estimated from the timing gap: the feed does not say when it was used" : undefined}>
+              {aid.text.replace(/^(Overtake|DRS) /, "").replace(/^./, (c) => c.toUpperCase())}
+            </b></div>
         </div>
-        <PedalTrace trace={trace} code={code} />
       </div>
     </article>
   );

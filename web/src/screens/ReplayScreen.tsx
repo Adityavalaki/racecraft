@@ -1,11 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { type RaceControlEvent, type SessionInfo, type SessionState } from "../api";
 import { DriverCards } from "../panels/DriverCards";
 import { Leaderboard } from "../panels/Leaderboard";
 import { RaceControl } from "../panels/RaceControl";
 import { TeamRadio } from "../panels/TeamRadio";
 import { TelemetryStrip } from "../panels/TelemetryStrip";
-import { TrackMap } from "../panels/TrackMap";
+import { GEAR_COLOURS, SPEED_COLOURS, TrackMap, type ColourBy } from "../panels/TrackMap";
 import type { Settings } from "../settings";
 import { useLapTrace } from "../telemetryData";
 
@@ -48,6 +48,7 @@ export function ReplayScreen(props: Props) {
   const { trace } = useLapTrace(props.sessionKey, mapDriver, mapTiming?.laps_completed ?? null);
   const code = mapDriver == null ? "" : props.codes[mapDriver] ?? String(mapDriver);
   const aidOn = settings.rings && (hasDrs || hasOvertake);
+  const [colourBy, setColourBy] = useState<ColourBy>("throttle");
   const names = useMemo(() => Object.fromEntries(info.drivers.map((d) => [d.driver_number, d.full_name ?? ""])), [info.drivers]);
 
   return (
@@ -57,14 +58,19 @@ export function ReplayScreen(props: Props) {
           <Leaderboard drivers={drivers} selected={selected} onSelect={props.onSelect}
                        onOpenTower={props.onOpenTower} lap={state?.leader_lap} />
         </section>
-          <section className="panel panel-map pw-map" aria-label="Pedal map">
+          <section className="panel panel-map pw-map" aria-label="Track map">
             <div className="panel-bar">
-              <h2>Pedal map</h2>
+              <h2>Track map</h2>
               <span className="panel-meta">
-                {trace ? `${code}, lap ${trace.lap}: where the throttle was flat and where the brake was on`
-                  : info.has_position_data ? "Positions only: no full lap for this car yet" : ""}
+                {info.session.location}{trace ? ` · trace ${code} L${trace.lap}` : info.has_position_data ? " · no full lap for this car yet" : ""}
               </span>
               <span className="map-toggles">
+                <span className="segmented" role="radiogroup" aria-label="Colour the track by">
+                  {([["throttle", "Throttle"], ["speed", "Speed"], ["gear", "Gear"]] as [ColourBy, string][]).map(([key, text]) => (
+                    <button key={key} type="button" role="radio" aria-checked={colourBy === key} className={colourBy === key ? "is-on" : ""}
+                            onClick={() => setColourBy(key)}>{text}</button>
+                  ))}
+                </span>
                 <button type="button" className={`toggle${settings.names ? " is-on" : ""}`} aria-pressed={settings.names}
                         onClick={props.onToggleNames}>
                   Names <kbd>L</kbd>
@@ -77,12 +83,31 @@ export function ReplayScreen(props: Props) {
                 </button>
               </span>
             </div>
-            <TrackMap info={info} cars={props.cars} drivers={info.drivers} selected={selected}
-                      showNames={settings.names} showDrs={settings.rings} safetyCar={state?.safety_car ?? null}
-                      overtakeEligible={hasOvertake ? eligible : undefined} pedalLap={trace} />
+            <div className="map-body">
+              <TrackMap info={info} cars={props.cars} drivers={info.drivers} selected={selected}
+                        showNames={settings.names} showDrs={settings.rings} safetyCar={state?.safety_car ?? null}
+                        overtakeEligible={hasOvertake ? eligible : undefined} pedalLap={trace} colourBy={colourBy} />
+            </div>
             <div className="map-legend">
-              {trace && <span><i className="is-throttle" />Full throttle</span>}
-              {trace && <span><i className="is-brake" />Braking</span>}
+              {trace && colourBy === "throttle" && (
+                <>
+                  <span><i style={{ background: "#22C55E" }} />Full throttle</span>
+                  <span><i style={{ background: "#F5C518" }} />Partial</span>
+                  <span><i style={{ background: "#EF4444" }} />Braking</span>
+                </>
+              )}
+              {trace && colourBy === "speed" && (
+                <span className="legend-scale">
+                  <span className="num">{Math.round(Math.min(...trace.speed))}</span>
+                  {SPEED_COLOURS.map((c) => <i key={c} style={{ background: c }} />)}
+                  <span className="num">{Math.round(Math.max(...trace.speed))} km/h</span>
+                </span>
+              )}
+              {trace && colourBy === "gear" && (
+                <span className="legend-scale">
+                  {GEAR_COLOURS.map((c, g) => <span key={c} className="gear-key"><i style={{ background: c }} />{g + 1}</span>)}
+                </span>
+              )}
               {hasOvertake && aidOn && <span><i className="is-ring" />Overtake eligible, estimated from the timing gap</span>}
               {hasDrs && aidOn && <span><i className="is-drs" />DRS zones</span>}
             </div>
