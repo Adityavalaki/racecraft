@@ -170,7 +170,7 @@ describe("overtake mode (2026)", () => {
     const field2026 = [driver(1, "VER", 1, { overtake: "not_eligible" }), driver(16, "LEC", 2, { overtake: "eligible" })];
     render(<DriverCards selected={[16]} drivers={field2026} cars={cars} hasDrs={false} hasOvertake onUnpick={vi.fn()} />);
     const card = within(screen.getByRole("article", { name: /LEC telemetry/ }));
-    expect(card.getByText("Eligible").className).toContain("is-eligible");
+    expect(card.getByText("Yes").className).toContain("is-eligible");
     expect(card.queryByText(/DRS/)).toBeNull();
   });
 

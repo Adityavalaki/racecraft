@@ -30,4 +30,4 @@ def test_the_replay_is_a_grid():
     # The replay's pit wall (D-024): the rule a stray brace would drop, as one once dropped `.workspace`.
     rule = re.search(r"\n\.pitwall \{([^}]*)\}", CSS)
     assert rule and "display: grid;" in rule.group(1)
-    assert '"tower map dashA" "rc tel dashB"' in rule.group(1)
+    assert '"tower map" "tower drv" "rc tel"' in rule.group(1)

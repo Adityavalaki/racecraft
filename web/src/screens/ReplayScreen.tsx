@@ -3,7 +3,6 @@ import { type RaceControlEvent, type SessionInfo, type SessionState } from "../a
 import { DriverCards } from "../panels/DriverCards";
 import { Leaderboard } from "../panels/Leaderboard";
 import { RaceControl } from "../panels/RaceControl";
-import { TeamRadio } from "../panels/TeamRadio";
 import { TelemetryStrip } from "../panels/TelemetryStrip";
 import { GEAR_COLOURS, SPEED_COLOURS, TrackMap, type ColourBy } from "../panels/TrackMap";
 import type { Settings } from "../settings";
@@ -29,10 +28,10 @@ interface Props {
 }
 
 /**
- * The replay, laid out as a pit wall: the timing tower, the pedal map and the
- * first followed driver's dashboard across the top; race control and team
- * radio, the followed drivers' telemetry by lap distance and the second
- * dashboard below. The lap, the clock and the weather are in the session bar.
+ * The replay, laid out as a pit wall: the timing tower down the left beside
+ * the track map, the two followed drivers' dashboards side by side under the
+ * map; race control and the followed drivers' telemetry by lap distance
+ * below. The lap, the clock and the weather are in the session bar.
  *
  * The pedal map colours the circuit by one car's last full lap: the first
  * followed driver, or the leader while nobody is followed.
@@ -112,16 +111,17 @@ export function ReplayScreen(props: Props) {
               {hasDrs && aidOn && <span><i className="is-drs" />DRS zones</span>}
             </div>
           </section>
-        {([0, 1] as const).map((slot) => (
-          <div key={slot} className={`pw-dash pw-dash-${slot === 0 ? "a" : "b"}`} aria-label={`Followed driver ${slot === 0 ? "A" : "B"}`}>
-            <DriverCards slot={slot} selected={selected} drivers={drivers} cars={state?.cars ?? {}} hasDrs={hasDrs}
-                         hasOvertake={hasOvertake} onUnpick={props.onSelect} sessionKey={props.sessionKey} t={props.t}
-                         units={settings.units} playbackSpeed={props.playbackSpeed ?? 1} names={names} />
-          </div>
-        ))}
+        <div className="pw-drv">
+          {([0, 1] as const).map((slot) => (
+            <div key={slot} className={`pw-dash pw-dash-${slot === 0 ? "a" : "b"}`} aria-label={`Followed driver ${slot === 0 ? "A" : "B"}`}>
+              <DriverCards slot={slot} selected={selected} drivers={drivers} cars={state?.cars ?? {}} hasDrs={hasDrs}
+                           hasOvertake={hasOvertake} onUnpick={props.onSelect} sessionKey={props.sessionKey} t={props.t}
+                           units={settings.units} playbackSpeed={props.playbackSpeed ?? 1} names={names} />
+            </div>
+          ))}
+        </div>
         <div className="pw-rc">
           <RaceControl stewards={props.stewards} trackLog={props.trackLog} start={info.t_start} codes={props.codes} />
-          <TeamRadio clips={info.radio} t={props.t} start={info.t_start} codes={props.codes} />
         </div>
         <div className="pw-tel">
           <TelemetryStrip sessionKey={props.sessionKey} followed={selected.slice(-2)} drivers={drivers} cars={props.cars} />

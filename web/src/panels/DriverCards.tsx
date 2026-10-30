@@ -171,7 +171,10 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
           <div><span className="cap">{!hasDrs && hasOvertake ? "Overtake" : "DRS"}</span>
             <b className={`aid is-${aid.state}`}
                title={!hasDrs && hasOvertake ? "Estimated from the timing gap: the feed does not say when it was used" : undefined}>
-              {aid.text.replace(/^(Overtake|DRS) /, "").replace(/^./, (c) => c.toUpperCase())}
+              {/* Overtake reads Yes / No / Off under its label, as the board has it; DRS keeps Open / Eligible / Off. */}
+              {!hasDrs && hasOvertake
+                ? ({ eligible: "Yes", off: "Off" } as Record<string, string>)[aid.state] ?? (driver?.overtake === "not_eligible" ? "No" : "—")
+                : aid.text.replace(/^DRS /, "").replace(/^./, (c) => c.toUpperCase())}
             </b></div>
         </div>
       </div>

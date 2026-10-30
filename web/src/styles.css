@@ -153,9 +153,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   min-height: 0;
 }
 /*
-  The replay is a pit wall: a fixed grid, the tower, the map and driver A
-  across the top, race control, telemetry and driver B below, every panel
-  scrolling inside itself. Narrower windows stack it, as the design shows.
+  The replay is a pit wall, as the board draws it: the tower down the left
+  beside the map, the two dashboards in a row under the map (as tall as they
+  need), race control and telemetry below, every panel scrolling inside
+  itself. Narrower windows stack it.
 */
 .pitwall {
   flex: 1 1 auto;
@@ -163,33 +164,30 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: grid;
   gap: 6px;
   padding: 6px;
-  grid-template-columns: 300px minmax(0, 1fr) 296px;
-  grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr);
-  grid-template-areas: "tower map dashA" "rc tel dashB";
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "tower map" "tower drv" "rc tel";
 }
 .pw-tower { grid-area: tower; display: flex; flex-direction: column; min-height: 0; }
 .pw-map { grid-area: map; }
-.pw-dash-a { grid-area: dashA; }
-.pw-dash-b { grid-area: dashB; }
-.pw-dash { display: flex; min-width: 0; min-height: 0; }
+.pw-drv { grid-area: drv; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pw-dash { flex: 1 1 360px; display: flex; min-width: 0; }
 .pw-dash > .panel { flex: 1; }
-.pw-rc { grid-area: rc; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.pw-rc { grid-area: rc; display: flex; flex-direction: column; min-height: 0; }
 .pw-rc > .race-control { flex: 1 1 auto; }
-.pw-rc > .team-radio { flex: 0 1 34%; min-height: 0; }
 .pw-tel { grid-area: tel; display: flex; min-width: 0; min-height: 0; }
 .pw-tel > .panel { flex: 1; }
-@media (max-width: 1279px) { .pitwall { grid-template-columns: 272px minmax(0, 1fr) 268px; } }
+@media (max-width: 1279px) { .pitwall { grid-template-columns: 272px minmax(0, 1fr); } }
 @media (max-width: 1099px) {
   .screen.replay { overflow: auto; }
   .pitwall { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: auto;
-    grid-template-areas: "map map" "tel tel" "dashA dashB" "tower rc"; }
+    grid-template-areas: "map map" "drv drv" "tel tel" "tower rc"; }
   .pw-map { height: 340px; }
   .pw-tel { height: 360px; }
   .pw-tower, .pw-rc { height: 440px; }
-  .pw-dash { min-height: 300px; }
 }
 @media (max-width: 760px) {
-  .pitwall { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "tel" "dashA" "dashB" "tower" "rc"; }
+  .pitwall { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "drv" "tel" "tower" "rc"; }
   .pw-map { height: 260px; }
 }
 .panel-bar h2 { border-bottom: 0; }
@@ -1700,8 +1698,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 }
 .rc-when { font-size: 11px; color: var(--ink-soft); }
 /* Team radio under race control (D-014): the same rows, a play button for the dot. */
-.team-radio { flex: 0 0 132px; display: flex; flex-direction: column; min-height: 0; }
-.team-radio .rc-row { grid-template-columns: 44px 22px minmax(0, 1fr); align-items: center; padding: 4px 14px; }
 .radio-play {
   width: 22px; height: 22px; padding: 0; border: 1px solid var(--ink-faint); border-radius: 50%;
   background: transparent; color: var(--ink); font-size: 9px; line-height: 1; cursor: pointer;
@@ -2394,12 +2390,30 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .lb-key i.is-following { width: 8px; height: 8px; border-radius: 2px; background: #14223A; border: 1px solid #2D5A96; }
 .lb-key i.is-investigation { width: 6px; height: 6px; border-radius: 50%; background: #FBBF24; }
 .lb-key b { color: #38BDF8; font-weight: 600; }
-/* The dashboard's readouts: three columns, each a small-caps label over a bold figure (the board's .dinfo). */
-.card-gaps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 8px; border-top: 1px solid var(--rule-soft); }
-.card-gaps > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.card-gaps b { font: 600 11.5px var(--font-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-gaps b.aid { text-align: left; grid-column: auto; }
+/*
+  The dashboard as the board's .dash: one row, speed and gear | the three
+  meters | Ahead, Behind and Overtake stacked in a 162 px column, label
+  left, figure right. Narrow cards put the readouts underneath.
+*/
+.driver-card .card-body { display: grid; grid-template-columns: auto minmax(0, 1fr) 162px; align-items: center; gap: 16px;
+  padding: 10px 14px 12px; overflow: visible; }
+.card-gaps { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 0 0 0 14px; border-top: 0;
+  border-left: 1px solid var(--rule); }
+.card-gaps > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+.card-gaps b { font: 600 11px var(--font-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-gaps b.aid { text-align: right; grid-column: auto; }
+/* km/h under the figure, as the board stacks it: the meters keep their width in a half-width card. */
+.driver-card .card-speed small { display: block; margin-top: 4px; }
+@media (max-width: 1599px) {
+  .driver-card .card-body { grid-template-columns: auto minmax(0, 1fr) 152px; gap: 12px; }
+  .driver-card .card-meters { grid-template-columns: 50px minmax(0, 1fr) 44px; }
+}
 .card-gaps b.aid.is-eligible, .card-gaps b.aid.is-open { color: #38BDF8; }
+@media (max-width: 560px) {
+  .driver-card .card-body { grid-template-columns: auto minmax(0, 1fr); }
+  .card-gaps { grid-column: 1 / -1; border-left: 0; padding: 8px 0 0; border-top: 1px solid var(--rule); }
+}
+.pw-dash .cards-empty { min-height: 96px; }
 
 /* ---- race control, as the board draws it */
 .rc-open { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; margin-left: auto; border-radius: 3px;
