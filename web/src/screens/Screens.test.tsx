@@ -124,7 +124,7 @@ describe("the race trace", () => {
     const svg = container.querySelector(".trace-canvas svg") as SVGSVGElement;
     vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, width: 500, top: 0, height: 440 } as DOMRect);
     fireEvent.click(svg, { clientX: 250 });
-    expect(ctx.onSelectLap).toHaveBeenCalledWith(26);                    // halfway through 51 laps
+    expect(ctx.onSelectLap).toHaveBeenCalledWith(9);                     // halfway through the 16 laps run so far
   });
 });
 
