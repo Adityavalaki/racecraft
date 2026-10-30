@@ -208,18 +208,27 @@ describe("the strategy", () => {
     notes: ["windows", "undercut: the out-lap is not modelled"],
   };
 
-  it("shows when each followed car stops, who can undercut whom, and the stints so far", async () => {
+  it("shows the selected car's window, where it rejoins, who can undercut it, and the stints with the plan", async () => {
     const fetchMock = serve({ "/pit-windows": windows });
-    const { container } = render(<ScreenView id="strategy" ctx={context({ selected: [63] })} />);
-    const card = within(await screen.findByRole("region", { name: "RUS pit stop estimate" }));
-    expect(card.getByText("10")).toBeDefined();
-    expect(card.getByText("L20–31")).toBeDefined();
-    expect(card.getByText("hard")).toBeDefined();
+    render(<ScreenView id="strategy" ctx={context({ selected: [63] })} />);
+    expect(await screen.findByText("L20–L31")).toBeDefined();
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/pit-windows?t=3000.00");
-    expect(within(screen.getByRole("region", { name: "Undercut watch" })).getByText("50%")).toBeDefined();
-    // RUS changed from mediums to hards at lap 3: two stints so far.
-    const rus = Array.from(container.querySelectorAll(".stint-row")).find((r) => r.textContent?.includes("RUS"))!;
-    expect(rus.querySelectorAll(".stint")).toHaveLength(2);
+    // VER, 4 s behind, can undercut: the model's chance is on the tile.
+    expect(screen.getByText("VER +0.9")).toBeDefined();
+    expect(screen.getByText("50% chance stopping first gets the place")).toBeDefined();
+    // The leader stopping for 21 s falls behind VER (4 s back): P1 to P2.
+    expect(screen.getByText("P1 → P2")).toBeDefined();
+    expect(screen.getByText("RUS is P1. Pitting this lap costs 21.0 s, so RUS would rejoin P2, 17.0 s behind VER.")).toBeDefined();
+    // The pit-loss choices are the model's figure and its spread either side.
+    fireEvent.click(screen.getByRole("radio", { name: "20.0 s" }));
+    expect(screen.getByText(/costs 20\.0 s, so RUS would rejoin P2, 16\.0 s behind VER/)).toBeDefined();
+    // RUS: mediums then hards so far, then the plan dashed: the hards to lap 26, hards again to the flag.
+    const rus = screen.getByRole("button", { name: /RUS/, pressed: true });
+    expect(Array.from(rus.querySelectorAll(".strat-stint")).map((s) => s.getAttribute("title"))).toEqual(
+      ["medium, laps 1–2", "hard, laps 3–4", "plan: hard, laps 5–26", "plan: hard, laps 27–51"]);
+    // VER has no window from the model: picking it says so rather than inventing one.
+    fireEvent.click(screen.getByRole("button", { name: /VER/ }));
+    expect(screen.getByText("out, or no wear model for this tyre")).toBeDefined();
     expect(screen.getByText(/out-lap is not modelled/)).toBeDefined();
   });
 });

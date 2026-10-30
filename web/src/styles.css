@@ -2063,49 +2063,58 @@ button.prediction-row:hover { background: var(--panel-2); }
 .flag-list .num { color: var(--ink-soft); }
 .flag-swatch { width: 12px; height: 12px; border-radius: 3px; }
 
-/* ---- strategy */
-.strategy-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; align-items: stretch; }
-.pit-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.pit-card-head { display: flex; align-items: center; gap: 10px; }
-.pit-card-head .code { font-size: 28px; }
-.pit-card-head .tyre-cell { margin-left: auto; }
-.pit-card-big { display: flex; align-items: baseline; gap: 10px; }
-.pit-card-big .display { font-size: 64px; line-height: 0.85; }
-.pit-card-big span:last-child { font-size: 14px; color: var(--ink-soft); }
-.pit-lane-bar { position: relative; height: 14px; border-radius: 7px; background: #26262D; overflow: hidden; }
-.pit-lane-bar .done { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(244, 244, 246, 0.18); }
-.pit-lane-bar .window { position: absolute; top: 0; bottom: 0; background: rgba(225, 6, 0, 0.35); outline: 1px dashed var(--signal); outline-offset: -1px; }
-.pit-lane-bar .likely { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--ink); }
-.pit-card-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-soft); }
-.pit-card-foot b { color: var(--ink); font-weight: 600; }
-.undercut-list { list-style: none; margin: 0; padding: 4px 0; }
-.undercut-list li { display: grid; grid-template-columns: 40px 18px 40px 64px minmax(0, 1fr) 40px; gap: 8px; align-items: center; height: 34px; padding: 0 14px;
-  border-bottom: 1px solid #1E1E24; color: var(--ink-soft); }
-.undercut-list .display { font-size: 17px; color: var(--ink); }
-.undercut-list .gap { font-size: 12px; text-align: right; }
-.chance-bar { height: 8px; border-radius: 4px; background: var(--ground); overflow: hidden; }
-.chance-bar i { display: block; height: 100%; background: var(--better); }
-.undercut-list .chance { font-size: 12px; text-align: right; color: var(--ink); }
-.stint-map { padding: 10px 16px 6px; }
+/* ---- the What-if board's stint chart, as the old stint map drew it */
 .stint-axis { display: grid; grid-template-columns: 70px minmax(0, 1fr); height: 18px; font-size: 10.5px; color: var(--ink-faint); }
 .stint-axis > div { position: relative; }
 .stint-axis > div > span { position: absolute; transform: translateX(-50%); }
 .stint-axis .now { color: var(--ink); font-weight: 600; }
-.stint-rows { position: relative; }
-.stint-bands { position: absolute; top: 0; bottom: 0; left: 70px; right: 0; pointer-events: none; }
-.stint-bands span { position: absolute; top: 0; bottom: 0; background: rgba(255, 162, 58, 0.13); }
-.stint-bands .stint-now { width: 2px; margin-left: -1px; background: rgba(244, 244, 246, 0.6); }
 .stint-row { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; height: 24px; }
 .stint-row.is-out { opacity: 0.55; }
-.stint-code { display: flex; align-items: center; gap: 6px; }
-.stint-code i { width: 4px; height: 14px; border-radius: 2px; }
-.stint-code .display { font-size: 15px; }
-.stint-lane { position: relative; height: 12px; }
-.stint { position: absolute; top: 0; bottom: 0; border-radius: 3px; box-shadow: inset -1px 0 0 #0A0A0C; }
-.stint-window { position: absolute; top: -3px; bottom: -3px; border: 1.5px dashed var(--ink-mid); border-radius: 4px; }
-.stint-window .num { position: absolute; right: 4px; top: -1px; font-size: 9.5px; color: var(--ink-mid); }
-.stint-note { position: absolute; left: 4px; top: -2px; font-size: 11px; color: var(--ink-faint); }
-.map-legend i.is-window { width: 16px; height: 10px; border: 1.5px dashed var(--ink-mid); background: transparent; box-sizing: border-box; }
+
+/* ---- Strategy as racecraft-ui.html draws it: four tiles over the stints beside a 330 px rejoin column */
+.strat-body { overflow: hidden; }
+.strat-body > .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)) 330px; }
+.strat-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 6px; }
+.strat-stints, .strat-rejoin { display: flex; flex-direction: column; min-height: 0; }
+.strat-legend { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
+.strat-win-key { width: 14px; height: 10px; margin-left: 6px; border: 1px dashed #38BDF8; }
+.strat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.strat-row { display: grid; grid-template-columns: 30px 3px 36px minmax(0, 1fr) 64px; align-items: center; gap: 8px; min-height: 18px;
+  padding: 0 12px; border: 0; border-bottom: 1px solid #161A1F; background: none; color: var(--ink); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+.strat-row:hover { background: rgba(255, 255, 255, 0.03); }
+.strat-row.is-selected { background: linear-gradient(90deg, rgba(76, 154, 255, 0.2), rgba(76, 154, 255, 0.05)); box-shadow: inset 3px 0 0 #4C9AFF; }
+.strat-row.is-out { opacity: 0.5; }
+.strat-row.is-head { position: sticky; top: 0; z-index: 3; height: 24px; flex: none; background: #0B0D10; font-size: 9px; cursor: default; border-bottom: 1px solid var(--rule); }
+.strat-row.is-head:hover { background: #0B0D10; }
+.strat-row .right { text-align: right; }
+.strat-row .team-bar { height: 60%; min-height: 10px; }
+.strat-ticks { position: relative; height: 100%; }
+.strat-ticks span { position: absolute; top: 50%; letter-spacing: 0; }
+.strat-rows { position: relative; flex: 1 0 auto; display: grid; grid-auto-rows: minmax(18px, 1fr); }
+.strat-lane { position: relative; height: 14px; }
+.strat-stint { position: absolute; top: 0; bottom: 0; border-radius: 2px; display: flex; align-items: center; padding-left: 4px; overflow: hidden; white-space: nowrap;
+  background: var(--tyre); font: 800 8.5px var(--font-text); color: #07080A; }
+.strat-stint.is-plan { background: transparent; border: 1.5px dashed var(--tyre); color: #C9CED6; }
+.strat-overlay { position: absolute; inset: 0; pointer-events: none; border: 0; background: none !important; box-shadow: none !important; }
+.strat-overlay .strat-lane { height: 100%; }
+.strat-win { position: absolute; top: 0; bottom: 0; background: rgba(56, 189, 248, 0.08); border-left: 1px dashed rgba(56, 189, 248, 0.5); border-right: 1px dashed rgba(56, 189, 248, 0.5); }
+.strat-now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #E10600; box-shadow: 0 0 8px #E10600; }
+.strat-summary { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--rule); font-size: 12px; line-height: 1.5; color: #D6DAE0; }
+.strat-rejoin-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.strat-rj { display: grid; grid-template-columns: 26px 3px 40px minmax(0, 1fr) 84px; align-items: center; gap: 8px; min-height: 28px; padding: 0 12px;
+  border-bottom: 1px solid #161A1F; font-size: 11.5px; }
+.strat-rj .right { text-align: right; color: #AEB4BD; }
+.strat-rj .team-bar { height: 60%; min-height: 12px; }
+.strat-rj.is-me { background: linear-gradient(90deg, rgba(225, 6, 0, 0.18), rgba(225, 6, 0, 0.03)); box-shadow: inset 3px 0 0 #E10600; }
+.strat-rj.is-me .right { color: #F2F3F5; }
+.strat-rj .right.is-traffic { color: #FBBF24; }
+.strat-foot { margin: 0; padding: 8px 12px; border-top: 1px solid var(--rule); font-size: 10.5px; line-height: 1.5; color: var(--ink-faint); }
+@media (max-width: 1099px) {
+  .strat-body { overflow: auto; }
+  .strat-body > .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strat-grid { grid-template-columns: minmax(0, 1fr); }
+  .strat-stints { height: 560px; }
+}
 
 /* ---- prediction */
 .prediction { display: flex; flex-direction: column; gap: 12px; }
@@ -2141,12 +2150,12 @@ button.prediction-row:hover { background: var(--panel-2); }
 .session-bar .session-meta { font-size: 12px; color: var(--ink-soft); }
 
 /* Bars that change value ease to it rather than jump; the trace and the map move every frame instead. */
-.chance-bar i, .podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span, .pit-lane-bar .done,
+.podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span,
 .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: width 0.25s ease, background-color 0.15s ease, color 0.15s ease; }
 .trace-cursor { will-change: left; }
 .track-map { will-change: contents; }
 @media (prefers-reduced-motion: reduce) {
-  .chance-bar i, .podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span, .pit-lane-bar .done,
+  .podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span,
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
 
