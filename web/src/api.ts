@@ -833,6 +833,8 @@ export interface RaceReview {
   /** The race's laps, for drawing each driver's stops along it. */
   laps: number | null;
   drivers: ReviewDriver[];
+  /** Laps the field was slowed, as periods; empty for a race without one. */
+  neutralised?: { kind: "safety car" | "VSC" | "red flag"; from: number; to: number }[];
   notes: string[];
 }
 

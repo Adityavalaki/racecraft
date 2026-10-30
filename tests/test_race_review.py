@@ -77,6 +77,13 @@ def test_places_lost_at_each_stop(con):
     assert _row(body, "EEE")["stops"] == [] and _row(body, "EEE")["status"] == "R" and _row(body, "EEE")["position"] is None
     assert body["green_stop_places"] == 1
     assert [d["abbreviation"] for d in body["drivers"]] == ["AAA", "DDD", "BBB", "CCC", "EEE"]
+    assert body["neutralised"] == [{"kind": "safety car", "from": 6, "to": 7}]
+
+
+def test_neutralised_periods_rank_and_join():
+    laps = pd.DataFrame({"lap_number": [3, 3, 4, 5, 6, 9], "track_status": ["16", "1", "6", "4", "45", "7"]})
+    assert race_review.neutralised(laps) == [{"kind": "VSC", "from": 3, "to": 4}, {"kind": "safety car", "from": 5, "to": 5},
+                                             {"kind": "red flag", "from": 6, "to": 6}, {"kind": "VSC", "from": 9, "to": 9}]
 
 
 def test_as_of_and_the_route(con):

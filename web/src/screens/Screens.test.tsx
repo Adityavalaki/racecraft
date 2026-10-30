@@ -510,9 +510,15 @@ describe("Race review", () => {
 
     const table = within(await screen.findByRole("table", { name: "Overtakes and pit stops" }));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/race-review?moment=before");
-    expect(table.getByText("L50 VSC −2").className).toBe("is-quick");
+    expect(table.getByTitle("Lap 50 under the VSC: cost 2 places.").className).toContain("is-cheap");   // the VSC stop, green
+    expect(table.getByTitle("Lap 26: cost 5 places.").className).not.toContain("is-cheap");
     expect(table.getByText("DNF")).toBeDefined();
-    expect(screen.getByText(/a normal pit stop here cost about 4 places/)).toBeDefined();
+    expect(screen.getByText("4 places")).toBeDefined();                                                 // a normal stop's cost
+
+    // The stop filter keeps only the drivers with a stop of that kind.
+    fireEvent.click(screen.getByRole("radio", { name: "Under SC / VSC" }));
+    expect(table.queryByText("BOT")).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "All stops" }));
 
     // A driver opens in the inspector: the stop as a sentence, against a normal one.
     fireEvent.click(screen.getByRole("button", { name: "Inspect BOR" }));

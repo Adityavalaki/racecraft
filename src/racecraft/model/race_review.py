@@ -35,7 +35,7 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None) -> dict:
         key = races["session_key"].iloc[-1]
         laps = con.execute("select * from laps where session_key = ?", [key]).df()
     if laps.empty:
-        return {"year": int(year), "session_key": None, "event_name": None, "laps": None, "drivers": [], "green_stop_places": None,
+        return {"year": int(year), "session_key": None, "event_name": None, "laps": None, "drivers": [], "neutralised": [], "green_stop_places": None,
                 "notes": ["no Grand Prix has been run yet this season"]}
 
     made, lost = passes(laps)
@@ -54,8 +54,30 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None) -> dict:
             "stops": mine, "pit_places": sum(s["places"] for s in mine),
         })
     return {"year": int(year), "session_key": key, "event_name": races["event_name"].iloc[-1],
-            "laps": int(laps["lap_number"].max()), "drivers": drivers,
+            "laps": int(laps["lap_number"].max()), "drivers": drivers, "neutralised": neutralised(laps),
             "green_stop_places": float(np.median(green)) if green else None, "notes": []}
+
+
+def neutralised(laps: pd.DataFrame) -> list[dict]:
+    """The laps the field was slowed, as periods: [{kind, from, to}], kind 'red flag', 'safety car' or 'VSC'.
+
+    A lap counts when any car's lap saw the status (FastF1 lists every status seen during the lap: 4 safety car,
+    5 red flag, 6 and 7 VSC); a red flag outranks a safety car, which outranks a VSC. Consecutive laps of one kind
+    make one period. Drawn behind the stops, it shows which stops were the cheap ones.
+    """
+    rank = {"red flag": 3, "safety car": 2, "VSC": 1}
+    seen: dict[int, str] = {}
+    for lap, status in zip(laps["lap_number"], laps["track_status"].astype(str)):
+        kind = "red flag" if "5" in status else "safety car" if "4" in status else "VSC" if ("6" in status or "7" in status) else None
+        if kind and rank[kind] > rank.get(seen.get(int(lap), ""), 0):
+            seen[int(lap)] = kind
+    out: list[dict] = []
+    for lap in sorted(seen):
+        if out and out[-1]["kind"] == seen[lap] and out[-1]["to"] == lap - 1:
+            out[-1]["to"] = lap
+        else:
+            out.append({"kind": seen[lap], "from": lap, "to": lap})
+    return out
 
 
 def passes(laps: pd.DataFrame) -> tuple[dict[int, int], dict[int, int]]:
