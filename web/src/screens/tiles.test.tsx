@@ -23,7 +23,7 @@ describe("headline tiles", () => {
       ({ driver_number: n, abbreviation: `D${n}`, status: "racing", laps_down: 0, best_lap_s: best, gap_to_leader_s: gap, interval_s: interval }) as DriverTiming;
     const tiles = shown(towerTiles([d(1, 95.2, 0, null), d(2, 94.8, 0.6, 0.6), d(3, null, 12.4, 11.8)], 94.5));
     expect(tiles.map((t) => [t.label, t.value])).toEqual([
-      ["Fastest lap", "1:34.800"], ["Ideal lap", "1:34.500"], ["Leader to last", "+12.400"], ["Within 1 s", "1 car"]]);
+      ["Fastest lap", "1:34.800"], ["Ideal lap", "1:34.500"], ["Within 1 s", "1 car"], ["Leader to last", "+12.4 s"]]);
   });
 
   it("field spread: the leader at 0, lapped cars left out", () => {

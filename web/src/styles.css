@@ -356,34 +356,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .sector.is-personal_best { color: var(--green); }
 .sector.is-none { color: var(--rule-strong); }
 
-.best-sectors {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--rule);
-  border-top: 1px solid var(--rule);
-}
-.best-sector {
-  background: var(--panel-2);
-  padding: 0.3rem 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-}
-.bs-label {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.56rem;
-  letter-spacing: 0.12em;
-  color: var(--ink-soft);
-}
-.bs-time {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.82rem;
-  color: var(--purple);
-}
-.best-sector.is-ideal .bs-time { color: var(--ink); }
-.bs-driver { font-size: 0.72rem; font-weight: 600; color: var(--ink-mid); }
 .tower-row {
   width: 100%;
   background: none;
@@ -2453,14 +2425,49 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
   color: var(--ink-mid); box-shadow: inset 0 0 0 1px var(--rule-strong); font: 600 10.5px var(--font-text); letter-spacing: 0.04em; white-space: nowrap; }
 .replay-chip .live-pip { color: var(--signal); }
 
-/* ---- the Timing screen as its board: the table, and a 312 px side column */
-.timing-grid { display: grid; grid-template-columns: minmax(0, 1fr) 312px; gap: 6px; align-items: start; }
-@media (max-width: 1099px) { .timing-grid { grid-template-columns: minmax(0, 1fr); } }
-.timing-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.spread-list { list-style: none; margin: 0; padding: 4px 0; }
-.spread-list li { display: grid; grid-template-columns: 36px minmax(0, 1fr) 52px; gap: 8px; align-items: center; height: 22px; padding: 0 10px; font-size: 11px; }
-.spread-list li.is-followed { background: linear-gradient(90deg, rgba(76, 154, 255, 0.16), rgba(76, 154, 255, 0.03)); }
-.spread-code { font-weight: 700; }
-.spread-bar { height: 6px; border-radius: 2px; background: #15181D; overflow: hidden; }
-.spread-bar i { display: block; height: 100%; }
-.spread-gap { text-align: right; color: var(--ink-mid); }
+/* ---- the Timing screen as racecraft-ui.html draws it: the classification, and a 312 px side column
+   (headline tiles 2 by 2, sector bests, the field-spread ladder). On a desktop it fills the window and
+   each panel scrolls inside itself. */
+.timing-grid { display: grid; grid-template-columns: minmax(0, 1fr) 312px; gap: 6px; flex: 1 1 auto !important; min-height: 0; }
+.timing-grid > .tower { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.timing-grid .tower-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.timing-grid .tower-table { min-width: 930px; }
+.timing-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.timing-side .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1099px) { .timing-grid { grid-template-columns: minmax(0, 1fr); } .timing-grid > .tower { height: 560px; } }
+.tower-table .center { text-align: center; }
+.tower-table .muted-pos { color: #AEB4BD; }
+.tower-table th.who { display: flex; align-items: baseline; gap: 8px; min-width: 0; height: 28px; line-height: 28px; font-weight: 400; }
+.who-name { font-size: 11px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.seg { display: inline-flex; align-items: center; justify-content: center; height: 18px; min-width: 52px; padding: 0 5px; border-radius: 2px;
+  font: 600 10.5px var(--font-mono); color: var(--ink-mid); }
+.seg.is-purple { background: rgba(168, 85, 247, 0.22); color: #D8B4FE !important; }
+.seg.is-green { background: rgba(34, 197, 94, 0.16); color: #86EFAC !important; }
+.seg.is-yellow { background: rgba(234, 179, 8, 0.12); color: #FDE68A !important; }
+.seg-key { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
+.seg-key .seg { min-width: 0; width: 14px; height: 10px; padding: 0; margin-left: 6px; }
+.seg-key .seg:first-child { margin-left: 0; }
+.car-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--st); --st: #4ADE80; }
+.car-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--st); }
+.car-status.is-close { --st: #38BDF8; }
+.car-status.is-look { --st: #FBBF24; }
+.car-status.is-bad { --st: #FF6B6B; }
+.car-status.is-done { --st: #C9CED6; }
+.car-status.is-off { --st: #8E959F; }
+.sector-bests { flex: none; }
+.sb-row { display: grid; grid-template-columns: 28px 3px 40px minmax(0, 1fr) 70px; align-items: center; column-gap: 10px; min-height: 28px;
+  padding: 0 12px 0 10px; border-bottom: 1px solid var(--rule-soft); font-size: 11.5px; }
+.sb-row .team-bar { height: 14px; }
+.sb-row .right { text-align: right; }
+.sb-row.is-ideal { border-bottom: 0; }
+.field-spread { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; }
+.ladder-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+.ladder { position: absolute; inset: 14px 20px 14px 56px; }
+.ladder ol { list-style: none; margin: 0; padding: 0; }
+.ladder-ax { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; border-radius: 1px; background: var(--rule); }
+.ladder-tick { position: absolute; right: calc(100% + 8px); transform: translateY(-50%); font-size: 9.5px; color: var(--ink-faint); }
+.ladder li { position: absolute; left: 0; width: 0; height: 0; }
+.ladder-dot { position: absolute; left: -5px; top: -6px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--panel); }
+.ladder-code { position: absolute; left: 14px; top: 0; transform: translateY(-50%); font-size: 10px; font-weight: 700; color: #AEB4BD; white-space: nowrap; }
+.ladder-code.is-far { left: 52px; }
+.ladder li.is-followed .ladder-code { color: #F2F3F5; }

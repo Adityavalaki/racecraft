@@ -85,19 +85,20 @@ describe("the timing tower", () => {
   it("colours times as a timing screen does, and marks the overtake window", () => {
     const { container } = render(<ScreenView id="tower" ctx={context()} />);
     const rus = container.querySelectorAll(".tower-table tbody tr")[0] as HTMLElement;
-    const cells = Array.from(rus.querySelectorAll("td.num")).map((td) => td.className);
-    expect(cells.some((c) => c.includes("is-purple"))).toBe(true);      // S1, fastest of everyone
-    expect(cells.some((c) => c.includes("is-yellow"))).toBe(true);      // S3, slower than their best
-    expect(rus.querySelector(".strong")?.className).toContain("is-green");   // last lap, a personal best
-    expect(within(container.querySelectorAll(".tower-table tbody tr")[1] as HTMLElement).getByText("Eligible")).toBeDefined();
+    const segs = Array.from(rus.querySelectorAll(".seg")).map((s) => s.className);
+    expect(segs.some((c) => c.includes("is-purple"))).toBe(true);       // S1, fastest of everyone
+    expect(segs.some((c) => c.includes("is-yellow"))).toBe(true);       // S3, slower than their best
+    expect(rus.querySelector(".strong.is-green")).not.toBeNull();       // last lap, a personal best
+    expect(within(container.querySelectorAll(".tower-table tbody tr")[1] as HTMLElement).getByText("Overtake on")).toBeDefined();
   });
 
-  it("reorders by best lap, and follows a driver on a click", () => {
-    const ctx = context();
+  it("measures gaps to the followed driver on request, and follows a driver on a click", () => {
+    const ctx = { ...context(), selected: [3] };
     const { container } = render(<ScreenView id="tower" ctx={ctx} />);
-    fireEvent.click(screen.getByRole("radio", { name: "Best laps" }));
-    const codes = () => Array.from(container.querySelectorAll(".row-pick")).map((b) => b.textContent);
-    expect(codes()).toEqual(["VER", "RUS"]);                             // 1:30.5 before 1:31.1
+    fireEvent.click(screen.getByRole("radio", { name: "Gap to selected" }));
+    const gaps = () => Array.from(container.querySelectorAll(".tower-table tbody tr")).map((r) => r.querySelectorAll("td")[2]?.textContent);
+    expect(screen.getByRole("columnheader", { name: "To VER" })).toBeDefined();
+    expect(gaps()).toContain("Ref");
     fireEvent.click(screen.getByRole("button", { name: "RUS" }));
     expect(ctx.onSelect).toHaveBeenCalledWith(63);
   });

@@ -75,7 +75,7 @@ const clock = (over: Partial<ClockState> = {}): ClockState => ({
   session: KEY, t: 1200, playing: false, speed: 1, following: false, selected: [], ...over,
 });
 
-/** A driver's row in the tower; their code also shows in the best-sectors strip. */
+/** A driver's row in the tower; their code also shows in the sector bests. */
 function towerRow(code: string): HTMLElement {
   const row = Array.from(document.querySelectorAll<HTMLElement>(".tower-table tbody tr"))
     .find((each) => each.querySelector(".row-pick")?.textContent === code);
@@ -116,8 +116,8 @@ describe("a feature window", () => {
     server();
     replay(clock());
     const { container } = open("tower");
-    await waitFor(() => expect(container.querySelector(".best-sectors")).not.toBeNull());
-    const strip = container.querySelector(".best-sectors") as HTMLElement;
+    await waitFor(() => expect(container.querySelector(".sector-bests")).not.toBeNull());
+    const strip = container.querySelector(".sector-bests") as HTMLElement;
     await waitFor(() => expect(strip.textContent).toContain("29.741"));   // fastest S1, held by VER
     expect(strip.textContent?.toUpperCase()).toContain("IDEAL");
     expect(strip.textContent).toContain("1:32.608");                       // the three best sectors added up
