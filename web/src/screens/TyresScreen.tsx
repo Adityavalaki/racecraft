@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from "react";
-import { COMPOUND_COLORS, type DegradationCurve } from "../api";
-import { TyreSets } from "../panels/TyreSets";
+import { useEffect, useState, type ReactNode } from "react";
+import { api, COMPOUND_COLORS, type DegradationCurve, type TyreSets as TyreSetsAnswer } from "../api";
+import { carAt, TyreSets } from "../panels/TyreSets";
 import type { ScreenContext } from "./ScreenView";
 
 const ORDER = ["SOFT", "MEDIUM", "HARD"];
+/** The model has no cliff (strategy.py: wear past where teams pit is unmeasured), so a second lost is the marker. */
 const LOST_MARK_S = 1.0;
-const CHART_H = 300;
+/** The chart's ceiling: past this the curves are extrapolation nobody runs to. */
+const MAX_LOST_S = 4;
 
 /** Seconds lost at an age, read off the model's curve. */
 export function lostAt(curve: DegradationCurve | undefined, age: number): number | null {
@@ -24,27 +26,54 @@ export function ageAtLost(curve: DegradationCurve | undefined, seconds = LOST_MA
   return hit ? hit.age : null;
 }
 
+/** Seconds a lap lost to wear at this age: the curve's slope over the last lap. */
+function degAt(curve: DegradationCurve | undefined, age: number): number | null {
+  const now = lostAt(curve, age);
+  const before = lostAt(curve, Math.max(age - 1, 0));
+  return now == null || before == null ? null : now - before;
+}
+
+/** Every car's dry sets, from the set tracker (TyreSets); null until it answers. */
+function useSets(session: string) {
+  const [answer, setAnswer] = useState<TyreSetsAnswer | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnswer(null);
+    // The strip is a summary: when the tracker cannot answer it is left out, and the sets tab says why.
+    api.tyreSets(session, controller.signal).then(setAnswer).catch(() => undefined);
+    return () => controller.abort();
+  }, [session]);
+  return answer;
+}
+
 /**
- * How fast each compound fades, and where every car sits on that curve.
- *
- * The curves are the strategy model's: fitted on this season's earlier races,
- * never on this one, at the scale the plans use. They are a fit, not measured
- * wear: the feed gives tyre age and compound, and nothing about temperature or
- * how many sets are left.
+ * How fast each compound fades, and where every car sits on that curve, as
+ * racecraft-ui.html draws it (D-025): a tile per compound, the curves, the
+ * selected car's sets left, and every car's tyre now. The curves are the
+ * strategy model's: fitted on this season's earlier races, never on this one.
+ * They are a fit, not measured wear: the feed gives tyre age and compound,
+ * nothing about temperature. What this race's laps did is hindsight, so it
+ * shows only when asked for.
  */
 export function TyresScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const [only, setOnly] = useState<"all" | "followed">("all");
+  const [tab, setTab] = useState<"now" | "sets">("now");
   // What this race's tyres actually did: hindsight, so off until asked for.
   const [observed, setObserved] = useState(false);
+  const sets = useSets(ctx.session);
   const insight = ctx.insight;
   const curves = new Map((insight?.degradation_curve ?? []).map((c) => [c.compound, c]));
   const compounds = ORDER.filter((c) => curves.has(c));
   const maxAge = Math.max(30, ...compounds.map((c) => curves.get(c)!.points.at(-1)?.age ?? 0));
-  const maxLost = Math.max(2.5, ...compounds.map((c) => Math.min(lostAt(curves.get(c), maxAge) ?? 0, 4)));
-  const x = (age: number) => (age / maxAge) * 1000;
-  const y = (s: number) => CHART_H - (Math.min(s, maxLost) / maxLost) * CHART_H;
-  const drivers = (ctx.state?.drivers ?? []).filter((d) => only === "all" || ctx.selected.includes(d.driver_number));
-  const followed = (ctx.state?.drivers ?? []).filter((d) => ctx.selected.includes(d.driver_number) && d.compound && d.tyre_life != null);
+  const maxLost = Math.min(MAX_LOST_S, Math.max(2, ...compounds.map((c) => Math.ceil(lostAt(curves.get(c), maxAge) ?? 0))));
+  const x = (age: number) => (age / maxAge) * 100;
+  const y = (s: number) => 100 - (Math.min(s, maxLost) / maxLost) * 100;
+  const all = ctx.state?.drivers ?? [];
+  const drivers = all.filter((d) => only === "all" || ctx.selected.includes(d.driver_number));
+  const setsFor = all.find((d) => d.driver_number === ctx.selected.at(-1)) ?? all[0];
+  const setsCar = sets?.cars.find((c) => c.driver_number === setsFor?.driver_number);
+  const left = setsCar ? carAt(setsCar, ctx.state?.t ?? ctx.info.t_start) : null;
+
   const filter = (
     <div className="segmented" role="radiogroup" aria-label="Filter">
       {([["all", "All drivers"], ["followed", "Followed"]] as const).map(([key, text]) => (
@@ -67,136 +96,137 @@ export function TyresScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
   return (
     <div className="screen">
       {header(filter)}
-      <main className="screen-body">
-        <p className="screen-caveat"><span className="tag">Modelled</span>
-          Curves are the strategy model's fit on {insight.fitted_on_count} earlier race{insight.fitted_on_count === 1 ? "" : "s"},
-          never this one. The feed gives tyre age and compound; temperatures and sets left are not public.</p>
-        <div className="tyres-top">
-          <section className="panel" aria-label="Tyre wear model">
-            <div className="panel-bar">
-              <h2>Lap time lost by tyre age</h2>
-              <span className="panel-meta">Compared with a fresh tyre on the same fuel load.</span>
-              {!insight.observed_unavailable && (
-                <button type="button" className={`toggle${observed ? " is-on" : ""}`} aria-pressed={observed}
-                        style={{ marginLeft: "auto" }} onClick={() => setObserved((on) => !on)}
-                        title="Hindsight: what this race's laps showed at each tyre age, to read the model against">
-                  What this race did
-                </button>
-              )}
-            </div>
-            <div className="wear-chart">
-              <div className="wear-y num">
-                {[0, 0.5, 1, 1.5, 2, 2.5].filter((v) => v <= maxLost).map((v) => (
-                  <span key={v} style={{ top: `${(y(v) / CHART_H) * 100}%` }}>{v} s</span>
-                ))}
-              </div>
-              <div className="wear-plot">
-                <svg viewBox={`0 0 1000 ${CHART_H}`} preserveAspectRatio="none" role="img"
-                     aria-label="Modelled lap time lost against tyre age for each compound">
-                  <line x1="0" x2="1000" y1={y(LOST_MARK_S)} y2={y(LOST_MARK_S)} stroke="#62626E" strokeDasharray="6 5" vectorEffect="non-scaling-stroke" />
-                  {compounds.map((c) => (
-                    <path key={c} d={curves.get(c)!.points.map((p, k) => `${k ? "L" : "M"}${x(p.age).toFixed(1)} ${y(p.model_s).toFixed(1)}`).join("")}
-                          fill="none" stroke={COMPOUND_COLORS[c]} strokeWidth="2.4" vectorEffect="non-scaling-stroke" />
-                  ))}
-                  {observed && compounds.map((c) => (
-                    <path key={`${c}-seen`} fill="none" stroke={COMPOUND_COLORS[c]} strokeWidth="1.6" strokeDasharray="2 5"
-                          strokeLinecap="round" vectorEffect="non-scaling-stroke"
-                          d={curves.get(c)!.points.filter((p) => p.observed_s != null)
-                            .map((p, k) => `${k ? "L" : "M"}${x(p.age).toFixed(1)} ${y(p.observed_s!).toFixed(1)}`).join("")} />
-                  ))}
-                </svg>
-                {followed.map((d) => {
-                  const lost = lostAt(curves.get(d.compound!), d.tyre_life!);
-                  if (lost == null) return null;
-                  return (
-                    <span key={d.driver_number} className="wear-car"
-                          style={{ left: `${x(d.tyre_life!) / 10}%`, top: `${(y(lost) / CHART_H) * 100}%` }}>
-                      <i style={{ background: `#${d.team_color ?? "777"}` }} /><b className="display">{d.abbreviation}</b>
-                    </span>
-                  );
-                })}
-                <span className="wear-mark num" style={{ top: `${(y(LOST_MARK_S) / CHART_H) * 100}%` }}>1 s lost</span>
-              </div>
-              <div />
-              <div className="wear-x num">
-                {Array.from({ length: Math.floor(maxAge / 5) + 1 }, (_, k) => k * 5).map((age) => (
-                  <span key={age} style={{ left: `${x(age) / 10}%` }}>{age}</span>
-                ))}
-              </div>
-            </div>
-            <div className="axis-caption">Tyre age in laps{observed ? ". Dotted: what this race's laps showed, in hindsight." : ""}</div>
-          </section>
-          <div className="compound-cards">
-            {compounds.map((c) => {
-              const curve = curves.get(c);
-              const at10 = lostAt(curve, 10);
-              const at9 = lostAt(curve, 9);
-              const mark = ageAtLost(curve);
-              return (
-                <section key={c} className="panel compound-card" aria-label={`${c.toLowerCase()} tyre`}>
-                  <div className="compound-head">
-                    <span className="tyre-chip big" style={{ background: COMPOUND_COLORS[c] }}>{c[0]}</span>
-                    <h2>{c.charAt(0) + c.slice(1).toLowerCase()}</h2>
-                    {insight.compounds && <span className="panel-meta">{insight.compounds[c as "SOFT"]}</span>}
-                  </div>
-                  <dl>
-                    <dt>Lost per lap at age 10</dt><dd className="num">{at10 != null && at9 != null ? `${(at10 - at9).toFixed(3)} s` : "—"}</dd>
-                    <dt>Age at 1 s lost</dt><dd className="num">{mark != null ? `${mark} laps` : `over ${maxAge} laps`}</dd>
-                    <dt>Slower than a soft, new</dt><dd className="num">{insight.compound_offset_s[c] != null ? `${insight.compound_offset_s[c]!.toFixed(2)} s` : "—"}</dd>
-                  </dl>
-                </section>
-              );
-            })}
-          </div>
-        </div>
-
-        <section className="panel" aria-label="Tyres on track now">
-          <div className="panel-bar"><h2>On track now</h2><span className="panel-meta">Lap {ctx.state?.leader_lap ?? 0}. Yellow is a tyre already past a second lost.</span></div>
-          <table className="tyre-table">
-            <thead><tr>
-              <th scope="col"><span className="visually-hidden">Team</span></th><th scope="col">Driver</th><th scope="col">Tyre</th>
-              <th scope="col" className="right">Age</th><th scope="col">Set</th><th scope="col" className="right">Time lost now</th>
-              <th scope="col">Age against 1 s lost</th><th scope="col" className="right">Laps left to 1 s</th>
-            </tr></thead>
-            <tbody>
-              {drivers.map((d) => {
-                const curve = d.compound ? curves.get(d.compound) : undefined;
-                const lost = d.tyre_life != null ? lostAt(curve, d.tyre_life) : null;
+      <main className="screen-body tyres-body">
+        <div className="tyres-grid">
+          <div className="tyres-left">
+            <div className="tyres-kpis" role="list" aria-label="Headline figures">
+              {compounds.map((c) => {
+                const curve = curves.get(c);
+                const deg = degAt(curve, 10);
                 const mark = ageAtLost(curve);
-                const past = lost != null && lost >= LOST_MARK_S;
-                const left = mark != null && d.tyre_life != null ? mark - d.tyre_life : null;
                 return (
-                  <tr key={d.driver_number} className={d.status === "out" ? "is-out" : ""} onClick={() => ctx.onSelect(d.driver_number)}>
-                    <td><span className="team-bar tall" style={{ background: `#${d.team_color ?? "555"}` }} /></td>
-                    <th scope="row" className="display">{d.abbreviation}</th>
-                    <td>{d.compound ? <span className="tyre-cell"><span className="tyre-chip" style={{ background: COMPOUND_COLORS[d.compound] ?? "#888" }}>{d.compound[0]}</span>{d.compound.toLowerCase()}</span> : "—"}</td>
-                    <td className="num right">{d.tyre_life ?? "—"}</td>
-                    <td>{ordinal(d.stops + 1)} set</td>
-                    <td className={`num right${past ? " is-worse" : ""}`}>{lost != null ? `${lost.toFixed(2)} s` : "—"}</td>
-                    <td>
-                      <span className="age-bar">
-                        <i className={past ? "is-past" : ""} style={{ width: `${mark && d.tyre_life != null ? Math.min(d.tyre_life / mark, 1) * 100 : 0}%` }} />
-                      </span>
-                    </td>
-                    <td className="num right">{left == null ? "—" : left <= 0 ? "past" : left}</td>
-                  </tr>
+                  <div key={c} className="kpi tyres-kpi" role="listitem" aria-label={`${c.toLowerCase()} tyre`}>
+                    <span className="tyre-chip big" style={{ background: COMPOUND_COLORS[c] }}>{c[0]}</span>
+                    <div>
+                      <span className="cap">{c.charAt(0) + c.slice(1).toLowerCase()}{insight.compounds ? ` ${insight.compounds[c as "SOFT"]}` : ""}</span>
+                      <b className="num">{deg != null ? `${deg.toFixed(3)} s/lap` : "—"}</b>
+                      <span className="kpi-note">{mark != null ? `1 s lost by lap ${mark}` : `under 1 s to lap ${maxAge}`} · {all.filter((d) => d.status === "racing" && d.compound === c).length} cars on it</span>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </section>
+            </div>
+            <section className="panel tyres-chart" aria-label="Tyre wear model">
+              <div className="panel-bar">
+                <h2>Degradation</h2>
+                <span className="panel-meta">seconds lost against a new tyre, by tyre age in laps · lines: the model, fitted on {insight.fitted_on_count} earlier race{insight.fitted_on_count === 1 ? "" : "s"}{observed ? " · dots: this race, in hindsight" : ""}</span>
+                {!insight.observed_unavailable && (
+                  <button type="button" className={`toggle${observed ? " is-on" : ""}`} aria-pressed={observed}
+                          style={{ marginLeft: "auto" }} onClick={() => setObserved((on) => !on)}
+                          title="Hindsight: what this race's laps showed at each tyre age, to read the model against">
+                    What this race did
+                  </button>
+                )}
+              </div>
+              <div className="tyres-plot-wrap">
+                <div className="tyres-plot">
+                  {Array.from({ length: maxLost + 1 }, (_, v) => (
+                    <span key={`y${v}`} className="tyres-gl" style={{ top: `${y(v)}%` }}><i className="num">+{v.toFixed(1)}</i></span>
+                  ))}
+                  {Array.from({ length: Math.floor(maxAge / 5) + 1 }, (_, k) => k * 5).map((age) => (
+                    <span key={`x${age}`} className="tyres-gv" style={{ left: `${x(age)}%` }}><i className="num">{age}</i></span>
+                  ))}
+                  {compounds.map((c) => {
+                    const mark = ageAtLost(curves.get(c));
+                    return mark == null ? null : (
+                      <span key={`m${c}`} className="tyres-mark" style={{ left: `${x(mark)}%`, borderColor: COMPOUND_COLORS[c] }}>
+                        <i className="num" style={{ color: COMPOUND_COLORS[c] }}>{c[0]} 1 s</i>
+                      </span>
+                    );
+                  })}
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Modelled lap time lost against tyre age for each compound">
+                    {compounds.map((c) => (
+                      <path key={c} d={curves.get(c)!.points.map((p, k) => `${k ? "L" : "M"}${x(p.age).toFixed(2)} ${y(p.model_s).toFixed(2)}`).join("")}
+                            fill="none" stroke={COMPOUND_COLORS[c]} strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+                    ))}
+                  </svg>
+                  {observed && compounds.flatMap((c) => curves.get(c)!.points.filter((p) => p.observed_s != null).map((p) => (
+                    <span key={`${c}-${p.age}`} className="tyres-dot" title={`${c.toLowerCase()}, age ${p.age}: +${p.observed_s!.toFixed(2)} s over ${p.laps} laps`}
+                          style={{ left: `${x(p.age)}%`, top: `${y(p.observed_s!)}%`, background: COMPOUND_COLORS[c] }} />
+                  )))}
+                </div>
+              </div>
+              {left && setsFor && (
+                <div className="tyres-alloc">
+                  <span className="cap">Sets left · {setsFor.abbreviation}</span>
+                  <div>
+                    {ORDER.map((c) => (
+                      <div key={c}>
+                        <span className="tyre-chip" style={{ background: COMPOUND_COLORS[c] }}>{c[0]}</span>
+                        <span className="num strong">{left[c]?.fresh ?? 0} new</span>
+                        <span className="panel-meta">{left[c]?.used.length ?? 0} used</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
 
-        <section className="panel">
-          <div className="panel-bar"><h2>Every car's sets</h2><span className="panel-meta">New sets filled, used ones ringed with their laps. Follows the clock.</span></div>
-          <TyreSets sessionKey={ctx.session} t={ctx.state?.t ?? ctx.info.t_start} drivers={ctx.state?.drivers ?? []}
-                    selected={ctx.selected} onSelect={ctx.onSelect} insight={ctx.insight} />
-        </section>
+          <section className="panel tyres-now" aria-label="Tyres on every car now">
+            <div className="panel-bar">
+              <div className="segmented" role="radiogroup" aria-label="Tyre view">
+                {([["now", "On every car now"], ["sets", "Every car's sets"]] as const).map(([key, text]) => (
+                  <button key={key} type="button" role="radio" aria-checked={tab === key} className={tab === key ? "is-on" : ""}
+                          onClick={() => setTab(key)}>{text}</button>
+                ))}
+              </div>
+              <span className="panel-meta">{tab === "now" ? `lap ${ctx.state?.leader_lap ?? 0} · race order` : "new filled, used ringed with their laps"}</span>
+            </div>
+            {tab === "sets" ? (
+              <div className="tyres-scroll">
+                <TyreSets sessionKey={ctx.session} t={ctx.state?.t ?? ctx.info.t_start} drivers={all}
+                          selected={ctx.selected} onSelect={ctx.onSelect} insight={ctx.insight} />
+              </div>
+            ) : (
+              <div className="tyres-scroll">
+                <div className="tyres-row is-head cap">
+                  <span className="right">P</span><span /><span>Drv</span><span>Tyre</span><span>Life to 1 s</span>
+                  <span className="right">To 1 s</span><span className="right">Deg now</span><span className="right">Vs new</span>
+                </div>
+                {drivers.map((d) => {
+                  const curve = d.compound ? curves.get(d.compound) : undefined;
+                  const age = d.tyre_life;
+                  const lost = age != null ? lostAt(curve, age) : null;
+                  const mark = ageAtLost(curve);
+                  const used = mark && age != null ? Math.min(age / mark, 1) : null;
+                  const toMark = mark != null && age != null ? mark - age : null;
+                  const deg = age != null ? degAt(curve, age) : null;
+                  return (
+                    <button key={d.driver_number} type="button" aria-pressed={ctx.selected.includes(d.driver_number)}
+                            className={`tyres-row${d.status === "out" ? " is-out" : ""}${ctx.selected.includes(d.driver_number) ? " is-selected" : ""}`}
+                            onClick={() => ctx.onSelect(d.driver_number)}>
+                      <span className="num right strong">{d.status === "out" ? "OUT" : d.position}</span>
+                      <span className="team-bar" style={{ background: `#${d.team_color ?? "555"}` }} />
+                      <span className="num strong">{d.abbreviation}</span>
+                      <span className="tyre-cell">
+                        {d.compound ? <span className="tyre-chip" style={{ background: COMPOUND_COLORS[d.compound] ?? "#888" }}>{d.compound[0]}</span> : "—"}
+                        <span className="num">{age ?? ""}</span>
+                      </span>
+                      <span className="tyres-life">
+                        {used != null && <i className={used > 0.85 ? "is-bad" : used > 0.6 ? "is-warn" : ""} style={{ width: `${used * 100}%` }} />}
+                      </span>
+                      <span className={`num right${toMark != null && toMark <= 3 ? " is-bad" : ""}`}>{toMark == null ? "—" : toMark > 0 ? `${toMark} lap${toMark === 1 ? "" : "s"}` : "past it"}</span>
+                      <span className="num right">{deg != null ? deg.toFixed(3) : "—"}</span>
+                      <span className="num right is-loss">{lost != null ? `+${lost.toFixed(2)} s` : "—"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     </div>
   );
-}
-
-function ordinal(n: number): string {
-  const words = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"];
-  return words[n - 1] ?? `${n}th`;
 }

@@ -183,13 +183,16 @@ describe("the tyres", () => {
                       compounds: null, observed_unavailable: undefined, scale: 1.5 } as unknown as Insight;
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     const { container } = render(<ScreenView id="tyres" ctx={context({ insight })} />);
-    const rows = Array.from(container.querySelectorAll(".tyre-table tbody tr"));
+    const rows = Array.from(container.querySelectorAll(".tyres-row:not(.is-head)"));
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.textContent).toContain("0.55 s");                   // RUS, 11 laps on mediums
-    const dashed = () => container.querySelectorAll('.wear-plot path[stroke-dasharray="2 5"]').length;
-    expect(dashed()).toBe(0);
+    expect(rows[0]!.textContent).toContain("+0.55 s");                  // RUS, 11 laps on mediums
+    expect(rows[0]!.textContent).toContain("9 laps");                    // to a second lost at age 20
+    expect(screen.getByText("1 s lost by lap 20 · 2 cars on it")).toBeDefined();
+    // What this race's laps did is hindsight: dots only when asked for.
+    const dots = () => container.querySelectorAll(".tyres-dot").length;
+    expect(dots()).toBe(0);
     fireEvent.click(screen.getByRole("button", { name: "What this race did" }));
-    expect(dashed()).toBe(1);
+    expect(dots()).toBe(3);
   });
 });
 

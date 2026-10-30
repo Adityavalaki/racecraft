@@ -2001,35 +2001,48 @@ button.prediction-row:hover { background: var(--panel-2); }
 .trace-driver:hover { background: #19191E; }
 
 /* ---- tyres */
-.tyres-top { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
-.wear-chart { display: grid; grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: 300px 22px; padding: 14px 18px 0 8px; }
-.wear-y { position: relative; font-size: 10.5px; color: var(--ink-faint); }
-.wear-y span { position: absolute; right: 8px; transform: translateY(-50%); }
-.wear-plot { position: relative; }
-.wear-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.wear-car { position: absolute; display: flex; align-items: center; gap: 4px; transform: translate(-6px, -50%); }
-.wear-car i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #0A0A0C; }
-.wear-car b { font-size: 14px; padding: 0 5px; border-radius: 4px; background: var(--ink); color: var(--ground); }
-.wear-mark { position: absolute; right: 4px; transform: translateY(-120%); font-size: 10.5px; color: var(--ink-soft); }
-.wear-x { position: relative; font-size: 10.5px; color: var(--ink-faint); }
-.wear-x span { position: absolute; top: 4px; transform: translateX(-50%); }
-.axis-caption { padding: 4px 16px 12px; font-size: 12px; color: var(--ink-soft); text-align: center; }
-.compound-cards { display: flex; flex-direction: column; gap: 12px; }
-.compound-card { padding-bottom: 6px; }
-.compound-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 6px; }
-.compound-card dl { margin: 0; padding: 4px 14px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; font-size: 13px; }
-.compound-card dt { color: var(--ink-soft); }
-.compound-card dd { margin: 0; text-align: right; }
-.tyre-table { width: 100%; border-collapse: collapse; }
-.tyre-table th, .tyre-table td { padding: 0 10px; height: 34px; font-size: 13px; text-align: left; border-bottom: 1px solid #1E1E24; }
-.tyre-table thead th { font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; color: var(--ink-soft); }
-.tyre-table th[scope="row"] { font-size: 18px; }
-.tyre-table tbody tr { cursor: pointer; }
-.tyre-table tbody tr:hover { background: #19191E; }
-.tyre-table tr.is-out { opacity: 0.5; }
-.age-bar { display: block; width: 100%; min-width: 120px; height: 8px; border-radius: 4px; background: var(--ground); overflow: hidden; }
-.age-bar i { display: block; height: 100%; background: var(--ink-mid); }
-.age-bar i.is-past { background: var(--worse); }
+/* Tyres as racecraft-ui.html draws it: compound tiles over the curves (1.15fr) beside every car's tyre now (1fr). */
+.tyres-body { overflow: hidden; }
+.tyres-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 6px; }
+.tyres-left { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+.tyres-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; flex: none; }
+.tyres-kpi { flex-direction: row !important; align-items: center; gap: 12px !important; }
+.tyres-kpi > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tyres-chart, .tyres-now { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.tyres-plot-wrap { flex: 1 1 auto; min-height: 0; display: flex; padding: 14px 18px 30px 46px; }
+.tyres-plot { position: relative; flex: 1 1 auto; }
+.tyres-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tyres-gl { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid #1A1E25; }
+.tyres-gl i { position: absolute; right: 100%; margin-right: 8px; transform: translateY(-50%); font-size: 10px; font-style: normal; color: var(--ink-faint); }
+.tyres-gv { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid #14171C; }
+.tyres-gv i { position: absolute; top: 100%; margin-top: 6px; transform: translateX(-50%); font-size: 10px; font-style: normal; color: var(--ink-faint); }
+.tyres-mark { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed; }
+.tyres-mark i { position: absolute; top: 2px; left: 4px; font-size: 9px; font-weight: 700; font-style: normal; white-space: nowrap; }
+.tyres-dot { position: absolute; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; opacity: 0.75; }
+.tyres-alloc { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--rule); background: #0C0E11; }
+.tyres-alloc > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.tyres-alloc > div > div { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 4px; background: #0C0E11; font-size: 11.5px; }
+.tyres-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.tyres-row { display: grid; grid-template-columns: 30px 3px 38px 52px minmax(80px, 1fr) 64px 62px 70px; align-items: center; gap: 8px; width: 100%; min-height: 28px;
+  padding: 0 12px; border: 0; border-bottom: 1px solid #161A1F; background: none; color: var(--ink); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+.tyres-row:hover { background: rgba(255, 255, 255, 0.03); }
+.tyres-row.is-selected { background: linear-gradient(90deg, rgba(76, 154, 255, 0.2), rgba(76, 154, 255, 0.05)); box-shadow: inset 3px 0 0 #4C9AFF; }
+.tyres-row.is-out { opacity: 0.5; }
+.tyres-row.is-head { position: sticky; top: 0; z-index: 3; height: 28px; background: #0B0D10; font-size: 9px; cursor: default; border-bottom: 1px solid var(--rule); }
+.tyres-row .right { text-align: right; }
+.tyres-row .team-bar { height: 60%; min-height: 12px; }
+.tyres-row .tyre-cell { gap: 4px; font-size: 10px; }
+.tyres-row .is-bad { color: #FF6B6B; }
+.tyres-row .is-loss { color: #FF9B9B; }
+.tyres-life { position: relative; height: 8px; border-radius: 2px; background: #1A1E25; overflow: hidden; }
+.tyres-life i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: #22C55E; }
+.tyres-life i.is-warn { background: #F59E0B; }
+.tyres-life i.is-bad { background: #EF4444; }
+@media (max-width: 1099px) {
+  .tyres-body { overflow: auto; }
+  .tyres-grid { grid-template-columns: minmax(0, 1fr); }
+  .tyres-chart, .tyres-now { min-height: 480px; }
+}
 
 /* ---- stewards */
 .stewards-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 12px; align-items: start; }
@@ -2141,7 +2154,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .score-row .num.is-ahead { color: var(--better); }
 
 @media (max-width: 1100px) {
-  .trace-layout, .tyres-top, .stewards-grid { grid-template-columns: minmax(0, 1fr); }
+  .trace-layout, .stewards-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* A screen's panels keep their own height; the screen scrolls, not the panel. */
@@ -2150,12 +2163,12 @@ button.prediction-row:hover { background: var(--panel-2); }
 .session-bar .session-meta { font-size: 12px; color: var(--ink-soft); }
 
 /* Bars that change value ease to it rather than jump; the trace and the map move every frame instead. */
-.podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span,
+.podium-bar i, .cursor-bars .bar i, .segments span,
 .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: width 0.25s ease, background-color 0.15s ease, color 0.15s ease; }
 .trace-cursor { will-change: left; }
 .track-map { will-change: contents; }
 @media (prefers-reduced-motion: reduce) {
-  .podium-bar i, .cursor-bars .bar i, .age-bar i, .segments span,
+  .podium-bar i, .cursor-bars .bar i, .segments span,
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
 
