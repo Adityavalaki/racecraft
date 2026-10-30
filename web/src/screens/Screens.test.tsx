@@ -146,7 +146,7 @@ describe("the stewards", () => {
     render(<ScreenView id="stewards" ctx={context({ stewards: [penalty], trackLog: [sc] })} />);
     expect(screen.getByText(/served at the next stop/)).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: "Track" }));
-    const list = within(screen.getByRole("region", { name: "Race control messages" }));
+    const list = within(screen.getByRole("region", { name: "Incidents" }));
     expect(list.getByText("Safety car deployed")).toBeDefined();
     expect(list.queryByText(/track limits/i)).toBeNull();
   });

@@ -2045,36 +2045,43 @@ button.prediction-row:hover { background: var(--panel-2); }
 }
 
 /* ---- stewards */
-.stewards-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 12px; align-items: start; }
-.message-list { display: flex; flex-direction: column; max-height: 520px; overflow-y: auto; }
-.message { display: grid; grid-template-columns: 10px 40px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 10px 14px;
-  background: transparent; border: 0; border-bottom: 1px solid #1E1E24; color: var(--ink-mid); text-align: left; font-size: 13.5px; line-height: 1.35; }
-.message:hover { background: #19191E; }
-.message.is-on { background: var(--row-picked); color: var(--ink); box-shadow: inset 3px 0 0 var(--signal); }
-.message-when { font-size: 11px; color: var(--ink-soft); }
-.message-detail { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
-.detail-tags { display: flex; gap: 8px; }
-.detail-title { margin: 0; font-size: 28px; line-height: 1.1; }
-.detail-body { margin: 0; font-size: 14px; color: var(--ink-mid); line-height: 1.5; }
-.detail-facts { margin: 4px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.detail-facts > div { padding: 10px; border-radius: 8px; background: #19191E; }
-.detail-facts dt { font-size: 11.5px; color: var(--ink-soft); }
-.detail-facts dd { margin: 4px 0 0; font-size: 14px; }
-.detail-facts dd.display { font-size: 20px; }
-.detail-source { margin: 0; font-size: 12px; color: var(--ink-faint); }
-.flag-lane { padding: 14px 16px; }
-.flag-track { position: relative; height: 18px; border-radius: 9px; background: #26262D; overflow: hidden; }
-.flag-band { position: absolute; top: 0; bottom: 0; }
-.flag-band.is-yellow, .flag-swatch.is-yellow { background: var(--worse); }
-.flag-band.is-sc, .flag-swatch.is-sc { background: var(--sc); }
-.flag-band.is-vsc, .flag-swatch.is-vsc { background: #FFC079; }
-.flag-band.is-red, .flag-swatch.is-red { background: var(--red); }
-.flag-axis { position: relative; height: 18px; font-size: 10.5px; color: var(--ink-faint); }
-.flag-axis span { position: absolute; top: 3px; transform: translateX(-50%); }
-.flag-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--ink-mid); }
-.flag-list li { display: flex; align-items: center; gap: 8px; }
-.flag-list .num { color: var(--ink-soft); }
-.flag-swatch { width: 12px; height: 12px; border-radius: 3px; }
+/* Stewards as racecraft-ui.html draws it: four tiles over incidents beside their details, two equal columns. */
+.stewards-body { overflow: hidden; }
+.stewards-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.stewards-grid > .panel { display: flex; flex-direction: column; min-height: 0; }
+.stewards-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.stewards-inc { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: start; width: 100%; padding: 10px 12px; border: 0;
+  border-bottom: 1px solid #161A1F; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.stewards-inc:hover { background: #13161A; }
+.stewards-inc.is-selected { background: linear-gradient(90deg, rgba(76, 154, 255, 0.16), rgba(76, 154, 255, 0.03)); box-shadow: inset 3px 0 0 #4C9AFF; }
+.stewards-when { display: flex; flex-direction: column; gap: 1px; }
+.stewards-when b { font-size: 12px; color: #C9CED6; }
+.stewards-when span { font-size: 9.5px; color: var(--ink-faint); }
+.stewards-what { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stewards-what b { font-size: 12.5px; font-weight: 600; }
+.stewards-cars { display: flex; gap: 6px; flex-wrap: wrap; }
+.stewards-cars span { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; }
+.stewards-cars i, .stewards-chip i { width: 3px; height: 11px; border-radius: 1px; }
+.stewards-title { text-transform: none !important; letter-spacing: 0.02em !important; font-size: 14px !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stewards-detail { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: 14px; }
+.stewards-detail .inspector-figures { border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.stewards-fact { font-size: 12px !important; font-weight: 700; }
+.stewards-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.stewards-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 6px; border-radius: 4px; background: #13161A; border: 1px solid #2A2F36; font-size: 12px; }
+.stewards-chip i { height: 16px; }
+.stewards-timeline { position: relative; list-style: none; margin: 0; padding: 0 0 0 26px; display: flex; flex-direction: column; gap: 12px; }
+.stewards-timeline::before { content: ""; position: absolute; left: 6px; top: 4px; bottom: 4px; width: 2px; background: #1F2329; }
+.stewards-timeline li { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.stewards-timeline li::before { content: ""; position: absolute; left: -24px; top: 3px; width: 8px; height: 8px; border-radius: 50%; background: #AEB4BD; box-shadow: 0 0 0 3px var(--panel); }
+.stewards-timeline li.is-red::before { background: #FF6B6B; }
+.stewards-timeline li.is-yellow::before, .stewards-timeline li.is-amber::before { background: #FBBF24; }
+.stewards-timeline li.is-green::before { background: #4ADE80; }
+.stewards-timeline .num { font-size: 10px; color: var(--ink-faint); }
+.stewards-timeline q { font-size: 12px; line-height: 1.5; color: #D6DAE0; quotes: none; }
+@media (max-width: 1099px) {
+  .stewards-body { overflow: auto; }
+  .stewards-grid > .panel { min-height: 420px; }
+}
 
 /* ---- the What-if board's stint chart, as the old stint map drew it */
 .stint-axis { display: grid; grid-template-columns: 70px minmax(0, 1fr); height: 18px; font-size: 10.5px; color: var(--ink-faint); }

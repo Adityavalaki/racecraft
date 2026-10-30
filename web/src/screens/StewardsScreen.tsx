@@ -6,7 +6,7 @@ import { verdictLabel } from "../panels/Stewards";
 import { LapCounter } from "../shell/ScreenHeader";
 import type { ScreenContext } from "./ScreenView";
 
-type Filter = "all" | "incidents" | "track";
+type Filter = "all" | "open" | "decided" | "track";
 
 export interface Explanation {
   kind: string;
@@ -72,70 +72,60 @@ export function explain(event: RaceControlEvent, who: string): Explanation {
   }
 }
 
-const PERIODS: Record<string, { label: string; className: string }> = {
-  "2": { label: "Yellow flag", className: "is-yellow" },
-  "4": { label: "Safety car", className: "is-sc" },
-  "5": { label: "Red flag", className: "is-red" },
-  "6": { label: "Virtual safety car", className: "is-vsc" },
-  "7": { label: "Virtual safety car", className: "is-vsc" },
-};
+/** One incident: every stewards' message about the same incident (or, without one, the same cars), oldest first. */
+interface Incident { id: string; msgs: RaceControlEvent[]; latest: RaceControlEvent; cars: number[]; track: boolean }
+
+/** An incident still waiting on the stewards: its latest message is an investigation or a note. */
+const OPEN_KINDS = new Set(["under_investigation", "investigate_after_race", "noted"]);
 
 /**
- * Every race control message, with what it means for the result. The list is
- * in feed order; picking one explains it. Under it, the flags and the safety
- * car across the race, read off the timeline. Following a driver narrows the
- * verdicts to them.
+ * Race control as incidents, as racecraft-ui.html draws it (D-025): the
+ * stewards' messages grouped by incident, newest first, each standing where its
+ * latest message left it; track messages each stand alone. Picking one shows
+ * the cars, the offence, the outcome and every message about it. Following a
+ * driver narrows the incidents to them. The feed carries no penalty points, so
+ * none are shown.
  */
 export function StewardsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [picked, setPicked] = useState<string | null>(null);
   const codeOf = (car: number) => ctx.driverCodes[car] ?? String(car);
-  const all = useMemo(() => [...(ctx.stewards ?? []), ...(ctx.trackLog ?? [])]
-    .filter((e) => e && e.message && e.kind !== "lap_deleted")
-    .sort((a, b) => a.t - b.t), [ctx.stewards, ctx.trackLog]);
-  const shown = all.filter((e) => {
-    const verdict = e.stewards || e.topic === "stewards";
-    if (filter === "incidents" && !verdict) return false;
-    if (filter === "track" && verdict) return false;
-    if (verdict && ctx.selected.length && !e.cars.some((c) => ctx.selected.includes(c))) return false;
-    return true;
-  });
-  const keyOf = (e: RaceControlEvent) => `${e.t}:${e.message}`;
-  const current = shown.find((e) => keyOf(e) === picked) ?? shown[shown.length - 1] ?? null;
+  const incidents = useMemo(() => {
+    const groups = new Map<string, Incident>();
+    const events = [...(ctx.stewards ?? []), ...(ctx.trackLog ?? [])]
+      .filter((e) => e && e.message && e.kind !== "lap_deleted").sort((a, b) => a.t - b.t);
+    for (const e of events) {
+      const track = !(e.stewards || e.topic === "stewards");
+      const id = track ? `t:${e.t}:${e.message}` : `s:${e.incident ?? [...e.cars].sort().join(",")}`;
+      const group = groups.get(id);
+      if (group) {
+        group.msgs.push(e);
+        group.latest = e;
+        group.cars = [...new Set([...group.cars, ...e.cars])];
+      } else groups.set(id, { id, msgs: [e], latest: e, cars: [...e.cars], track });
+    }
+    return [...groups.values()].sort((a, b) => b.latest.t - a.latest.t);
+  }, [ctx.stewards, ctx.trackLog]);
+  const isOpen = (i: Incident) => !i.track && OPEN_KINDS.has(i.latest.kind);
+  const tests: Record<Filter, (i: Incident) => boolean> = {
+    all: () => true, open: isOpen, decided: (i) => !i.track && !isOpen(i), track: (i) => i.track,
+  };
+  const mine = incidents.filter((i) => i.track || !ctx.selected.length || i.cars.some((c) => ctx.selected.includes(c)));
+  const shown = mine.filter(tests[filter]);
+  const current = shown.find((i) => i.id === picked) ?? shown[0] ?? null;
   const who = current ? current.cars.map(codeOf).join(", ") : "";
-  const detail = current ? explain(current, who) : null;
-
-  // Flag and safety-car periods, in laps, from the status changes and the leader's crossings.
-  const total = ctx.info.total_laps ?? Math.max(1, ctx.state?.leader_lap ?? 1);
-  const periods = useMemo(() => {
-    const statuses = [...(ctx.info.track_status ?? [])].sort((a, b) => a.t - b.t);
-    const crossings = ctx.crossings;
-    const lapAt = (t: number) => {
-      if (!crossings?.t.length) return null;
-      const k = crossings.t.findIndex((end) => end >= t);
-      return k < 0 ? total : crossings.laps[k]!;
-    };
-    const out: { from: number; to: number; status: string }[] = [];
-    statuses.forEach((change, i) => {
-      if (!PERIODS[change.status] || change.t > (ctx.state?.t ?? Infinity)) return;
-      const from = lapAt(change.t);
-      const to = lapAt(statuses[i + 1]?.t ?? ctx.info.t_end);
-      if (from == null || to == null) return;
-      // Several changes of the same flag on the same laps (the feed repeats them) read as one period.
-      const last = out[out.length - 1];
-      if (last && last.status === change.status && from <= last.to + 1) last.to = Math.max(last.to, to);
-      else out.push({ from, to: Math.max(to, from), status: change.status });
-    });
-    return out;
-  }, [ctx.info, ctx.crossings, ctx.state?.t, total]);
+  const detail = current ? explain(current.latest, who) : null;
+  const offence = current?.msgs.find((m) => m.reason)?.reason;
+  const driverOf = (n: number) => ctx.info.drivers?.find((d) => d.driver_number === n);
+  const lapOf = (e: RaceControlEvent) => (e.lap != null ? `L${e.lap}` : formatClock(e.t - ctx.info.t_start));
 
   const switcher = (
     <>
       <LapCounter lap={ctx.state?.leader_lap ?? 0} total={ctx.info.total_laps} />
       <div className="segmented" role="radiogroup" aria-label="Filter">
-        {([["all", "All"], ["incidents", "Incidents"], ["track", "Track"]] as [Filter, string][]).map(([key, text]) => (
-          <button key={key} type="button" role="radio" aria-checked={filter === key} className={filter === key ? "is-on" : ""}
-                  onClick={() => setFilter(key)}>{text}</button>
+        {([["all", "All"], ["open", "Open"], ["decided", "Decided"], ["track", "Track"]] as [Filter, string][]).map(([f, text]) => (
+          <button key={f} type="button" role="radio" aria-checked={filter === f} aria-label={text} className={filter === f ? "is-on" : ""}
+                  onClick={() => setFilter(f)}>{text} <span className="num">{mine.filter(tests[f]).length}</span></button>
         ))}
       </div>
     </>
@@ -143,77 +133,79 @@ export function StewardsScreen({ ctx, header }: { ctx: ScreenContext; header: (c
   return (
     <div className="screen">
       {header(switcher)}
-      <main className="screen-body">
+      <main className="screen-body stewards-body">
         <KpiRow tiles={stewardsTiles(ctx.stewards ?? [])} />
         <div className="stewards-grid">
-          <section className="panel" aria-label="Race control messages">
+          <section className="panel" aria-label="Incidents">
             <div className="panel-bar">
-              <h2>Messages</h2>
-              <span className="panel-meta">In feed order{ctx.selected.length ? `; verdicts for ${ctx.selected.map(codeOf).join(" and ")} only` : ""}.</span>
+              <h2>Incidents</h2>
+              <span className="panel-meta">newest first · click one for the details{ctx.selected.length ? ` · ${ctx.selected.map(codeOf).join(" and ")} only` : ""}</span>
             </div>
-            {shown.length === 0 ? <p className="empty">Nothing from race control yet.</p> : (
-              <div className="message-list">
-                {shown.map((e) => {
-                  const verdict = e.stewards || e.topic === "stewards";
-                  const names = e.cars.map(codeOf).join(", ");
-                  const on = current != null && keyOf(e) === keyOf(current);
-                  return (
-                    <button key={keyOf(e)} type="button" aria-pressed={on} className={`message${on ? " is-on" : ""}`}
-                            onClick={() => setPicked(keyOf(e))}>
-                      <span className={`rc-dot is-${tone(e)}`} aria-hidden="true" />
-                      <span className="num message-when">{e.lap != null ? `L${e.lap}` : formatClock(e.t - ctx.info.t_start)}</span>
-                      <span className="message-text">{verdict && names && e.reason ? `${names}: ${sentence(e.reason)}` : sentence(e.message)}</span>
-                      {verdict && <span className={`rc-tag is-${tone(e)}`}>{verdictLabel(e)}</span>}
-                    </button>
-                  );
-                })}
+            {shown.length === 0 ? <p className="empty">Nothing from race control here yet.</p> : (
+              <div className="stewards-list">
+                {shown.map((i) => (
+                  <button key={i.id} type="button" aria-pressed={current?.id === i.id}
+                          className={`stewards-inc${current?.id === i.id ? " is-selected" : ""}`} onClick={() => setPicked(i.id)}>
+                    <span className="stewards-when"><b className="num">{lapOf(i.latest)}</b><span className="num">{formatClock(i.latest.t - ctx.info.t_start)}</span></span>
+                    <span className="stewards-what">
+                      <b>{sentence(i.track ? i.latest.message : i.msgs.find((m) => m.reason)?.reason ?? i.latest.message)}</b>
+                      {i.cars.length > 0 && (
+                        <span className="stewards-cars">
+                          {i.cars.map((c) => <span key={c} className="num"><i style={{ background: `#${driverOf(c)?.team_color ?? "777"}` }} />{codeOf(c)}</span>)}
+                        </span>
+                      )}
+                    </span>
+                    {i.track ? <span className={`rc-dot is-${tone(i.latest)}`} aria-hidden="true" />
+                      : <span className={`rc-tag is-${tone(i.latest)}`}>{verdictLabel(i.latest)}</span>}
+                  </button>
+                ))}
               </div>
             )}
           </section>
-          <section className="panel message-detail" aria-label="Message detail" aria-live="polite">
+          <section className="panel" aria-label="Incident details" aria-live="polite">
             {detail && current ? (
               <>
-                <div className="detail-tags">
-                  <span className="tag">{detail.kind}</span>
-                  <span className="tag">{current.lap != null ? `Lap ${current.lap}` : formatClock(current.t - ctx.info.t_start)}</span>
+                <div className="panel-bar">
+                  {!current.track && <span className={`rc-tag is-${tone(current.latest)}`}>{verdictLabel(current.latest)}</span>}
+                  <h2 className="stewards-title">{detail.title}</h2>
+                  <span className="panel-meta">{current.latest.lap != null ? `Lap ${current.latest.lap}` : formatClock(current.latest.t - ctx.info.t_start)}</span>
                 </div>
-                <p className="display detail-title">{detail.title}</p>
-                <p className="detail-body">{detail.body}</p>
-                <dl className="detail-facts">
-                  <div><dt>Applies to</dt><dd className="display">{who || "All cars"}</dd></div>
-                  <div><dt>Status</dt><dd>{detail.status}</dd></div>
-                  <div><dt>Effect on the race</dt><dd>{detail.effect}</dd></div>
-                </dl>
-                <p className="detail-source">In race control's words: <q>{current.message}</q></p>
+                <div className="stewards-detail">
+                  {current.cars.length > 0 && (
+                    <div className="inspector-block">
+                      <span className="cap">Cars involved</span>
+                      <div className="stewards-chips">
+                        {current.cars.map((c) => (
+                          <span key={c} className="stewards-chip">
+                            <i style={{ background: `#${driverOf(c)?.team_color ?? "777"}` }} /><b className="num">{codeOf(c)}</b>
+                            <span className="panel-meta">#{c} {driverOf(c)?.full_name ?? ""}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="inspector-figures">
+                    <div><span className="cap">{current.track ? "Kind" : "Offence"}</span><b className="stewards-fact">{current.track ? detail.kind : offence ? sentence(offence) : "Not given"}</b></div>
+                    <div><span className="cap">Outcome</span><b className="stewards-fact">{detail.status}</b></div>
+                    <div><span className="cap">Effect on the race</span><b className="stewards-fact">{detail.effect}</b></div>
+                  </div>
+                  <p className="inspector-note">{detail.body}</p>
+                  <div className="inspector-block">
+                    <span className="cap">Race control messages</span>
+                    <ol className="stewards-timeline">
+                      {current.msgs.map((m) => (
+                        <li key={`${m.t}:${m.message}`} className={`is-${tone(m)}`}>
+                          <span className="num">{lapOf(m)} · {formatClock(m.t - ctx.info.t_start)}</span>
+                          <q>{m.message}</q>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
               </>
-            ) : <p className="empty">Pick a message to see what it means.</p>}
+            ) : <p className="empty">Pick an incident to see what it means.</p>}
           </section>
         </div>
-
-        <section className="panel" aria-label="Flags and safety car">
-          <div className="panel-bar"><h2>Flags and safety car</h2><span className="panel-meta">Up to now, read off the race timeline: laps are the leader's.</span></div>
-          <div className="flag-lane">
-            <div className="flag-track">
-              {periods.map((p, k) => (
-                <span key={k} className={`flag-band ${PERIODS[p.status]!.className}`} title={PERIODS[p.status]!.label}
-                      style={{ left: `${((p.from - 1) / Math.max(total, 1)) * 100}%`, width: `${Math.max((p.to - p.from + 1) / Math.max(total, 1), 0.006) * 100}%` }} />
-              ))}
-            </div>
-            <div className="flag-axis num">
-              {Array.from({ length: Math.floor(total / 10) + 1 }, (_, k) => k * 10).map((lap) => (
-                <span key={lap} style={{ left: `${(lap / Math.max(total, 1)) * 100}%` }}>{lap}</span>
-              ))}
-            </div>
-            {periods.length === 0 ? <p className="empty">No flags or safety car so far.</p> : (
-              <ul className="flag-list">
-                {periods.map((p, k) => (
-                  <li key={k}><span className={`flag-swatch ${PERIODS[p.status]!.className}`} />{PERIODS[p.status]!.label}
-                    <span className="num">{p.from === p.to ? `L${p.from}` : `L${p.from}–${p.to}`}</span></li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
       </main>
     </div>
   );
