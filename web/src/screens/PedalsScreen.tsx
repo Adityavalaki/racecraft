@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { api, formatLapTime, type LapComparison, type LapTrace } from "../api";
-import { FLAT_OUT } from "../panels/TrackMap";
 import type { ScreenContext } from "./ScreenView";
 
 const isAbort = (e: Error) => e.name === "AbortError";
 const comparisons = new Map<string, LapComparison>();
 
-/** Where the reference is drawn: grey and dashed, behind the subject. */
+/** The reference's colour when both drivers share a team colour. */
 const REFERENCE = "#9A9AA6";
 
 /**
- * Pedals and speed: one lap of one driver against another's, metre for metre.
- *
- * The subject's lap and the reference's are laid along the subject's distance,
- * with the time between them on top: speed, throttle, the brake (on or off,
- * which is all the public feed says) and gear beneath, the corners marked
- * along the top. A cursor runs through every trace and the pedal map, and the
- * brake zones are listed corner by corner, the reference's beside each.
+ * Pedals and speed: one lap of one driver against another's, metre for metre,
+ * as racecraft-ui.html lays it out. Both laps are drawn along the subject's
+ * distance in the two drivers' colours: speed, the time between them, the
+ * throttle, the brake (on or off, which is all the public feed says) and gear,
+ * the corners marked along the top. Beside them the circuit coloured by who
+ * gains where, and the corners: minimum speeds and where each began braking.
  */
 export function PedalsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const order = ctx.state?.drivers ?? [];
@@ -24,7 +22,6 @@ export function PedalsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
   const [subject, setSubject] = useState<number | null>(null);
   const [reference, setReference] = useState<number | null>(null);
   const [lap, setLap] = useState<number | null>(null);
-  const [ghost, setGhost] = useState(true);
   const [cursor, setCursor] = useState(0);
   const [answer, setAnswer] = useState<LapComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,9 +110,9 @@ export function PedalsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
         {error && <p className="panel-note error">{error}</p>}
         {!answer && !error && <p className="panel-note">Loading both laps…</p>}
         {answer && (
-          <Comparison answer={answer} ghost={ghost} onGhost={() => setGhost((on) => !on)} cursor={cursor}
-                      onCursor={setCursor} subjectColour={colour(subjectNumber)} subjectCode={code(subjectNumber)}
-                      referenceCode={code(referenceNumber)} rotation={Number(ctx.info.session.circuit_rotation_deg ?? 0)} />
+          <Comparison answer={answer} cursor={cursor} onCursor={setCursor} colourA={colour(subjectNumber)}
+                      colourB={colour(referenceNumber)} codeA={code(subjectNumber)} codeB={code(referenceNumber)}
+                      rotation={Number(ctx.info.session.circuit_rotation_deg ?? 0)} />
         )}
       </main>
     </div>
@@ -160,15 +157,14 @@ function at(trace: LapTrace, metres: number): number {
   return Math.min(trace.distance.length - 1, Math.max(0, Math.round(metres / trace.step_m)));
 }
 
-function Comparison({ answer, ghost, onGhost, cursor, onCursor, subjectColour, subjectCode, referenceCode, rotation }: {
+function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, rotation }: {
   answer: LapComparison;
-  ghost: boolean;
-  onGhost: () => void;
   cursor: number;
   onCursor: (metres: number) => void;
-  subjectColour: string;
-  subjectCode: string;
-  referenceCode: string;
+  colourA: string;
+  colourB: string;
+  codeA: string;
+  codeB: string;
   rotation: number;
 }) {
   const { subject, reference, delta } = answer;
@@ -179,185 +175,131 @@ function Comparison({ answer, ghost, onGhost, cursor, onCursor, subjectColour, s
   const metres = Math.min(Math.max(cursor, 0), length);
   const i = at(subject, metres);
   const j = at(reference, metres / stretch);
+  // Teammates share a colour: the reference then goes grey, so the two lines stay apart.
+  const colourRef = colourB.toLowerCase() === colourA.toLowerCase() ? REFERENCE : colourB;
 
   const paths = useMemo(() => {
     const line = (trace: LapTrace, xs: (m: number) => number, value: (k: number) => number) =>
       trace.distance.map((d, k) => `${k ? "L" : "M"}${xs(d).toFixed(1)} ${value(k).toFixed(1)}`).join("");
-    const speedY = (v: number) => 168 - ((Math.min(Math.max(v, 40), 350) - 40) / 310) * 160;
-    const throttleY = (v: number) => 86 - (Math.min(Math.max(v, 0), 100) / 100) * 80;
-    const gearY = (g: number) => 66 - (Math.min(Math.max(g, 1), 8) - 1) / 7 * 58;
-    const blocks = (trace: LapTrace, xs: (m: number) => number, top: number, bottom: number) => {
-      let d = "";
-      let start = -1;
-      trace.brake.forEach((on, k) => {
-        if (on && start < 0) start = k;
-        if ((!on || k === trace.brake.length - 1) && start >= 0) {
-          d += `M${xs(trace.distance[start]!).toFixed(1)} ${top}H${xs(trace.distance[k]!).toFixed(1)}V${bottom}H${xs(trace.distance[start]!).toFixed(1)}Z`;
-          start = -1;
-        }
-      });
+    const speedY = (v: number) => 94 - ((Math.min(Math.max(v, 60), 345) - 60) / 285) * 88;
+    const throttleY = (v: number) => 56 - (Math.min(Math.max(v, 0), 100) / 100) * 52;
+    const gearY = (g: number) => 54 - ((Math.min(Math.max(g, 1), 8) - 1) / 7) * 48;
+    const brakeY = (on: boolean) => (on ? 4 : 26);
+    const step = (trace: LapTrace, xs: (m: number) => number) => {
+      let d = `M0 ${brakeY(Boolean(trace.brake[0]))}`;
+      trace.distance.forEach((m, k) => { d += `H${xs(m).toFixed(1)}V${brakeY(Boolean(trace.brake[k]))}`; });
       return d;
     };
     const maxDelta = Math.max(0.1, ...delta.delta_s.map((v) => Math.abs(v)));
     // Ahead (negative) is up, behind is down.
-    const deltaY = (v: number) => 42 + (v / maxDelta) * 36;
+    const deltaY = (v: number) => 30 + (v / maxDelta) * 26;
+    const deltaLine = delta.distance.map((d, k) => `${k ? "L" : "M"}${x(d).toFixed(1)} ${deltaY(delta.delta_s[k]!).toFixed(1)}`).join("");
     return {
-      maxDelta,
-      delta: delta.distance.map((d, k) => `${k ? "L" : "M"}${x(d).toFixed(1)} ${deltaY(delta.delta_s[k]!).toFixed(1)}`).join(""),
-      speed: line(subject, x, (k) => speedY(subject.speed[k]!)),
-      speedRef: line(reference, refX, (k) => speedY(reference.speed[k]!)),
-      throttle: line(subject, x, (k) => throttleY(subject.throttle[k]!)),
-      throttleRef: line(reference, refX, (k) => throttleY(reference.throttle[k]!)),
-      gear: line(subject, x, (k) => gearY(subject.gear[k]!)),
-      gearRef: line(reference, refX, (k) => gearY(reference.gear[k]!)),
-      brake: blocks(subject, x, 8, 30),
-      brakeRef: blocks(reference, refX, 36, 52),
+      delta: deltaLine,
+      deltaFill: delta.distance.length ? `${deltaLine}L${x(delta.distance[delta.distance.length - 1]!).toFixed(1)} 30L0 30Z` : "",
+      speed: [line(subject, x, (k) => speedY(subject.speed[k]!)), line(reference, refX, (k) => speedY(reference.speed[k]!))],
+      throttle: [line(subject, x, (k) => throttleY(subject.throttle[k]!)), line(reference, refX, (k) => throttleY(reference.throttle[k]!))],
+      brake: [step(subject, x), step(reference, refX)],
+      gear: [line(subject, x, (k) => gearY(subject.gear[k]!)), line(reference, refX, (k) => gearY(reference.gear[k]!))],
     };
     // x and refX follow from the two lengths, which `answer` fixes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answer]);
 
-  const gapNow = delta.delta_s[i] ?? 0;
+  const deltaAt = (m: number) => {
+    const n = delta.distance.length;
+    if (!n) return 0;
+    const stepM = n > 1 ? delta.distance[1]! - delta.distance[0]! : 1;
+    return delta.delta_s[Math.min(n - 1, Math.max(0, Math.round(m / (stepM || 1))))] ?? 0;
+  };
+  const gapNow = deltaAt(metres);
+  const speedDiff = (subject.speed[i] ?? 0) - (reference.speed[j] ?? 0);
+  const sign = (v: number, digits: number) => `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(digits)}`;
   const scrub = (event: MouseEvent<HTMLDivElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     onCursor(((event.clientX - box.left) / box.width) * length);
   };
-  const corner = [...subject.corners].reverse().find((c) => c.distance <= metres + 60);
+  const final = delta.final_s;
+  const finalColour = final == null ? "var(--ink-mid)" : final <= 0 ? colourA : colourRef;
+  const cursorLeft = `${(metres / length) * 100}%`;
+  const corners = spacedCorners(subject.corners, length);
+  const channel = (name: string, unit: string, values: ReactNode, flex: number, label: string, h: number, body: ReactNode) => (
+    <div className="pc-ch" style={{ flex: `${flex} 1 0` }}>
+      <div className="pc-label"><span className="cap">{name} {unit && <small>{unit}</small>}</span><div className="pc-vals num">{values}</div></div>
+      <div className="pc-plot" onClick={scrub}>
+        {corners.map((c) => <span key={`${c.number}${c.letter ?? ""}`} className="pc-corner" style={{ left: `${(c.distance / length) * 100}%` }} />)}
+        <svg viewBox={`0 0 1000 ${h}`} preserveAspectRatio="none" role="img" aria-label={label}>{body}</svg>
+        <span className="pc-cursor" style={{ left: cursorLeft }} aria-hidden="true" />
+      </div>
+    </div>
+  );
+  const two = (a: ReactNode, b: ReactNode) => <><span style={{ color: colourA }}>{a}</span><span style={{ color: colourRef }}>{b}</span></>;
+  const pair = (ds: string[], width = 1.6) => (
+    <>
+      <path d={ds[1]} fill="none" stroke={colourRef} strokeWidth={width - 0.1} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <path d={ds[0]} fill="none" stroke={colourA} strokeWidth={width + 0.1} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </>
+  );
 
   return (
-    <>
-      <div className="pedals-grid">
-        <section className="panel pedal-traces" aria-label="Lap traces">
-          <div className="panel-bar">
-            <h2>Traces by distance</h2>
-            <span className="legend"><i className="is-speed" />Speed</span>
-            <span className="legend"><i className="is-throttle" />Throttle</span>
-            <span className="legend"><i className="is-brake" />Brake</span>
-            <span className="legend"><i className="is-reference" />{referenceCode}, reference</span>
-            <button type="button" className={`toggle${ghost ? " is-on" : ""}`} aria-pressed={ghost} onClick={onGhost}>
-              Show reference lap
-            </button>
+    <div className="pedals-grid">
+      <section className="panel pedal-traces" aria-label="Lap comparison">
+        <div className="panel-bar">
+          <h2>Lap comparison</h2>
+          <span className="panel-meta">by lap distance · click a channel to move the cursor</span>
+          <span className="pc-legend num" style={{ marginLeft: "auto" }}><i style={{ background: colourA }} /><b>{codeA}</b><span className="muted">{formatLapTime(subject.lap_time_s)}</span></span>
+          <span className="pc-legend num"><i style={{ background: colourRef }} /><b>{codeB}</b><span className="muted">{formatLapTime(reference.lap_time_s)}</span></span>
+          {final != null && <span className="pc-chip num" style={{ color: finalColour }}>Δ {sign(final, 3)} s</span>}
+        </div>
+        <div className="pc-body">
+          <div className="pc-ruler num" aria-hidden="true">
+            {corners.map((c) => <span key={`${c.number}${c.letter ?? ""}`} style={{ left: `${(c.distance / length) * 100}%` }}>{c.number}{c.letter ?? ""}</span>)}
           </div>
-          <div className="trace-stack" onMouseMove={scrub} onClick={scrub}>
-            <div className="trace-row corners-row">
-              <span className="trace-name">Turn</span>
-              <div className="trace-plot corners">
-                {spacedCorners(subject.corners, length).map((c) => (
-                  <span key={`${c.number}${c.letter ?? ""}`} style={{ left: `${(c.distance / length) * 100}%` }}>
-                    {c.number}{c.letter ?? ""}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <TraceRow name="Gap" unit={`${subjectCode} vs ${referenceCode}`} height={84}
-                      label={`Time gap between the two laps: ${subjectCode} ${gapNow <= 0 ? "ahead" : "behind"} by ${Math.abs(gapNow).toFixed(3)} s here`}>
-              <line x1="0" x2="1000" y1="42" y2="42" stroke="#45454F" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-              <path d={paths.delta} fill="none" stroke="var(--ink)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
-              <text x="4" y="12" className="axis-note">{subjectCode} ahead by {paths.maxDelta.toFixed(2)} s</text>
-              <text x="4" y="80" className="axis-note">{subjectCode} behind by {paths.maxDelta.toFixed(2)} s</text>
-            </TraceRow>
-            <TraceRow name="Speed" unit="km/h" height={176} label="Speed against distance">
-              {ghost && <path d={paths.speedRef} fill="none" stroke={REFERENCE} strokeWidth="1.4" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}
-              <path d={paths.speed} fill="none" stroke="var(--speed)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-            </TraceRow>
-            <TraceRow name="Throttle" unit="% open" height={92} label="Throttle against distance">
-              {ghost && <path d={paths.throttleRef} fill="none" stroke={REFERENCE} strokeWidth="1.3" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}
-              <path d={paths.throttle} fill="none" stroke="var(--throttle)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
-            </TraceRow>
-            <TraceRow name="Brake" unit="on or off" height={60} label="Brake on and off against distance">
-              <path d={paths.brake} fill="var(--brake)" />
-              {ghost && <path d={paths.brakeRef} fill={REFERENCE} opacity="0.7" />}
-            </TraceRow>
-            <TraceRow name="Gear" unit="1 to 8" height={72} label="Gear against distance">
-              {ghost && <path d={paths.gearRef} fill="none" stroke={REFERENCE} strokeWidth="1.3" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />}
-              <path d={paths.gear} fill="none" stroke="var(--ink-mid)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-            </TraceRow>
-            <div className="trace-cursor" style={{ left: `calc(var(--trace-name-w) + (100% - var(--trace-name-w)) * ${metres / length})` }}
-                 aria-hidden="true"><span className="num">{Math.round(metres)} m</span></div>
+          {channel("Speed", "km/h", two(Math.round(subject.speed[i] ?? 0), Math.round(reference.speed[j] ?? 0)), 2, "Speed against distance", 100, pair(paths.speed, 1.6))}
+          {channel("Delta", "s", <span style={{ color: gapNow <= 0 ? colourA : colourRef }}>{sign(gapNow, 3)} s</span>, 1.1,
+            `Time between the laps: ${codeA} ${gapNow <= 0 ? "ahead" : "behind"} by ${Math.abs(gapNow).toFixed(3)} s here`, 60,
+            <>
+              <path d="M0 30H1000" stroke="#FFFFFF" strokeOpacity=".2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+              <path d={paths.deltaFill} fill={colourA} fillOpacity=".12" />
+              <path d={paths.delta} fill="none" stroke="#F2F3F5" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+            </>)}
+          {channel("Throttle", "%", two(Math.round(subject.throttle[i] ?? 0), Math.round(reference.throttle[j] ?? 0)), 1, "Throttle against distance", 60, pair(paths.throttle))}
+          {channel("Brake", "", two(subject.brake[i] ? "ON" : "OFF", reference.brake[j] ? "ON" : "OFF"), 0.55, "Brake on and off against distance", 30, pair(paths.brake))}
+          {channel("Gear", "", two(subject.gear[i] ?? "—", reference.gear[j] ?? "—"), 0.9, "Gear against distance", 60, pair(paths.gear))}
+          <div className="pc-axis num" aria-hidden="true">
+            {Array.from({ length: Math.floor(length / 1000) + 1 }, (_, km) => (
+              <span key={km} style={{ left: `${((km * 1000) / length) * 100}%` }}>{km} km</span>
+            ))}
           </div>
           <div className="cursor-control">
-            <label htmlFor="pedal-cursor">Cursor</label>
+            <label htmlFor="pedal-cursor" className="cap">Cursor</label>
             <input id="pedal-cursor" type="range" min={0} max={Math.round(length)} step={5} value={Math.round(metres)}
                    onChange={(e) => onCursor(Number(e.target.value))} aria-label="Cursor position along the lap in metres" />
           </div>
-        </section>
-
-        <div className="pedals-side">
-          <PedalMap trace={subject} cursor={i} rotation={rotation} code={subjectCode} />
-          <section className="panel at-cursor" aria-label="At the cursor">
-            <div className="panel-bar">
-              <h2>At the cursor</h2>
-              <span className="panel-meta num">{Math.round(metres)} m{corner ? ` · after turn ${corner.number}${corner.letter ?? ""}` : ""}</span>
-            </div>
-            <div className="at-cursor-body">
-              <CursorCar code={subjectCode} colour={subjectColour} role="Subject" trace={subject} k={i} />
-              <CursorCar code={referenceCode} colour={REFERENCE} role="Reference" trace={reference} k={j} />
-              <div className="cursor-gap">
-                <span>Gap at this point</span>
-                <span className={`num ${gapNow <= 0 ? "is-better" : "is-worse"}`}>
-                  {subjectCode} {gapNow <= 0 ? "ahead" : "behind"} by {Math.abs(gapNow).toFixed(3)} s
-                </span>
-              </div>
-            </div>
-          </section>
         </div>
-      </div>
+      </section>
 
-      <div className="screen-columns">
-        <BrakeZones subject={subject} reference={reference} stretch={stretch} subjectCode={subjectCode}
-                    referenceCode={referenceCode} onCursor={onCursor} />
-        <LapSummary subject={subject} reference={reference} subjectCode={subjectCode} referenceCode={referenceCode}
-                    finalGap={delta.final_s} />
-      </div>
-    </>
-  );
-}
-
-function TraceRow({ name, unit, height, label, children }: {
-  name: string; unit: string; height: number; label: string; children: ReactNode;
-}) {
-  return (
-    <div className="trace-row">
-      <span className="trace-name">{name}<small>{unit}</small></span>
-      <svg className="trace-plot" viewBox={`0 0 1000 ${height}`} preserveAspectRatio="none" style={{ height }}
-           role="img" aria-label={label}>
-        {children}
-      </svg>
-    </div>
-  );
-}
-
-function CursorCar({ code, colour, role, trace, k }: { code: string; colour: string; role: string; trace: LapTrace; k: number }) {
-  const braking = trace.brake[k];
-  return (
-    <div className="cursor-car">
-      <div className="cursor-car-head">
-        <span className="pick-swatch" style={{ background: colour }} aria-hidden="true" />
-        <span className="display">{code}</span>
-        <span className="cursor-role">{role}</span>
-      </div>
-      <div className="cursor-figures">
-        <span className="display cursor-speed">{Math.round(trace.speed[k] ?? 0)}<small> km/h</small></span>
-        <span className="cursor-gear"><span>Gear</span><b className="display">{trace.gear[k] ?? "—"}</b></span>
-      </div>
-      <div className="cursor-bars">
-        <span>Throttle</span>
-        <span className="bar"><i className="is-throttle" style={{ width: `${trace.throttle[k] ?? 0}%` }} /></span>
-        <span className="num">{Math.round(trace.throttle[k] ?? 0)}%</span>
-        <span>Brake</span>
-        <span className="bar"><i className="is-brake" style={{ width: braking ? "100%" : "0%" }} /></span>
-        <span className="num">{braking ? "On" : "Off"}</span>
+      <div className="pedals-side">
+        <TimeMap answer={answer} cursor={i} rotation={rotation} colourA={colourA} colourB={colourRef} codeA={codeA} codeB={codeB}
+                 stats={[["Cursor", `${Math.round(metres)} m`, undefined], ["Δ here", `${sign(gapNow, 3)} s`, gapNow <= 0 ? colourA : colourRef],
+                         ["Speed Δ", `${sign(Math.round(speedDiff), 0)} km/h`, undefined]]} />
+        <Corners subject={subject} reference={reference} stretch={stretch} codeA={codeA} codeB={codeB}
+                 colourA={colourA} colourB={colourRef} onCursor={onCursor} />
       </div>
     </div>
   );
 }
 
 /**
- * The subject's lap on the circuit: green where the throttle was flat out,
- * red where the brake was on, the plain track where it lifted or was part
- * throttle. The dot is the cursor.
+ * The subject's lap on the circuit, coloured by who was gaining time there:
+ * the subject's colour where the gap to the reference shrinks, the
+ * reference's where it grows. The dot is the cursor; three figures at it below.
  */
-export function PedalMap({ trace, cursor, rotation, code }: { trace: LapTrace; cursor: number; rotation: number; code: string }) {
+function TimeMap({ answer, cursor, rotation, colourA, colourB, codeA, codeB, stats }: {
+  answer: LapComparison; cursor: number; rotation: number; colourA: string; colourB: string; codeA: string; codeB: string;
+  stats: [string, string, string | undefined][];
+}) {
+  const trace = answer.subject;
   const shape = useMemo(() => {
     const rad = (rotation * Math.PI) / 180;
     const pts = trace.x.map((x, k) => {
@@ -370,55 +312,53 @@ export function PedalMap({ trace, cursor, rotation, code }: { trace: LapTrace; c
     const xs = real.map((p) => p[0]);
     const ys = real.map((p) => p[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-    const scale = Math.min(500 / (maxX - minX || 1), 360 / (maxY - minY || 1));
+    const scale = Math.min(760 / (maxX - minX || 1), 260 / (maxY - minY || 1));
     const width = (maxX - minX) * scale + 40;
     const height = (maxY - minY) * scale + 40;
     const project = (p: readonly [number, number]) => [20 + (p[0] - minX) * scale, height - 20 - (p[1] - minY) * scale] as const;
-    const path = (on: (k: number) => boolean) => {
-      let d = "";
-      let open = false;
-      pts.forEach((p, k) => {
-        if (!p || !on(k)) {
-          open = false;
-          return;
-        }
-        const [px, py] = project(p);
-        d += `${open ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`;
-        open = true;
-      });
-      return d;
-    };
-    return {
-      width, height, project, pts,
-      base: path(() => true),
-      throttle: path((k) => (trace.throttle[k] ?? 0) >= FLAT_OUT),
-      brake: path((k) => Boolean(trace.brake[k])),
-    };
-  }, [trace, rotation]);
+    // The gap at each of the subject's samples; who gains is the gap's slope over a few samples, to steady the colours.
+    const { distance, delta_s: gap } = answer.delta;
+    const stepM = distance.length > 1 ? distance[1]! - distance[0]! : 1;
+    const gapAt = (m: number) => gap[Math.min(gap.length - 1, Math.max(0, Math.round(m / (stepM || 1))))] ?? 0;
+    const gains = trace.distance.map((m) => gapAt(m + 3 * trace.step_m) - gapAt(m - 3 * trace.step_m) < 0);
+    let base = "", a = "", b = "";
+    pts.forEach((p, k) => {
+      const q = pts[k + 1];
+      if (!p || !q) return;
+      const [x1, y1] = project(p);
+      const [x2, y2] = project(q);
+      const seg = `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`;
+      base += seg;
+      if (gains[k]) a += seg; else b += seg;
+    });
+    return { width, height, project, pts, base, a, b };
+  }, [answer, trace, rotation]);
 
   const point = shape?.pts[cursor] ? shape.project(shape.pts[cursor]!) : null;
   return (
-    <section className="panel pedal-map-panel" aria-label="Pedal map">
+    <section className="panel time-map" aria-label="Where the time goes">
       <div className="panel-bar">
-        <h2>Pedal map</h2>
-        <span className="panel-meta">{code}, lap {trace.lap}</span>
+        <h2>Where the time goes</h2>
+        <span className="pc-legend" style={{ marginLeft: "auto" }}><i style={{ background: colourA }} />{codeA} faster</span>
+        <span className="pc-legend"><i style={{ background: colourB }} />{codeB} faster</span>
       </div>
-      {shape ? (
-        <svg className="pedal-map" viewBox={`0 0 ${shape.width.toFixed(0)} ${shape.height.toFixed(0)}`} role="img"
-             aria-label={`${code}'s lap ${trace.lap} coloured by throttle and brake`}>
-          <path d={shape.base} fill="none" stroke="#1E1E24" strokeWidth="14" strokeLinejoin="round" strokeLinecap="round" />
-          <path d={shape.base} fill="none" stroke="#62626E" strokeWidth="2" strokeLinejoin="round" />
-          <path d={shape.throttle} fill="none" stroke="var(--throttle)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d={shape.brake} fill="none" stroke="var(--brake)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-          {point && <circle cx={point[0]} cy={point[1]} r="7" fill="var(--ink)" stroke="#0A0A0C" strokeWidth="2" />}
-        </svg>
-      ) : (
-        <p className="panel-note">No position data for this lap.</p>
-      )}
-      <div className="map-legend">
-        <span><i className="is-throttle" />Full throttle</span>
-        <span><i className="is-brake" />Braking</span>
-        <span><i className="is-lift" />Lift or partial</span>
+      <div className="time-map-body">
+        {shape ? (
+          <svg viewBox={`0 0 ${shape.width.toFixed(0)} ${shape.height.toFixed(0)}`} role="img"
+               aria-label={`${codeA}'s lap ${trace.lap}, coloured by where ${codeA} or ${codeB} gained time`}>
+            <path d={shape.base} fill="none" stroke="#2C333D" strokeWidth="20" strokeLinejoin="round" strokeLinecap="round" />
+            <path d={shape.a} fill="none" stroke={colourA} strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={shape.b} fill="none" stroke={colourB} strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+            {point && <circle cx={point[0]} cy={point[1]} r="7" fill="#F2F3F5" stroke="#07080A" strokeWidth="2" />}
+          </svg>
+        ) : (
+          <p className="panel-note">No position data for this lap.</p>
+        )}
+      </div>
+      <div className="time-map-stats">
+        {stats.map(([label, value, colour]) => (
+          <div key={label}><span className="cap">{label}</span><b className="num" style={colour ? { color: colour } : undefined}>{value}</b></div>
+        ))}
       </div>
     </section>
   );
@@ -438,81 +378,51 @@ function matchZone(start: number, zones: LapTrace["brake_zones"], stretch: numbe
   return best;
 }
 
-function BrakeZones({ subject, reference, stretch, subjectCode, referenceCode, onCursor }: {
-  subject: LapTrace; reference: LapTrace; stretch: number; subjectCode: string; referenceCode: string;
+/**
+ * Corner by corner, every time the subject was on the brake: both drivers'
+ * minimum speed, the difference, and where each began braking. Braking later
+ * and carrying more speed through are the better of the two. Brake is on or
+ * off in the feed, so this says where, not how hard. Click a row to put the
+ * cursor there.
+ */
+function Corners({ subject, reference, stretch, codeA, codeB, colourA, colourB, onCursor }: {
+  subject: LapTrace; reference: LapTrace; stretch: number; codeA: string; codeB: string; colourA: string; colourB: string;
   onCursor: (m: number) => void;
 }) {
   return (
-    <section className="panel brake-zones" aria-label="Brake zones">
-      <div className="panel-bar">
-        <h2>Brake zones</h2>
-        <span className="panel-meta">Every time {subjectCode} was on the brake, with {referenceCode} alongside.</span>
+    <section className="panel pc-corners" aria-label="Corners">
+      <div className="panel-bar"><h2>Corners</h2><span className="panel-meta">minimum speed · where braking starts</span></div>
+      <div className="pc-corners-scroll">
+        <table className="pc-table">
+          <thead>
+            <tr>
+              <th scope="col">Turn</th><th scope="col" className="right">{codeA} min</th><th scope="col" className="right">{codeB} min</th>
+              <th scope="col" className="right">Δ km/h</th><th scope="col" className="right">Brakes at</th><th scope="col" className="right" title={`Plus: ${codeA} began braking later than ${codeB}`}>vs {codeB}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subject.brake_zones.map((zone) => {
+              const turn = subject.corners.find((c) => c.distance >= zone.start_m - 40);
+              const ref = matchZone(zone.start_m, reference.brake_zones, stretch);
+              const refPoint = ref ? ref.start_m * stretch : null;
+              const later = refPoint == null ? null : zone.start_m - refPoint;
+              const d = ref ? zone.min_speed - ref.min_speed : null;
+              return (
+                <tr key={zone.start_m} onClick={() => onCursor(zone.start_m)}>
+                  <th scope="row" className="num">{turn ? `T${turn.number}${turn.letter ?? ""}` : "—"}</th>
+                  <td className="num right" style={{ color: colourA }}>{Math.round(zone.min_speed)}</td>
+                  <td className="num right" style={{ color: colourB }}>{ref ? Math.round(ref.min_speed) : "—"}</td>
+                  <td className="num right" style={{ color: d == null || Math.abs(d) < 2 ? undefined : d > 0 ? colourA : colourB }}>
+                    {d == null ? "—" : `${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(Math.round(d))}`}</td>
+                  <td className="num right muted">{Math.round(zone.start_m)} m</td>
+                  <td className={`num right${later == null || Math.abs(later) <= 5 ? "" : later > 0 ? " is-better" : " is-worse"}`}>
+                    {later == null ? "—" : Math.abs(later) <= 5 ? "same" : `${later > 0 ? "+" : "−"}${Math.abs(Math.round(later))} m`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <table className="zones-table">
-        <thead>
-          <tr>
-            <th scope="col">Turn</th><th scope="col">Brake point</th><th scope="col">Entry</th><th scope="col">Minimum</th>
-            <th scope="col">On brake</th><th scope="col">{referenceCode} brake point</th><th scope="col">{referenceCode} minimum</th>
-          </tr>
-        </thead>
-        <tbody>
-          {subject.brake_zones.map((zone) => {
-            const turn = subject.corners.find((c) => c.distance >= zone.start_m - 40);
-            const ref = matchZone(zone.start_m, reference.brake_zones, stretch);
-            const refPoint = ref ? ref.start_m * stretch : null;
-            // Braking later, and carrying more speed through, is the better of the two.
-            const pointTone = refPoint == null ? "" : zone.start_m > refPoint + 5 ? "is-better" : zone.start_m < refPoint - 5 ? "is-worse" : "";
-            const minTone = ref == null ? "" : zone.min_speed > ref.min_speed + 2 ? "is-better" : zone.min_speed < ref.min_speed - 2 ? "is-worse" : "";
-            return (
-              <tr key={zone.start_m} onClick={() => onCursor(zone.start_m)} className="num">
-                <th scope="row">{turn ? `T${turn.number}${turn.letter ?? ""}` : "—"}</th>
-                <td className={pointTone}>{Math.round(zone.start_m)} m</td>
-                <td>{Math.round(zone.entry_speed)} km/h</td>
-                <td className={minTone}>{Math.round(zone.min_speed)} km/h</td>
-                <td>{zone.duration_s.toFixed(2)} s</td>
-                <td>{refPoint == null ? "—" : `${Math.round(refPoint)} m`}</td>
-                <td>{ref ? `${Math.round(ref.min_speed)} km/h` : "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="panel-note">Brake is on or off in the feed, so these show where and for how long, not how hard.
-        Green is the later brake point or the higher minimum speed of the two; yellow the other.</p>
-    </section>
-  );
-}
-
-function LapSummary({ subject, reference, subjectCode, referenceCode, finalGap }: {
-  subject: LapTrace; reference: LapTrace; subjectCode: string; referenceCode: string; finalGap: number | null;
-}) {
-  const rows: [string, (t: LapTrace) => string][] = [
-    ["Lap time", (t) => formatLapTime(t.lap_time_s)],
-    ["Top speed", (t) => `${Math.round(t.summary.top_speed)} km/h`],
-    ["Slowest point", (t) => `${Math.round(t.summary.min_speed)} km/h`],
-    ["Flat out", (t) => `${Math.round(t.summary.full_throttle_share * 100)}% of the lap`],
-    ["On the brake", (t) => `${Math.round(t.summary.braking_share * 100)}% of the lap`],
-    ["Brake zones", (t) => String(t.summary.brake_zones)],
-    ["Tyre", (t) => (t.compound ? `${t.compound.toLowerCase()}${t.tyre_life != null ? `, ${t.tyre_life} laps` : ""}` : "—")],
-  ];
-  return (
-    <section className="panel lap-summary" aria-label="Lap summary">
-      <div className="panel-bar">
-        <h2>Lap summary</h2>
-        {finalGap != null && (
-          <span className={`panel-meta num ${finalGap <= 0 ? "is-better" : "is-worse"}`}>
-            {subjectCode} {finalGap <= 0 ? "quicker" : "slower"} by {Math.abs(finalGap).toFixed(3)} s
-          </span>
-        )}
-      </div>
-      <table className="summary-table">
-        <thead><tr><th scope="col" /><th scope="col">{subjectCode}, lap {subject.lap}</th><th scope="col">{referenceCode}, lap {reference.lap}</th></tr></thead>
-        <tbody>
-          {rows.map(([label, value]) => (
-            <tr key={label}><th scope="row">{label}</th><td className="num">{value(subject)}</td><td className="num">{value(reference)}</td></tr>
-          ))}
-        </tbody>
-      </table>
     </section>
   );
 }

@@ -239,17 +239,17 @@ describe("pedals and speed", () => {
     };
   };
 
-  it("lays two laps over each other, and lists each brake zone against the reference", async () => {
+  it("lays two laps over each other, and lists each corner against the reference", async () => {
     serve({ "/compare": { subject: lap(63, "RUS", [500, 600]), reference: lap(3, "VER", [480, 600]),
                           delta: { distance: lap(63, "RUS", [0, 0]).distance, delta_s: Array(200).fill(-0.1), final_s: -0.1 } } });
     render(<ScreenView id="pedals" ctx={context()} />);
-    const zones = within(await screen.findByRole("region", { name: "Brake zones" }));
-    const row = zones.getAllByRole("row")[1]!;
+    const corners = within(await screen.findByRole("region", { name: "Corners" }));
+    const row = corners.getAllByRole("row")[1]!;
     expect(row.textContent).toContain("T1");
     expect(row.textContent).toContain("500 m");
-    expect(row.textContent).toContain("480 m");                          // VER braked 20 m earlier
-    expect(row.querySelector("td")?.className).toContain("is-better");   // so RUS's later point is the better
-    expect(screen.getByText(/RUS quicker by 0.100 s/)).toBeDefined();
+    expect(row.textContent).toContain("+20 m");                          // RUS braked 20 m later than VER
+    expect(row.querySelector(".is-better")).not.toBeNull();             // so RUS's later point is the better
+    expect(screen.getByText("Δ −0.100 s")).toBeDefined();
   });
 
   it("moves the cursor through every trace, and swaps subject and reference", async () => {
@@ -258,8 +258,7 @@ describe("pedals and speed", () => {
     render(<ScreenView id="pedals" ctx={context()} />);
     const slider = await screen.findByRole("slider", { name: /cursor position/i });
     fireEvent.change(slider, { target: { value: "550" } });
-    const at = within(screen.getByRole("region", { name: "At the cursor" }));
-    expect(at.getAllByText("On")).toHaveLength(2);                       // both on the brake at 550 m
+    expect(screen.getAllByText("ON")).toHaveLength(2);                   // both on the brake at 550 m
     fireEvent.click(screen.getByRole("button", { name: /swap subject and reference/i }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("driver=3&ref=63"))).toBe(true));
   });
