@@ -58,7 +58,7 @@ function mock(body: Prediction | { detail: string }, ok = true, weekend: Weekend
 
 /** The URLs asked for, weekend lookups left out. */
 function predictionCalls(fetchMock: ReturnType<typeof mock>): string[] {
-  return fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => !url.endsWith("/weekend"));
+  return fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/prediction"));
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -86,11 +86,12 @@ describe("PredictionBoard", () => {
     expect(within(rows[2] as HTMLElement).getByText("<1%")).toBeDefined();   // rare, not zero
     expect(within(rows[3] as HTMLElement).getByText("PL")).toBeDefined();    // pit-lane start
 
-    // The headline: the favourite and how often they win, and the podium chances.
-    const favourite = within(screen.getByRole("region", { name: "Favourite" }));
-    expect(favourite.getByText("PIA")).toBeDefined();
-    expect(favourite.getByText(/Wins 72% of 1,000 simulated races/)).toBeDefined();
-    expect(screen.getByRole("region", { name: "Podium chances" }).querySelectorAll(".podium-row")).toHaveLength(4);
+    // The headline: the favourite and how often they win; nobody followed, so the inspector shows the favourite.
+    expect(screen.getByText("PIA 72%")).toBeDefined();
+    expect(screen.getByText("1,000 simulated races")).toBeDefined();
+    const inspector = within(screen.getByRole("region", { name: "Selected driver" }));
+    expect(inspector.getByText("Where PIA finishes")).toBeDefined();
+    expect(inspector.getAllByText("72%").length).toBeGreaterThan(0);
     expect(screen.getByText(/made before the race/i)).toBeDefined();
     expect(screen.getByText(/FP1, FP2, FP3, qualifying and 3 earlier races/)).toBeDefined();
     expect(screen.getByText(/official starting grid/)).toBeDefined();
@@ -155,7 +156,7 @@ describe("PredictionBoard", () => {
     expect(screen.getByText(/FP1, sprint qualifying and 3 earlier races/)).toBeDefined();
     expect(screen.getByText(/sprint qualifying, penalties not applied/)).toBeDefined();
     expect(screen.getByText(/simulated sprints of 21 laps, with no stops/)).toBeDefined();
-    expect(screen.getByText(/Wins 72% of 1,000 simulated sprints/)).toBeDefined();
+    expect(screen.getByText("1,000 simulated sprints")).toBeDefined();
     expect(screen.getByText(/recent race pace counts most, then sprint qualifying; FP1 long runs least/)).toBeDefined();
 
     // The Grand Prix is one click away, and says why it is not there yet.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { KpiRow } from "../shell/KpiRow";
+import { WeatherForecast } from "./WeatherForecast";
 import {
   api, type Prediction, type PredictionDriver, type PredictionKind, type PredictionScore, type WeekendInfo,
 } from "../api";
@@ -111,63 +112,150 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
   const finish = answer.result?.finish ?? null;
   const cars = answer.drivers.length;
   const worth = signalRanking(answer, sprint ? "sprint" : "race");
+  // The inspector: the last car followed in the replay, or the favourite when none is in this field.
+  const inspected = [...selected].reverse().map((n) => answer.drivers.find((d) => d.driver_number === n)).find(Boolean)
+    ?? [...answer.drivers].sort((a, b) => b.win - a.win)[0];
   return (
     <div className="prediction">
-      {switcher}
-      <p className="prediction-basis">
-        <b>{answer.before_race ? `Made before the ${event}` : `Rebuilt after the ${event}, from what was known before it`}</b>
-        {" · "}from {answer.basis.sessions.map((code) => SESSION_NAMES[code] ?? code).join(", ")}
-        {answer.basis.form_races.length > 0 && ` and ${answer.basis.form_races.length} earlier races`}
-        {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid"
-          : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
-      </p>
-
-      <KpiRow tiles={predictionTiles(answer, sprint)} />
-      <Headline answer={answer} event={event} />
-
-      <div className="prediction-table" role="table" aria-label="Predicted finishing order">
-        <div className="prediction-row is-head" role="row">
-          <span role="columnheader">Pos</span>
-          <span role="columnheader" />
-          <span role="columnheader">Driver</span>
-          <span role="columnheader" className="num">Grid</span>
-          <span role="columnheader">Win</span>
-          <span role="columnheader">Podium</span>
-          <span role="columnheader" title={sprint ? "Finishing in the top eight, who score in a sprint" : "Finishing in the top ten"}>Points</span>
-          <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">Exp.</span>
-          <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
-          <span role="columnheader" className="num" title="Chance of not finishing">DNF</span>
-          {finish && <span role="columnheader" className="num">Actual</span>}
-        </div>
-        {answer.drivers.map((driver, index) => (
-          <Row key={driver.driver_number} driver={driver} position={index + 1} cars={cars}
-               actual={finish ? finish[String(driver.driver_number)] ?? null : undefined}
-               selected={selected.includes(driver.driver_number)} onSelect={onSelect} />
-        ))}
+      <div className="prediction-top">
+        {switcher}
+        <p className="prediction-basis">
+          <b>{answer.before_race ? `Made before the ${event}` : `Rebuilt after the ${event}, from what was known before it`}</b>
+          {" · "}from {answer.basis.sessions.map((code) => SESSION_NAMES[code] ?? code).join(", ")}
+          {answer.basis.form_races.length > 0 && ` and ${answer.basis.form_races.length} earlier races`}
+          {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid"
+            : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
+        </p>
+        <span className="prediction-runs num">{answer.basis.runs.toLocaleString()} simulated {event}s</span>
       </div>
 
-      <ul className="prediction-notes">
-        {sprint ? (
-          <li>
-            Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated sprints
-            {answer.basis.laps ? ` of ${answer.basis.laps} laps` : ""}, with no stops. Retirements are drawn
-            at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate scaled to the sprint's distance,
-            and safety cars at this circuit's; first-lap incidents, rain and team orders are not modelled.
-          </li>
-        ) : (
-          <li>
-            Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated races. Retirements are drawn
-            at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate so far, and safety cars at this
-            circuit's; first-lap incidents, rain and team orders are not modelled.
-          </li>
-        )}
-        <li>
-          What each signal is worth was measured on {sprint ? "the sprints of " : ""}
-          {answer.basis.calibration.fitted_on.join(", ")}{worth ? `: ${worth}` : ""}.
-        </li>
-        {answer.basis.notes.map((note) => <li key={note}>{note}</li>)}
-      </ul>
+      <KpiRow tiles={predictionTiles(answer, sprint)} />
+
+      <div className="prediction-grid">
+        <section className="panel prediction-main" aria-label="Finishing chances">
+          <div className="panel-bar"><h2>Finishing chances</h2>
+            <span className="panel-meta">click a driver · bar: the likely range if it finishes, mark at the median</span></div>
+          <div className="prediction-scroll">
+            <div className="prediction-table" role="table" aria-label="Predicted finishing order">
+              <div className="prediction-row is-head cap" role="row">
+                <span role="columnheader">Pos</span>
+                <span role="columnheader" />
+                <span role="columnheader">Driver</span>
+                <span role="columnheader" className="num">Grid</span>
+                <span role="columnheader">Win</span>
+                <span role="columnheader">Podium</span>
+                <span role="columnheader" title={sprint ? "Finishing in the top eight, who score in a sprint" : "Finishing in the top ten"}>Points</span>
+                <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">Exp.</span>
+                <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
+                <span role="columnheader" className="num" title="Chance of not finishing">DNF</span>
+                {finish && <span role="columnheader" className="num">Actual</span>}
+              </div>
+              {answer.drivers.map((driver, index) => (
+                <Row key={driver.driver_number} driver={driver} position={index + 1} cars={cars}
+                     actual={finish ? finish[String(driver.driver_number)] ?? null : undefined}
+                     selected={selected.includes(driver.driver_number)} onSelect={onSelect} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel prediction-side" aria-label="Selected driver">
+          {inspected && <Inspector driver={inspected} cars={cars} event={event}
+                                   actual={finish ? finish[String(inspected.driver_number)] ?? null : undefined} />}
+          <div className="inspector-body prediction-side-foot">
+            {answer.result && <Scorecard model={answer.result.scores.model} grid={answer.result.scores.grid} />}
+            <div className="inspector-how">
+              <span className="cap">How this is made</span>
+              <ul className="prediction-notes">
+                {sprint ? (
+                  <li>
+                    Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated sprints
+                    {answer.basis.laps ? ` of ${answer.basis.laps} laps` : ""}, with no stops. Retirements are drawn
+                    at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate scaled to the sprint's distance,
+                    and safety cars at this circuit's; first-lap incidents, rain and team orders are not modelled.
+                  </li>
+                ) : (
+                  <li>
+                    Each driver's chances come from {answer.basis.runs.toLocaleString()} simulated races. Retirements are drawn
+                    at {Math.round(answer.basis.retire_rate * 100)}% a car, the season's rate so far, and safety cars at this
+                    circuit's; first-lap incidents, rain and team orders are not modelled.
+                  </li>
+                )}
+                <li>
+                  What each signal is worth was measured on {sprint ? "the sprints of " : ""}
+                  {answer.basis.calibration.fitted_on.join(", ")}{worth ? `: ${worth}` : ""}.
+                </li>
+                {answer.basis.notes.map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </div>
+            <WeatherForecast sessionKey={sessionKey} />
+          </div>
+        </section>
+      </div>
     </div>
+  );
+}
+
+/**
+ * One driver's prediction: where it finishes if it finishes (the likely range
+ * on the full field), its chances, and the readings its race pace came from.
+ */
+function Inspector({ driver, cars, event, actual }: {
+  driver: PredictionDriver;
+  cars: number;
+  event: "race" | "sprint";
+  actual: number | null | undefined;
+}) {
+  const at = (p: number) => `${((Math.min(Math.max(p, 1), cars) - 1) / Math.max(cars - 1, 1)) * 100}%`;
+  const readings = Object.entries(driver.signals).filter((e): e is [string, number] => e[1] !== null);
+  return (
+    <>
+      <div className="panel-bar inspector-head" style={{ ["--team" as string]: `#${driver.team_color ?? "777"}` }}>
+        <span className="team-bar tall" style={{ background: `#${driver.team_color ?? "777"}` }} />
+        <div className="inspector-name">
+          <span className="card-code">{driver.abbreviation}</span>
+          <span className="panel-meta">{driver.team_name ?? ""}{driver.grid < 99 ? ` · from P${driver.grid}` : " · from the pit lane"}</span>
+        </div>
+        <div className="inspector-pos"><span className="cap">Expected</span><b className="num">P{driver.expected.toFixed(1)}</b></div>
+      </div>
+      <div className="inspector-body">
+        <div className="inspector-block">
+          <span className="cap">Where {driver.abbreviation} finishes</span>
+          <div className="pred-range" aria-label={`P${driver.p10} to P${driver.p90}, most likely P${driver.p50}`}>
+            <span className="pred-range-track" />
+            <span className="pred-range-band" style={{ left: at(driver.p10), width: `calc(${at(driver.p90)} - ${at(driver.p10)})` }} />
+            <span className="pred-range-mark" style={{ left: at(driver.p50) }} />
+            {actual != null && <span className="pred-range-actual num" style={{ left: at(actual) }}>P{actual}</span>}
+          </div>
+          <div className="race-strip-axis num"><span>P1</span><span>P{cars}</span></div>
+          <p className="inspector-note">
+            If it finishes: most likely P{driver.p50}, and P{driver.p10} to P{driver.p90} in eight {event}s out of ten.
+            {actual !== undefined && (actual === null ? " It did not finish." : ` It finished P${actual}.`)}
+          </p>
+        </div>
+        <div className="inspector-block">
+          {([["Win", driver.win], ["Podium", driver.podium], ["Points", driver.points], ["Retires", driver.dnf]] as const).map(([label, value]) => (
+            <div key={label} className="stop-bar-row">
+              <span>{label}</span>
+              <span className="stop-bar"><span style={{ width: `${Math.min(value, 1) * 100}%`, background: label === "Retires" ? "#FF6B6B" : `#${driver.team_color ?? "4C9AFF"}` }} /></span>
+              <span className="num right">{percent(value)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="inspector-block">
+          <span className="cap">What moves it</span>
+          <div className="pred-why">
+            <span>Race pace against the field's median, a lap</span>
+            <span className="num right strong">{signed(driver.pace_s)} s ±{driver.pace_sd.toFixed(2)}</span>
+          </div>
+          {readings.map(([name, value]) => (
+            <div key={name} className="pred-why">
+              <span>{SIGNAL_NAMES[name] ?? name}</span><span className="num right">{signed(value)} s</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -228,53 +316,6 @@ function Chance({ value, kind }: { value: number; kind: string }) {
   );
 }
 
-/**
- * The race in three cards: the favourite and how often they win, the podium
- * chances, and (after the race) how the prediction scored against the grid.
- */
-function Headline({ answer, event }: { answer: Prediction; event: "race" | "sprint" }) {
-  const favourite = [...answer.drivers].sort((a, b) => b.win - a.win)[0];
-  const podium = [...answer.drivers].sort((a, b) => b.podium - a.podium).slice(0, 4);
-  if (!favourite) return null;
-  const segments = 20;
-  const lit = Math.round(favourite.win * segments);
-  return (
-    <div className="prediction-cards">
-      <section className="panel favourite" aria-label="Favourite">
-        <span className="card-label">Favourite to win</span>
-        <div className="favourite-name">
-          <span className="team-bar tall" style={{ background: `#${favourite.team_color ?? "777"}` }} />
-          <span className="display">{favourite.abbreviation}</span>
-          <span className="favourite-team">{favourite.team_name ?? ""}{favourite.grid < 99 ? ` · from P${favourite.grid}` : ""}</span>
-        </div>
-        <div className="favourite-chance display">{Math.round(favourite.win * 100)}<small>%</small></div>
-        <div className="segments" aria-hidden="true">
-          {Array.from({ length: segments }, (_, k) => <span key={k} className={k < lit ? "is-lit" : ""} />)}
-        </div>
-        <span className="card-note">Wins {percent(favourite.win)} of {answer.basis.runs.toLocaleString()} simulated {event}s.</span>
-      </section>
-      <section className="panel podium-card" aria-label="Podium chances">
-        <span className="card-label">Podium chances</span>
-        {podium.map((d) => (
-          <div key={d.driver_number} className="podium-row">
-            <span className="team-bar tall" style={{ background: `#${d.team_color ?? "777"}` }} />
-            <span className="display">{d.abbreviation}</span>
-            <span className="podium-bar"><i style={{ width: `${d.podium * 100}%` }} /></span>
-            <span className="num">{percent(d.podium)}</span>
-          </div>
-        ))}
-      </section>
-      {answer.result ? <Scorecard model={answer.result.scores.model} grid={answer.result.scores.grid} />
-        : (
-          <section className="panel score-card" aria-label="How it scored">
-            <span className="card-label">Scored against the result</span>
-            <p className="card-note">After the {event}, the result goes beside each driver and the prediction is scored against the grid.</p>
-          </section>
-        )}
-    </div>
-  );
-}
-
 function Scorecard({ model, grid }: { model: PredictionScore; grid: PredictionScore }) {
   const rows: [string, (s: PredictionScore) => string, (a: PredictionScore, b: PredictionScore) => number][] = [
     ["Order (rank correlation)", (s) => s.rho.toFixed(2), (a, b) => a.rho - b.rho],
@@ -287,7 +328,7 @@ function Scorecard({ model, grid }: { model: PredictionScore; grid: PredictionSc
   const chances = model.brier_win < grid.brier_win ? "The model gave the better win chances."
     : model.brier_win > grid.brier_win ? "The grid gave the better win chances." : "";
   return (
-    <section className="panel score-card" aria-label="How it scored">
+    <section className="score-card" aria-label="How it scored">
     <div className="prediction-score" role="table" aria-label="How the prediction did">
       <div className="score-row is-head" role="row">
         <span role="columnheader">Scored against the result</span>
@@ -374,15 +415,17 @@ function signed(value: number): string {
 }
 
 /**
- * The prediction's headline figures, beside the favourite and podium cards:
- * the closest fight for the win, the car most likely to retire, and how the
+ * The prediction's headline figures: the favourite, the closest fight for the win, the car most likely to retire, and how the
  * model has done when replayed over every race (or sprint) since 2023, each
  * predicted only from what was known before it (docs/TECHNICAL.md).
  */
 export function predictionTiles(answer: Prediction, sprint: boolean) {
   const [first, second] = [...answer.drivers].sort((a, b) => b.win - a.win);
   const risk = [...answer.drivers].sort((a, b) => b.dnf - a.dnf)[0];
+  const third = [...answer.drivers].sort((a, b) => b.win - a.win)[2];
   return [
+    first && { label: "Favourite to win", value: `${first.abbreviation} ${percent(first.win)}`,
+              note: second ? `then ${second.abbreviation} ${percent(second.win)}${third ? `, ${third.abbreviation} ${percent(third.win)}` : ""}` : "" },
     first && second && { label: "Closest fight", value: `${first.abbreviation} v ${second.abbreviation}`, note: `${percent(first.win)} against ${percent(second.win)} to win` },
     risk && risk.dnf > 0 && { label: "Most likely to retire", value: `${risk.abbreviation} · ${percent(risk.dnf)}`, note: "retirements at the season's rate", tone: "bad" as const },
     sprint

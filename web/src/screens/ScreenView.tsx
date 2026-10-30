@@ -2,7 +2,6 @@ import { memo, type ReactNode } from "react";
 import type { Insight, LapSeries, RaceControlEvent, SessionInfo, SessionState } from "../api";
 import { screenById, type ScreenId } from "../features";
 import { PredictionBoard } from "../panels/PredictionBoard";
-import { WeatherForecast } from "../panels/WeatherForecast";
 import { ScreenHeader } from "../shell/ScreenHeader";
 import { CrewsScreen } from "./CrewsScreen";
 import { PedalsScreen } from "./PedalsScreen";
@@ -74,11 +73,8 @@ export const ScreenView = memo(function ScreenView({ id, ctx }: { id: Exclude<Sc
       return (
         <div className="screen">
           {header()}
-          <main className="screen-body">
-            <section className="panel">
-              <WeatherForecast sessionKey={ctx.session} />
-              <PredictionBoard sessionKey={ctx.session} selected={ctx.selected} onSelect={ctx.onSelect} />
-            </section>
+          <main className="screen-body prediction-body">
+            <PredictionBoard sessionKey={ctx.session} selected={ctx.selected} onSelect={ctx.onSelect} />
           </main>
         </div>
       );

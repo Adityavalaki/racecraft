@@ -2130,28 +2130,38 @@ button.prediction-row:hover { background: var(--panel-2); }
 }
 
 /* ---- prediction */
-.prediction { display: flex; flex-direction: column; gap: 12px; }
-.prediction-basis { border-bottom: 0; padding: 0; }
-.prediction-kind { align-self: flex-start; }
-.prediction-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-.favourite, .podium-card, .score-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
-.favourite-name { display: flex; align-items: center; gap: 10px; }
-.favourite-name .display { font-size: 34px; }
-.favourite-team { font-size: 13px; color: var(--ink-soft); }
-.favourite-chance { font-size: 64px; line-height: 0.9; }
-.favourite-chance small { font-size: 28px; color: var(--ink-soft); }
-.segments { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 3px; }
-.segments span { height: 10px; border-radius: 2px; background: #26262D; }
-.segments span.is-lit { background: var(--signal); }
-.podium-row { display: grid; grid-template-columns: 6px 48px minmax(0, 1fr) 44px; gap: 10px; align-items: center; }
-.podium-row .display { font-size: 20px; }
-.podium-bar { height: 10px; border-radius: 5px; background: #26262D; overflow: hidden; }
-.podium-bar i { display: block; height: 100%; background: var(--purple); border-radius: 5px; }
-.podium-row .num { font-size: 13px; text-align: right; }
-.score-card .prediction-score { margin: 0; border: 0; max-width: none; }
-.score-card .score-row { padding: 6px 0; border-bottom: 1px solid #1E1E24; grid-template-columns: minmax(0, 1fr) 70px 70px; }
-.score-card .score-row.is-head { font-family: var(--font-text); text-transform: none; letter-spacing: 0; font-size: 12px; }
+/* ---- Race prediction as racecraft-ui.html draws it: four tiles over the chances table beside a 360 px inspector */
+.prediction-body { overflow: hidden; }
+.prediction { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.prediction-top { display: flex; align-items: center; gap: 10px; flex: none; }
+.prediction-top .prediction-basis { margin: 0; padding: 0; border: 0; flex: 1 1 auto; min-width: 0; }
+.prediction-runs { flex: none; padding: 3px 8px; border-radius: 3px; background: #2A1A3F; color: #DDD6FE; font-size: 11px; }
+.prediction > .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)) 360px; }
+.prediction-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 6px; }
+.prediction-main, .prediction-side { display: flex; flex-direction: column; min-height: 0; }
+.prediction-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.prediction-scroll .prediction-row.is-head { position: sticky; top: 0; z-index: 3; background: #0B0D10; }
+.prediction-side { overflow: auto; }
+.prediction-side .inspector-body { flex: none; overflow: visible; }
+.prediction-side-foot { border-top: 1px solid var(--rule); }
+.prediction-side .prediction-notes { margin: 4px 0 0; padding-left: 1rem; font-size: 11px; }
+.inspector-name { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.pred-range { position: relative; height: 26px; margin: 0 6px; }
+.pred-range-track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 2px; background: #1A1E25; }
+.pred-range-band { position: absolute; top: 8px; height: 10px; border-radius: 2px; background: rgba(76, 154, 255, 0.55); }
+.pred-range-mark { position: absolute; top: 4px; width: 3px; height: 18px; margin-left: -1.5px; border-radius: 1px; background: #F2F3F5; }
+.pred-range-actual { position: absolute; top: -4px; transform: translateX(-50%); padding: 0 4px; border-radius: 2px; background: #FBBF24; color: #07080A; font-size: 9.5px; font-weight: 700; }
+.pred-why { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid #161A1F; font-size: 11.5px; color: #D6DAE0; }
+.pred-why .right { text-align: right; }
+.score-card .prediction-score, .prediction-side .prediction-score { margin: 0; border: 0; max-width: none; }
+.prediction-side .score-row { padding: 5px 0; border-bottom: 1px solid #1E1E24; grid-template-columns: minmax(0, 1fr) 60px 60px; font-size: 11.5px; }
 .score-row .num.is-ahead { color: var(--better); }
+@media (max-width: 1099px) {
+  .prediction-body, .prediction { overflow: auto; }
+  .prediction > .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .prediction-grid { grid-template-columns: minmax(0, 1fr); }
+  .prediction-main { height: 560px; }
+}
 
 @media (max-width: 1100px) {
   .trace-layout, .stewards-grid { grid-template-columns: minmax(0, 1fr); }
@@ -2163,12 +2173,12 @@ button.prediction-row:hover { background: var(--panel-2); }
 .session-bar .session-meta { font-size: 12px; color: var(--ink-soft); }
 
 /* Bars that change value ease to it rather than jump; the trace and the map move every frame instead. */
-.podium-bar i, .cursor-bars .bar i, .segments span,
+.cursor-bars .bar i,
 .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: width 0.25s ease, background-color 0.15s ease, color 0.15s ease; }
 .trace-cursor { will-change: left; }
 .track-map { will-change: contents; }
 @media (prefers-reduced-motion: reduce) {
-  .podium-bar i, .cursor-bars .bar i, .segments span,
+  .cursor-bars .bar i,
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
 
