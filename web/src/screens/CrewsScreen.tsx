@@ -57,16 +57,19 @@ export function CrewsScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
   return (
     <div className="screen">
       {header(switcher)}
-      <main className="screen-body">
+      <main className="screen-body crews-body">
         {error && <div className="panel-note error">{error}</div>}
         {!error && !crews && <div className="panel-note">Timing every pit stop of the season…</div>}
         {crews && (
           <>
             <p className="standings-basis">{basisLine(crews)}</p>
             <KpiRow tiles={crewTiles(crews)} />
-            {crews.teams.length > 0 && <CrewTable teams={crews.teams} />}
-            {crews.session_stops.length > 0 && <SessionStops trips={sofar} total={crews.session_stops.length} />}
-            <ul className="prediction-notes">
+            {/* As racecraft-ui.html lays it out (D-025): the season's crews beside this session's stops. */}
+            <div className="crews-grid">
+              <CrewTable teams={crews.teams} />
+              <SessionStops trips={sofar} total={crews.session_stops.length} />
+            </div>
+            <ul className="prediction-notes crews-notes">
               <li>
                 Pit-lane time, entry line to exit line, against the same race's typical stop: the lane is the same for
                 everyone there, so the difference is the crew's work (and a car queued behind its team-mate). The feed
@@ -83,9 +86,10 @@ export function CrewsScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
 
 function CrewTable({ teams }: { teams: CrewStanding[] }) {
   return (
-    <section className="panel standings-panel" aria-label="Pit crews">
-      <h2 className="card-label">Pit crews, fastest first</h2>
-      <div className="standings-table is-crews" role="table" aria-label="Pit crew ranking">
+    <section className="panel crews-panel" aria-label="Pit crews">
+      <div className="panel-bar"><h2>Pit crews, fastest first</h2>
+        <span className="panel-meta">every green-flag stop this season · bar: the middle half, white tick: the typical stop</span></div>
+      <div className="standings-table is-crews crews-scroll" role="table" aria-label="Pit crew ranking">
         <div className="standings-row is-head" role="row">
           <span role="columnheader" className="num">Pos</span>
           <span role="columnheader" />
@@ -122,14 +126,12 @@ function CrewTable({ teams }: { teams: CrewStanding[] }) {
 
 function SessionStops({ trips, total }: { trips: PitLaneTrip[]; total: number }) {
   return (
-    <section className="panel standings-panel" aria-label="This session's stops">
-      <h2 className="card-label">
-        This session's stops so far: {trips.length} of {total}
-      </h2>
+    <section className="panel crews-panel" aria-label="This session's stops">
+      <div className="panel-bar"><h2>This session's stops so far: {trips.length} of {total}</h2></div>
       {trips.length === 0 ? (
-        <p className="panel-note">Nobody has stopped yet at this point of the replay.</p>
+        <p className="panel-note">{total ? "Nobody has stopped yet at this point of the replay." : "No stops in this session."}</p>
       ) : (
-        <div className="standings-table is-trips" role="table" aria-label="Stops in this session">
+        <div className="standings-table is-trips crews-scroll" role="table" aria-label="Stops in this session">
           <div className="standings-row is-head" role="row">
             <span role="columnheader" className="num">Lap</span>
             <span role="columnheader" />

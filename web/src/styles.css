@@ -2292,6 +2292,23 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 /* ---------------------------------------------------------------- pit crews */
 .standings-table.is-crews { --st-cols: 2rem 4px minmax(8rem, 1fr) 4.4rem minmax(9rem, 1.4fr) 4rem 3rem 3rem; }
 .standings-table.is-trips { --st-cols: 2.4rem 4px minmax(7rem, 1fr) 5rem 5rem minmax(10rem, 1.6fr); }
+/* Pit crews as racecraft-ui.html lays it out (D-025): four tiles over the crews table beside a 320 px column of this session's stops. */
+.crews-body { overflow: hidden; }
+.crews-body > .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)) 320px; }
+.crews-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 6px; }
+.crews-panel { display: flex; flex-direction: column; min-height: 0; }
+.crews-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
+.crews-scroll .standings-row.is-head { position: sticky; top: 0; z-index: 2; background: #0B0D10; }
+.crews-grid .standings-table.is-trips { --st-cols: 2rem 4px minmax(0, 1fr) 3.6rem 3.8rem; }
+.crews-grid .is-trips .trip-note { grid-column: 3 / -1; font-size: 10px; color: var(--ink-faint); }
+.crews-grid .is-trips .trip-note:empty { display: none; }
+.crews-notes { flex: none; margin: 0 !important; }
+@media (max-width: 1099px) {
+  .crews-body { overflow: auto; }
+  .crews-body > .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crews-grid { grid-template-columns: minmax(0, 1fr); }
+  .crews-panel { min-height: 420px; }
+}
 .standings-row.is-thin { opacity: 0.6; }
 
 /* ---------------------------------------------------------------- starts */
