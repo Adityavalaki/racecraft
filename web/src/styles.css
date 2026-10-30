@@ -2438,3 +2438,15 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .replay-chip { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; border-radius: 3px; background: #15181D;
   color: var(--ink-mid); box-shadow: inset 0 0 0 1px var(--rule-strong); font: 600 10.5px var(--font-text); letter-spacing: 0.04em; white-space: nowrap; }
 .replay-chip .live-pip { color: var(--signal); }
+
+/* ---- the Timing screen as its board: the table, and a 312 px side column */
+.timing-grid { display: grid; grid-template-columns: minmax(0, 1fr) 312px; gap: 6px; align-items: start; }
+@media (max-width: 1099px) { .timing-grid { grid-template-columns: minmax(0, 1fr); } }
+.timing-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.spread-list { list-style: none; margin: 0; padding: 4px 0; }
+.spread-list li { display: grid; grid-template-columns: 36px minmax(0, 1fr) 52px; gap: 8px; align-items: center; height: 22px; padding: 0 10px; font-size: 11px; }
+.spread-list li.is-followed { background: linear-gradient(90deg, rgba(76, 154, 255, 0.16), rgba(76, 154, 255, 0.03)); }
+.spread-code { font-weight: 700; }
+.spread-bar { height: 6px; border-radius: 2px; background: #15181D; overflow: hidden; }
+.spread-bar i { display: block; height: 100%; }
+.spread-gap { text-align: right; color: var(--ink-mid); }

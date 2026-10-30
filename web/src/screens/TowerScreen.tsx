@@ -50,6 +50,7 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
       {header(switcher)}
       <main className="screen-body">
         <KpiRow tiles={towerTiles(drivers, ctx.state?.ideal_lap_s ?? null)} />
+        <div className="timing-grid">
         <section className="panel tower" aria-label="Timing tower">
           <div className="tower-scroll">
             <table className="tower-table">
@@ -110,12 +111,13 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
             {hasOvertake && <span><i className="is-ring" />Overtake eligible, estimated from the interval</span>}
           </div>
         </section>
-        <div className="tower-lower">
-          <FieldSpread drivers={drivers} selected={ctx.selected} />
+        <div className="timing-side">
           <section className="panel">
-            <div className="panel-bar"><h2>Best sectors</h2><span className="panel-meta">and the lap they would make</span></div>
+            <div className="panel-bar"><h2>Sector bests</h2><span className="panel-meta">and the lap they would make</span></div>
             <BestSectors sectors={ctx.state?.best_sectors ?? []} idealLap={ctx.state?.ideal_lap_s ?? null} fastestLap={ctx.sessionBest} />
           </section>
+          <FieldSpread drivers={drivers} selected={ctx.selected} />
+        </div>
         </div>
       </main>
     </div>
@@ -160,29 +162,23 @@ export function spread(drivers: DriverTiming[]): { driver: DriverTiming; gap: nu
 function FieldSpread({ drivers, selected }: { drivers: DriverTiming[]; selected: number[] }) {
   const cars = spread(drivers);
   const lapped = drivers.filter((d) => onTrack(d) && d.laps_down > 0).length;
-  const reach = Math.max(10, ...cars.map((c) => c.gap));
-  const x = (gap: number) => 20 + (gap / reach) * 960;
+  const reach = Math.max(1, ...cars.map((c) => c.gap));
   return (
     <section className="panel field-spread" aria-label="Field spread">
       <div className="panel-bar">
         <h2>Field spread</h2>
-        <span className="panel-meta">gap to the leader, lead lap{lapped ? ` · ${lapped} lapped ${lapped === 1 ? "car" : "cars"} not drawn` : ""}</span>
+        <span className="panel-meta">gap to leader, s{lapped ? ` · ${lapped} lapped` : ""}</span>
       </div>
       {cars.length === 0 ? <p className="panel-note">No gaps yet.</p> : (
-        <svg viewBox="0 0 1000 92" className="spread-plot" role="img"
-             aria-label={`Gap to the leader: ${cars.map((c) => `${c.driver.abbreviation} ${c.gap.toFixed(1)} s`).join(", ")}`}>
-          <line x1="20" x2="980" y1="46" y2="46" className="spread-axis" />
-          {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-            <text key={f} x={x(f * reach)} y="88" textAnchor="middle" className="spread-tick">+{(f * reach).toFixed(0)} s</text>
+        <ol className="spread-list" aria-label="Gap to the leader">
+          {cars.map((c) => (
+            <li key={c.driver.driver_number} className={selected.includes(c.driver.driver_number) ? "is-followed" : ""}>
+              <span className="num spread-code">{c.driver.abbreviation}</span>
+              <span className="spread-bar"><i style={{ width: `${(c.gap / reach) * 100}%`, background: `#${c.driver.team_color ?? "8E959F"}` }} /></span>
+              <span className="num spread-gap">{c.gap === 0 ? "—" : `+${c.gap.toFixed(1)}`}</span>
+            </li>
           ))}
-          {cars.map((c, i) => (
-            <g key={c.driver.driver_number}>
-              <circle cx={x(c.gap)} cy="46" r={selected.includes(c.driver.driver_number) ? 7 : 5}
-                      fill={`#${c.driver.team_color ?? "8E959F"}`} stroke="#07080A" strokeWidth="2" />
-              <text x={x(c.gap)} y={i % 2 ? 70 : 30} textAnchor="middle" className="spread-code">{c.driver.abbreviation}</text>
-            </g>
-          ))}
-        </svg>
+        </ol>
       )}
     </section>
   );
