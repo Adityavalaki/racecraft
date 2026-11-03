@@ -21,7 +21,7 @@ SECTORS = ("sector1_s", "sector2_s", "sector3_s")
 def latest(con, year: int, as_of: pd.Timestamp | None = None, code: str = "Q") -> dict:
     """The last `code` session (Q or SQ) of `year` that started before `as_of`: each driver's time left in it, and their season average."""
     laps = con.execute(f"""
-        select l.session_key, s.event_name, s.date_utc, l.driver, l.lap_time_s, {", ".join(f"l.{c}" for c in SECTORS)}
+        select l.session_key, s.event_name, s.date_utc, l.driver, l.lap_number, l.lap_time_s, {", ".join(f"l.{c}" for c in SECTORS)}
         from laps l join sessions s using (session_key)
         where s.year = ? and s."session" = ? and not coalesce(l.deleted, false)""", [int(year), code]).df()
     if not laps.empty and as_of is not None:
@@ -34,7 +34,8 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None, code: str = "Q") -
     key = laps.sort_values("date_utc")["session_key"].iloc[-1]
     season = per.groupby("driver")["left_s"].agg(["mean", "count"])
     results = con.execute("""
-        select abbreviation, full_name, team_name, team_color, position from results where session_key = ?""", [key]).df()
+        select abbreviation, driver_number, full_name, team_name, team_color, position, q1_s, q2_s, q3_s
+        from results where session_key = ?""", [key]).df()
     rows = per[per["session_key"] == key].merge(results, left_on="driver", right_on="abbreviation", how="left")
     rows = rows.sort_values(["position", "driver"], na_position="last")
 
@@ -46,7 +47,11 @@ def latest(con, year: int, as_of: pd.Timestamp | None = None, code: str = "Q") -
         drivers.append({
             "abbreviation": row.driver, "full_name": _text(row.full_name), "team": _text(row.team_name),
             "team_color": _text(row.team_color), "position": None if pd.isna(row.position) else int(row.position),
+            "driver_number": None if pd.isna(row.driver_number) else int(row.driver_number),
+            "q1_s": _num(row.q1_s), "q2_s": _num(row.q2_s), "q3_s": _num(row.q3_s),
+            "best_lap": None if pd.isna(row.best_lap) else int(row.best_lap),
             "best_s": _num(row.best_s), "ideal_s": _num(row.ideal_s), "left_s": _num(row.left_s),
+            "sectors": row.sectors if isinstance(row.sectors, list) else None,
             "sectors_left": row.sectors_left if isinstance(row.sectors_left, list) else None,
             "season_left_s": None if pd.isna(mean) else round(float(mean), 3), "season_sessions": int(count),
         })
@@ -59,11 +64,13 @@ def _driver(key: str, driver: str, laps: pd.DataFrame) -> dict:
     timed = laps.dropna(subset=["lap_time_s"])
     bests = [laps[c].min() for c in SECTORS]
     if timed.empty or any(pd.isna(b) for b in bests):
-        return {"session_key": key, "driver": driver, "best_s": None, "ideal_s": None, "left_s": None, "sectors_left": None}
+        return {"session_key": key, "driver": driver, "best_lap": None, "best_s": None, "ideal_s": None, "left_s": None,
+                "sectors": None, "sectors_left": None}
     lap = timed.loc[timed["lap_time_s"].idxmin()]
     ideal = float(sum(bests))
     split = None if any(pd.isna(lap[c]) for c in SECTORS) else [round(max(float(lap[c] - b), 0.0), 3) for c, b in zip(SECTORS, bests)]
-    return {"session_key": key, "driver": driver, "best_s": round(float(lap["lap_time_s"]), 3), "ideal_s": round(ideal, 3),
+    return {"session_key": key, "driver": driver, "best_lap": lap["lap_number"], "sectors": [round(float(b), 3) for b in bests],
+            "best_s": round(float(lap["lap_time_s"]), 3), "ideal_s": round(ideal, 3),
             # max(): a best lap made of the best sectors comes out a hair below 0 in floating point
             "left_s": round(max(float(lap["lap_time_s"]) - ideal, 0.0), 3), "sectors_left": split}
 

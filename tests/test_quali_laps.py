@@ -72,6 +72,16 @@ def test_time_left_against_own_best_sectors(con):
     assert [d["abbreviation"] for d in body["drivers"]] == ["AAA", "BBB", "CCC"]
 
 
+def test_each_driver_brings_the_lap_to_compare_their_sectors_and_q_times(con):
+    body = quali_laps.latest(con, 2024, pd.Timestamp("2024-03-05", tz="UTC"))
+    aaa, bbb, ccc = _row(body, "AAA"), _row(body, "BBB"), _row(body, "CCC")
+    assert aaa["driver_number"] == 1 and aaa["best_lap"] == 1           # lap 1's 93.0, not the deleted lap 3
+    assert aaa["sectors"] == [29.9, 31.0, 32.0]                         # own bests, from different laps; the deleted lap's don't count
+    assert bbb["best_lap"] == 4 and bbb["sectors"] == [30.0, 30.0, 30.0]
+    assert ccc["best_lap"] is None and ccc["sectors"] is None
+    assert aaa["q1_s"] is None and aaa["q3_s"] is None                  # the feed sent none in this fixture
+
+
 def test_season_average_kind_and_as_of(con):
     body = quali_laps.latest(con, 2024)
     assert body["session_key"] == "2024_02_Q" and body["sessions"] == 2

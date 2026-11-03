@@ -7,7 +7,7 @@ import { ScreenView, type ScreenContext } from "./ScreenView";
 import { SettingsScreen } from "./SettingsScreen";
 import { titleChance } from "./StandingsScreen";
 import { explain } from "./StewardsScreen";
-import { leftText } from "./QualifyingScreen";
+import { leftText, spacedCorners } from "./QualifyingScreen";
 import { placesText, stopSentence, stopText } from "./RaceReviewScreen";
 import { places, startText } from "./StartsScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
@@ -487,7 +487,9 @@ describe("Qualifying laps", () => {
 
   const driver = (abbreviation: string, position: number, left: number, split: number[]) => ({
     abbreviation, full_name: null, team: "Mercedes", team_color: "00D7B6", position, best_s: 94.035,
-    ideal_s: 94.035 - left, left_s: left, sectors_left: split, season_left_s: 0.049, season_sessions: 18 });
+    ideal_s: 94.035 - left, left_s: left, sectors_left: split, season_left_s: 0.049, season_sessions: 18,
+    driver_number: position === 1 ? 12 : 6, best_lap: position === 1 ? 7 : 9, q1_s: 91, q2_s: 90.5, q3_s: position === 1 ? 90.1 : null,
+    sectors: position === 1 ? [30, 30, 34] : [30.2, 29.9, 34] });
 
   it("shows each driver's best lap against their perfect lap, and asks for sprint qualifying", async () => {
     const fetchMock = vi.fn(async (_url: string) =>
@@ -496,13 +498,19 @@ describe("Qualifying laps", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ScreenView id="qualifying" ctx={context()} />);
 
-    const table = within(await screen.findByRole("table", { name: "Time left on the table" }));
+    const table = within(await screen.findByRole("table", { name: "Qualifying classification" }));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/qualifying?moment=before&kind=Q");
     expect(table.getByText("+0.130")).toBeDefined();
     expect(table.getByText("perfect")).toBeDefined();
-    expect(table.getByText("0.112").tagName).toBe("B");                  // the sector that cost most
-    expect(table.getAllByText("1:34.035")).toHaveLength(3);          // ANT best, HAD best and perfect
+    expect(table.getByText("1:30.100")).toBeDefined();                   // ANT's Q3
+    expect(table.getByText("Pole")).toBeDefined();
+    expect(table.getByRole("row", { name: /HAD/ }).getAttribute("title")).toMatch(/Best lap 1:34\.035, perfect lap 1:34\.035/);
     expect(screen.getByText("United States Grand Prix, qualifying")).toBeDefined();
+    // Pole against the first rival: each best lap asked for by number, never the route's "last lap".
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_18_Q/compare?driver=6&ref=12&lap=9&ref_lap=7");
+    const gap = within(await screen.findByRole("region", { name: "Where the gap comes from" }));
+    expect(gap.getByText("+0.200")).toBeDefined();                       // S1
+    expect(gap.getByText("−0.100")).toBeDefined();                       // S2: the rival was quicker
 
     fireEvent.click(screen.getByRole("radio", { name: "Sprint qualifying" }));
     await waitFor(() => expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/qualifying?moment=before&kind=SQ"));
@@ -512,6 +520,8 @@ describe("Qualifying laps", () => {
     expect(leftText(0.1304)).toBe("+0.130");
     expect(leftText(0.0002)).toBe("perfect");
     expect(leftText(null)).toBe("—");
+    // A tight complex keeps one label: 3% of a 1000 m lap is 30 m.
+    expect(spacedCorners([{ distance: 100 }, { distance: 110 }, { distance: 125 }, { distance: 140 }], 1000).map((c) => c.distance)).toEqual([100, 140]);
   });
 });
 

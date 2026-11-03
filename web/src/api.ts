@@ -802,6 +802,14 @@ export interface QualiDriver {
   ideal_s: number | null;
   left_s: number | null;
   sectors_left: number[] | null;    // add up to left_s
+  driver_number?: number | null;
+  /** The lap to ask `/compare` for: it otherwise picks the car's last lap. */
+  best_lap?: number | null;
+  /** The driver's own best sector times, from any lap. */
+  sectors?: number[] | null;
+  q1_s?: number | null;
+  q2_s?: number | null;
+  q3_s?: number | null;
   season_left_s: number | null;
   season_sessions: number;
 }

@@ -2190,7 +2190,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 }
 
 /* ---------------------------------------------------------------- teammates */
-.teammates-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .teammates { display: grid; gap: 6px; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(236px, 1fr); }
 @media (max-width: 1099px) { .teammates { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .teammates { grid-template-columns: minmax(0, 1fr); } }
@@ -2254,8 +2253,6 @@ button.prediction-row:hover { background: var(--panel-2); }
   .standings { grid-template-columns: minmax(0, 1fr); }
   .standings-main { min-height: 480px; }
 }
-.standings-panel { padding: 0 0 4px; display: flex; flex-direction: column; gap: 0; min-width: 0; }
-.standings-panel > .card-label { margin: 0; padding: 0 10px; min-height: 36px; display: flex; align-items: center; background: var(--panel-2); border-bottom: 1px solid var(--rule); font: 700 12px var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
 .standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 3.2rem 4.6rem 7.4rem; }
 .standings-table.is-teams { --st-cols: 2rem 4px minmax(6rem, 1fr) 3rem 3.2rem 2.4rem 3rem minmax(7rem, 1.2fr); }
 .standings-row {
@@ -2348,9 +2345,6 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .standings-row.is-thin { opacity: 0.6; }
 
 /* ---------------------------------------------------------------- starts */
-.standings-table.is-quali { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.4rem 6.4rem 6rem 13rem 7.4rem; }
-.standings-table.is-quali .is-head span { white-space: nowrap; }
-.standings-table.is-quali .mid { text-align: center; }
 .standings-row .is-quick { color: var(--green); }
 .standings-row .is-slow { color: var(--red); }
 .standings-basis .is-quick { color: var(--green); }
@@ -2690,4 +2684,59 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
   .starts-body { overflow: auto; }
   .starts-grid { grid-template-columns: minmax(0, 1fr); }
   .starts-slope, .starts-season { min-height: 560px; }
+}
+
+/* Quali laps as racecraft-ui.html draws it (D-025): the classification (1.15fr) beside pole against a rival; tiles on the same split. */
+.quali-body { overflow: hidden; }
+.quali-body > .kpi-row { grid-template-columns: 0.575fr 0.575fr 0.5fr 0.5fr; }
+.quali-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 6px; }
+.quali-panel, .quali-chart, .quali-sources { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.quali-side { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+.quali-chart { flex: 1.4 1 0; }
+.quali-sources { flex: 1 1 0; }
+.quali-notes { flex: none; margin: 0 !important; }
+.quali-vs { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+.quali-vs b { color: var(--ink); }
+.quali-table { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
+.quali-row { display: grid; grid-template-columns: 22px 3px 30px minmax(40px, 1fr) 58px 58px 58px 44px 46px 46px 46px 46px; align-items: center; gap: 6px; width: 100%; min-width: 690px; min-height: 26px;
+  padding: 0 10px; border: 0; border-bottom: 1px solid #161A1F; background: none; color: var(--ink); font: inherit; font-size: 10.5px; text-align: left; cursor: pointer; }
+.quali-row:disabled { cursor: default; color: var(--ink); }
+.quali-row:hover:not(:disabled):not(.is-head) { background: rgba(255, 255, 255, 0.03); }
+.quali-row.is-head { position: sticky; top: 0; z-index: 2; background: #0B0D10; font-size: 9px; cursor: default; border-bottom: 1px solid var(--rule); }
+.quali-row.is-selected { background: linear-gradient(90deg, rgba(76, 154, 255, 0.2), rgba(76, 154, 255, 0.05)); box-shadow: inset 3px 0 0 #4C9AFF; }
+.quali-row.is-cut { box-shadow: inset 0 -2px 0 #E10600; }
+.quali-row.is-selected.is-cut { box-shadow: inset 3px 0 0 #4C9AFF, inset 0 -2px 0 #E10600; }
+.quali-row .right { text-align: right; }
+.quali-row .mid { text-align: center; }
+.quali-row .team-bar { height: 60%; min-height: 12px; }
+.quali-row .is-quick { color: #4ADE80; }
+.quali-row .is-pole { color: #D8B4FE; }
+.quali-row .seg { font-size: 10px; }
+.quali-row .num { font-size: 10px; letter-spacing: -0.01em; }
+.quali-channel-label .num { font-size: 9.5px; }
+.quali-dim { color: var(--ink-faint); }
+.quali-team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.quali-chip { margin-left: auto; padding: 2px 8px; border-radius: 3px; background: #15181D; box-shadow: inset 0 0 0 1px #2A2F36; font-size: 11px; white-space: nowrap; }
+.quali-channels { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 4px 10px 6px 0; }
+.quali-channel { display: flex; min-height: 0; border-bottom: 1px solid #161A1F; }
+.quali-channel-label { flex: 0 0 96px; width: 96px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 10px; border-right: 1px solid var(--rule); font-size: 10px; color: var(--ink-faint); }
+.quali-channel-plot { position: relative; flex: 1 1 auto; min-width: 0; }
+.quali-channel-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.quali-corner { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.06); }
+.quali-corners { position: relative; flex: none; height: 18px; margin-left: 96px; }
+.quali-corners span { position: absolute; top: 4px; transform: translateX(-50%); font-size: 9px; font-weight: 700; color: #C9CED6; }
+.quali-sources-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+.quali-sources-body .inspector-figures { margin-top: 2px; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.quali-sector { display: grid; grid-template-columns: 30px minmax(0, 1fr) 64px; align-items: center; gap: 8px; font-size: 11.5px; }
+.quali-sector .right { text-align: right; }
+.quali-sector-bar { position: relative; height: 10px; border-radius: 2px; background: #1A1E25; }
+.quali-sector-bar::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.2); }
+.quali-sector-bar i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+@media (max-width: 1099px) {
+  .quali-body { overflow: auto; }
+  .quali-body > .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quali-grid { grid-template-columns: minmax(0, 1fr); }
+  .quali-panel { height: 560px; }
+  .quali-chart { min-height: 320px; }
+  .quali-sources { min-height: 240px; }
 }
