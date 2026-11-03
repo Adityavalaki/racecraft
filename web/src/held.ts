@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 /** How long a readout holds a figure: long enough to read it, at every replay speed. */
-export const HOLD_MS = 500;
+export const HOLD_MS = 250;
 
 /**
  * A fast-moving value as a number a person can read: the latest one, every
- * half a real second, however fast the replay runs. Nothing is held back from
+ * quarter of a real second, however fast the replay runs. Nothing is held back from
  * showing at first: a value appearing where there was none shows straight away.
  *
  * For readouts only. The bars beside them, and states that are wrong when late

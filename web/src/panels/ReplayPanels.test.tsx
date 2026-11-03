@@ -231,7 +231,7 @@ describe("the card's telemetry, as the clock runs", () => {
       await waitFor(() => expect(speedAt()).toBe("150 km/h"));   // halfway from 100 at 3995 to 200 at 4005
       rerender(<DriverCards {...props} t={4002} />);
       expect(speedAt()).toBe("150 km/h");                     // the figure holds, so it can be read
-      await waitFor(() => expect(speedAt()).toBe("170 km/h"), { timeout: 1000 });   // and ticks within half a second
+      await waitFor(() => expect(speedAt()).toBe("170 km/h"), { timeout: 1000 });   // and ticks within a quarter of a second
       expect(fetchMock).toHaveBeenCalledTimes(1);             // still inside what was fetched
     } finally {
       vi.unstubAllGlobals();

@@ -150,7 +150,7 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   const brake = now?.brake ?? car.brake ?? null;
   const braking = Boolean(brake);
   const rpm = now?.rpm ?? car.rpm ?? null;
-  // The bars follow every frame; the figures tick every half second, or they blur past unread (D-027).
+  // The bars follow every frame; the figures tick four times a second, or they blur past unread (D-027).
   const speed = speedIn(useHeld(now?.speed ?? car.speed ?? null), units);
   const throttleShown = useHeld(throttle);
   const rpmShown = useHeld(rpm);
