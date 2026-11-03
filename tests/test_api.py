@@ -289,6 +289,39 @@ def test_the_feeds_no_position_is_dropped_not_drawn_at_the_origin():
     assert list(channels[5].values["x"]) == [0.0]               # on an axis is still a place
 
 
+def test_a_throttle_of_104_is_no_reading_and_leaves_the_rest_of_the_car(monkeypatch):
+    """BUG-007: the lake still holds the feed's 104 for sessions imported through OpenF1."""
+    import duckdb
+
+    from racecraft.api.session import SessionData
+
+    con = duckdb.connect()
+    con.sql("""create table car_data as select * from (values
+        ('2026_15_R', 12, 1.0, 310.0, 100.0, false, 2026, 15, 'R'),
+        ('2026_15_R', 12, 2.0, 296.0, 104.0, true, 2026, 15, 'R')
+    ) t(session_key, driver_number, t, speed, throttle, brake, year, round, session)""")
+    data = SessionData.__new__(SessionData)
+    data.session_key = "2026_15_R"
+    car = data._load_channels(con, "car_data", ["speed", "throttle", "brake"])[12]
+    assert car.values["throttle"][0] == 100.0                   # flat out is a reading
+    assert np.isnan(car.values["throttle"][1])
+    assert car.values["speed"][1] == 296.0                      # the car is still moving
+
+
+def test_state_says_the_pedals_are_unknown_rather_than_on(client):
+    """BUG-007: with no throttle reading the brake channel is stuck on, which read as braking."""
+    from racecraft.api.app import _load
+
+    car = next(iter(_load(KEY).car.values()))
+    throttle, brake = car.values["throttle"], car.values["brake"]
+    car.values["throttle"], car.values["brake"] = np.full(len(car.t), np.nan), np.ones(len(car.t))
+    try:
+        cars = client.get(f"/api/sessions/{KEY}/state", params={"t": START + 5}).json()["cars"]
+    finally:
+        car.values["throttle"], car.values["brake"] = throttle, brake
+    assert any(c["throttle"] is None and c["brake"] is None and c["speed"] is not None for c in cars.values())
+
+
 def test_frames_can_be_served_raw(client):
     smoothed = client.get(f"/api/sessions/{KEY}/frames",
                           params={"start": START, "end": START + 10, "hz": 10}).json()

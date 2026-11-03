@@ -105,6 +105,15 @@ def race(openf1):
     return openf1_source.extract(2026, 18, "R", "Race", "2026_18_R")
 
 
+def test_a_throttle_of_104_is_stored_as_no_reading():
+    """BUG-007: the feed's sentinel reached the lake from this source, and a dashboard showed 104%."""
+    car = openf1_source._car(pd.DataFrame({
+        "driver_number": [12, 12], "t": [1.0, 2.0], "rpm": [11000, 0], "speed": [300, 0], "n_gear": [8, 0],
+        "throttle": [100, 104], "brake": [0, 100]}), "2026_15_R")
+    assert car["throttle"].iloc[0] == 100.0
+    assert pd.isna(car["throttle"].iloc[1])
+
+
 def test_the_tables_pass_the_quality_checks_and_write(race, tmp_path):
     findings = [f for f in quality.check_session(race) if f.check != "results.drivers"]   # a two-car field
     assert not quality.has_errors(findings), findings

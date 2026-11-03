@@ -232,6 +232,11 @@ class SessionData:
         times = np.ma.filled(arrays["t"], np.nan).astype(np.float64, copy=False)
         values = {c: _compact(c, arrays[c]) for c in columns}
         del arrays
+        if "throttle" in values:
+            # Above 100 is the feed's "no reading" (104), not a pedal: sessions imported
+            # before OpenF1's was cleaned still hold it in the lake (BUG-007). Unknown, and
+            # lap and recent already read a missing throttle as pedals unknown.
+            values["throttle"] = np.where(values["throttle"] > 100, np.nan, values["throttle"])
         if "x" in values and "y" in values:
             # (0, 0) is the feed's "no position", not a place: a car in the
             # garage, before it goes out, or while its transponder drops out,
@@ -358,6 +363,9 @@ class SessionData:
             car = self.car.get(number)
             point = pos.at(times) if pos else {"x": [None], "y": [None]}
             telemetry = car.at(times) if car else {}
+            # As in telemetry.recent: where the throttle is missing the brake channel is stuck on, so unknown.
+            if telemetry and (telemetry["throttle"][0] is None or not np.isfinite(telemetry["throttle"][0])):
+                telemetry["brake"] = [None]
             cars[number] = {
                 "x": _round(point["x"][0], 1), "y": _round(point["y"][0], 1),
                 **{name: _round(values[0], 1) for name, values in telemetry.items()},

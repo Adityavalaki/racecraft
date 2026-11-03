@@ -499,7 +499,8 @@ def _car(c: pd.DataFrame, key: str) -> pd.DataFrame:
         return _frame({n: [] for n in TABLE_COLUMNS["car_data"]}, "car_data")
     return _frame({
         "session_key": key, "driver_number": c["driver_number"], "t": c["t"], "rpm": c["rpm"],
-        "speed": c["speed"], "gear": c["n_gear"], "throttle": c["throttle"],
+        # Above 100 is the feed's "no reading" (104), as in fastf1_source.clean_throttle (BUG-007).
+        "speed": c["speed"], "gear": c["n_gear"], "throttle": pd.to_numeric(c["throttle"], errors="coerce").where(lambda t: t <= 100.0),
         "brake": pd.to_numeric(c["brake"]).fillna(0) > 0,
         "drs": pd.to_numeric(c["drs"]).fillna(0) if "drs" in c else 0,
     }, "car_data")
