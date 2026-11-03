@@ -83,7 +83,11 @@ def stint_cost(compound: str, laps: int, degradation: dict[str, float],
     """
     slope = degradation[compound]
     bend = (curvature or {}).get(compound, 0.0)
-    return sum(slope * n + bend * n * n for n in range(1, laps + 1))
+    # The sum of n and of n*n over the stint, in closed form: this is the planners' innermost
+    # step, tens of millions of calls for one prediction, and a loop here cost most of its time.
+    if laps < 1:
+        return 0.0
+    return slope * (laps * (laps + 1) / 2) + bend * (laps * (laps + 1) * (2 * laps + 1) / 6)
 
 
 def cost(plan: Plan, degradation: dict[str, float], pit_loss_s: float,
