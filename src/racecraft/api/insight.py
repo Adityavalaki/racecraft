@@ -518,7 +518,8 @@ def _code_stamp() -> str:
     """Changes when the code that makes the answer does: the app's own file, or in a checkout the model's sources."""
     if resources.frozen():
         return str(Path(sys.executable).stat().st_mtime_ns)
-    sources = [Path(__file__), *Path(strategy_model.__file__).parent.glob("*.py")]
+    model = Path(strategy_model.__file__).parent
+    sources = [*Path(__file__).parent.glob("*.py"), *model.glob("*.py"), *model.glob("*.csv")]
     return str(max(p.stat().st_mtime_ns for p in sources))
 
 
@@ -543,7 +544,8 @@ def _save(path: Path, session_key: str, answer: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         for old in path.parent.glob(f"{session_key}_*.json"):
             old.unlink(missing_ok=True)
-        scratch = path.with_suffix(f".{os.getpid()}.tmp")
+        # Per thread: the launch's preload and a request can finish the same answer together.
+        scratch = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
         scratch.write_text(json.dumps(answer), encoding="utf-8")
         os.replace(scratch, path)
     except (OSError, TypeError, ValueError) as error:

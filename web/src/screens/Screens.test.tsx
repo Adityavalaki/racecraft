@@ -390,6 +390,12 @@ describe("the season screens' moment", () => {
     fireEvent.click(screen.getByRole("radio", { name: "After it" }));          // the reader's choice beats the clock
     rerender(<ScreenView id="standings" ctx={racing} />);
     expect(screen.getByRole("radio", { name: "After it" }).getAttribute("aria-checked")).toBe("true");
+
+    // Another race starts afresh, with neither that choice nor the last race's flag.
+    fetchMock.mockClear();
+    rerender(<ScreenView id="standings" ctx={{ ...racing, session: "2026_16_R" }} />);
+    await waitFor(() => expect(urls()).toContain("/api/sessions/2026_16_R/standings?moment=before"));
+    expect(urls()).not.toContain("/api/sessions/2026_16_R/standings?moment=after");
   });
 });
 

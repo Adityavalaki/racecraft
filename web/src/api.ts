@@ -1009,27 +1009,39 @@ function shared<T>(key: string, path: string, signal?: AbortSignal): Promise<T> 
   if (key === LIVE_KEY) return get<T>(path, signal);          // a live session grows while it is watched
   let answer = answers.get(path) as Promise<T> | undefined;
   if (!answer) {
-    answer = get<T>(path);
-    answers.set(path, answer);
-    answer.catch(() => answers.delete(path));
+    const asked = get<T>(path);
+    answer = asked;
+    answers.set(path, asked);
+    asked.catch(() => {
+      if (answers.get(path) === asked) answers.delete(path);   // not a newer one, after new data cleared this
+    });
   }
   if (!signal) return answer;
   return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) reject(new DOMException("Aborted", "AbortError"));
     signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     answer!.then(resolve, reject);
   });
 }
 
-/** Fetches a session's season screens ahead, one at a time so the replay stays smooth; each opens at once afterwards. */
-export async function prefetchSeason(key: string): Promise<void> {
-  const race = /_(R|S)$/.test(key);
+/**
+ * Fetches a session's season screens ahead, one at a time so the replay stays smooth, and for a
+ * race as they will be at the flag too; each then opens at once. Stops when `signal` says the
+ * session changed, or a quick run through sessions would stack up work for ones nobody is watching.
+ */
+export async function prefetchSeason(key: string, signal?: AbortSignal): Promise<void> {
+  const moments: StandingsMoment[] = /_(R|S)$/.test(key) ? ["before", "after"] : ["before"];
   const steps: (() => Promise<unknown>)[] = [
-    () => api.standings(key, "before"), () => api.title(key, "before"), () => api.pitCrews(key, "before"),
-    () => api.teammates(key, "before"), () => api.starts(key, "before"), () => api.qualifying(key, "before", "Q"),
-    () => api.raceReview(key, "before"), () => api.tyreSets(key),
-    ...(race ? [() => api.standings(key, "after"), () => api.title(key, "after")] : []),
+    () => api.qualifying(key, "before", "Q"), () => api.tyreSets(key),
+    ...moments.flatMap((m) => [
+      () => api.standings(key, m), () => api.title(key, m), () => api.pitCrews(key, m),
+      () => api.teammates(key, m), () => api.starts(key, m), () => api.raceReview(key, m),
+    ]),
   ];
-  for (const step of steps) await step().catch(() => undefined);
+  for (const step of steps) {
+    if (signal?.aborted) return;
+    await step().catch(() => undefined);
+  }
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {

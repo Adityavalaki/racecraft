@@ -94,8 +94,12 @@ export default function App() {
   const sessionReady = Boolean(info);
   useEffect(() => {
     if (!sessionKey || !sessionReady || sessionKey === LIVE_KEY) return;
-    const timer = setTimeout(() => void prefetchSeason(sessionKey), PREFETCH_DELAY_MS);
-    return () => clearTimeout(timer);
+    const controller = new AbortController();
+    const timer = setTimeout(() => void prefetchSeason(sessionKey, controller.signal), PREFETCH_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [sessionKey, sessionReady]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);

@@ -236,7 +236,9 @@ class SessionData:
             # Above 100 is the feed's "no reading" (104), not a pedal: sessions imported
             # before OpenF1's was cleaned still hold it in the lake (BUG-007). Unknown, and
             # lap and recent already read a missing throttle as pedals unknown.
-            values["throttle"] = np.where(values["throttle"] > 100, np.nan, values["throttle"])
+            unknown = values["throttle"] > 100
+            if unknown.any():                # most sessions have none, and keep their smaller column
+                values["throttle"] = np.where(unknown, np.nan, values["throttle"])
         if "x" in values and "y" in values:
             # (0, 0) is the feed's "no position", not a place: a car in the
             # garage, before it goes out, or while its transponder drops out,

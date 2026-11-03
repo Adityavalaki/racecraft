@@ -46,6 +46,15 @@ describe("the season screens' shared answers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("stops fetching ahead when the session changes", async () => {
+    const fetchMock = serve();
+    const moved = new AbortController();
+    const running = prefetchSeason("2026_19_R", moved.signal);
+    moved.abort();
+    await running;
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
   it("fetches a race's screens ahead, each one once, and survives one failing", async () => {
     const fetchMock = serve();
     await prefetchSeason("2026_19_R");

@@ -314,11 +314,12 @@ export function useSession(sessionKey: string | null, wantsInsight: boolean): Lo
  * frame would be waste.
  */
 export function useStateAt(sessionKey: string | null, info: SessionInfo | null, t: number): SessionState | null {
-  const [state, setState] = useState<SessionState | null>(null);
+  // Kept with the session it belongs to: for one render after a switch the state held is still the
+  // old session's, and read as the new one's it says a race has finished that has not started.
+  const [held, setHeld] = useState<{ key: string; state: SessionState } | null>(null);
   const latest = useRef({ key: sessionKey, t });
   latest.current = { key: sessionKey, t };
 
-  useEffect(() => setState(null), [sessionKey]);
   useEffect(() => {
     if (!sessionKey || !info) return;
     let active = true;
@@ -332,7 +333,7 @@ export function useStateAt(sessionKey: string | null, info: SessionInfo | null, 
       inFlight = true;
       lastT = now;
       api.state(key, now)
-        .then((next) => active && setState(next))
+        .then((next) => active && setHeld({ key, state: next }))
         .catch(() => undefined)
         .finally(() => {
           inFlight = false;
@@ -346,7 +347,7 @@ export function useStateAt(sessionKey: string | null, info: SessionInfo | null, 
     };
   }, [sessionKey, info]);
 
-  return state;
+  return held?.key === sessionKey ? held.state : null;
 }
 
 /**
