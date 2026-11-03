@@ -1,21 +1,24 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, type DriverStarts, type StandingsMoment, type StartKind, type StartRecord, type Starts } from "../api";
+import { api, type DriverStarts, type StandingsMoment, type StartKind, type StartRace, type StartRecord, type Starts } from "../api";
 import { KpiRow } from "../shell/KpiRow";
 import type { ScreenContext } from "./ScreenView";
 
 const KINDS: [StartKind, string][] = [["races", "Races"], ["sprints", "Sprints"], ["both", "Both"]];
+const CODES: Record<StartKind, string[]> = { races: ["R"], sprints: ["S"], both: ["R", "S"] };
 
 /**
- * Places each driver gained or lost on lap 1 this season.
+ * Places each driver gained or lost on lap 1, as racecraft-ui.html draws it
+ * (D-025): one start, grid to the end of lap 1, beside the season.
  *
  * Raw places gained mostly says where a driver qualified (from pole you can
- * only lose), so the table is ranked by "vs normal": each start against the
+ * only lose), so the season is ranked by "vs normal": each start against the
  * average for that grid slot over every start in the lake (see model/starts.py).
  * Cars out on lap 1 are counted apart; pit-lane starts are left out.
  */
 export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const [moment, setMoment] = useState<StandingsMoment>("before");
   const [kind, setKind] = useState<StartKind>("races");
+  const [picked, setPicked] = useState<string | null>(null);
   const [data, setData] = useState<Starts | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,47 +35,55 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
     return () => controller.abort();
   }, [ctx.session, moment]);
 
-  const switcher = (
-    <div className="segmented" role="radiogroup" aria-label="Which sessions count">
-      {([["before", "Going into this session"], ["after", "After it"]] as [StandingsMoment, string][]).map(([key, text]) => (
-        <button key={key} type="button" role="radio" aria-checked={moment === key} className={moment === key ? "is-on" : ""}
-                onClick={() => setMoment(key)}>{text}</button>
-      ))}
-    </div>
-  );
-
   const drivers = data?.drivers[kind] ?? [];
   const sessions = data?.sessions[kind] ?? 0;
+  const races = (data?.races ?? []).filter((r) => CODES[kind].includes(r.code));
+  const race = races.find((r) => r.session_key === picked) ?? races[races.length - 1] ?? null;
+
+  const switcher = (
+    <>
+      {races.length > 0 && (
+        <label className="pick">
+          <span className="cap">Race</span>
+          <select value={race?.session_key ?? ""} onChange={(e) => setPicked(e.target.value)} aria-label="Race">
+            {[...races].reverse().map((r) => <option key={r.session_key} value={r.session_key}>{shortName(r.event_name)}</option>)}
+          </select>
+        </label>
+      )}
+      <div className="segmented" role="radiogroup" aria-label="Which starts">
+        {KINDS.map(([key, text]) => (
+          <button key={key} type="button" role="radio" aria-checked={kind === key} className={kind === key ? "is-on" : ""}
+                  onClick={() => setKind(key)}>{text}</button>
+        ))}
+      </div>
+      <div className="segmented" role="radiogroup" aria-label="Which sessions count">
+        {([["before", "Going into this session"], ["after", "After it"]] as [StandingsMoment, string][]).map(([key, text]) => (
+          <button key={key} type="button" role="radio" aria-checked={moment === key} className={moment === key ? "is-on" : ""}
+                  onClick={() => setMoment(key)}>{text}</button>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <div className="screen">
       {header(switcher)}
-      <main className="screen-body">
+      <main className="screen-body starts-body">
         {error && <div className="panel-note error">{error}</div>}
         {!error && !data && <div className="panel-note">Counting starts…</div>}
         {data && (
           <>
-            <div className="teammates-bar">
-              <p className="standings-basis">
-                <b>{data.year} season</b>
-                {" · "}
-                {sessions ? `${sessions} ${sessions === 1 ? "start" : "starts"} so far` : "nothing run yet"}
-                <br />
-                Who makes the best starts? <b className="is-quick">Green</b> means the driver usually gains more places
-                on the first lap than others starting from the same spot; <b className="is-slow">red</b> means they lose more.
-              </p>
-              <div className="segmented" role="radiogroup" aria-label="Which starts">
-                {KINDS.map(([key, text]) => (
-                  <button key={key} type="button" role="radio" aria-checked={kind === key} className={kind === key ? "is-on" : ""}
-                          onClick={() => setKind(key)}>{text}</button>
-                ))}
-              </div>
+            <KpiRow tiles={startsTiles(drivers, race)} />
+            <div className="starts-grid">
+              <SlopeChart race={race} />
+              <section className="panel starts-season" aria-label="Lap 1 across the season">
+                <div className="panel-bar"><h2>Lap 1 across the season</h2>
+                  <span className="panel-meta">{data.year}, {sessions} {sessions === 1 ? "start" : "starts"} · bar and rating: places against what that grid slot usually gains</span></div>
+                <StartsTable drivers={drivers} />
+              </section>
             </div>
-            <KpiRow tiles={startsTiles(drivers)} />
-            <section className="panel standings-panel" aria-label="Starts">
-              <StartsTable drivers={drivers} />
-            </section>
             {data.notes.length > 0 && (
-              <ul className="prediction-notes">{data.notes.map((note) => <li key={note}>{note}</li>)}</ul>
+              <ul className="prediction-notes starts-notes">{data.notes.map((note) => <li key={note}>{note}</li>)}</ul>
             )}
           </>
         )}
@@ -81,36 +92,88 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
   );
 }
 
+const shortName = (event: string) => event.replace(" Grand Prix", "");
+const gainText = (gain: number) => (gain > 0 ? `+${gain}` : gain < 0 ? `−${-gain}` : "=");
+const gainTone = (gain: number) => (gain > 0 ? " is-up" : gain < 0 ? " is-down" : "");
+
+/** Grid slot on the left, place after lap 1 on the right, a line between; a car out on lap 1 has no line or right label. */
+function SlopeChart({ race }: { race: StartRace | null }) {
+  if (!race) {
+    return (
+      <section className="panel starts-slope" aria-label="Grid to the end of lap 1">
+        <div className="panel-bar"><h2>Grid to end of lap 1</h2></div>
+        <p className="panel-note">No starts to show yet.</p>
+      </section>
+    );
+  }
+  const rows = Math.max(...race.cars.flatMap((c) => [c.grid, c.lap1 ?? 0]), 1);
+  const y = (place: number) => ((place - 0.5) / rows) * 100;
+  const out = race.cars.filter((c) => c.lap1 === null);
+  return (
+    <section className="panel starts-slope" aria-label="Grid to the end of lap 1">
+      <div className="panel-bar"><h2>Grid to end of lap 1</h2>
+        <span className="panel-meta">{shortName(race.event_name)} · green gained places, red lost them{out.length ? ` · out on lap 1: ${out.map((c) => c.abbreviation).join(", ")}` : ""}</span></div>
+      <div className="slope-heads cap"><span>Grid</span><span>End of lap 1</span></div>
+      <div className="slope">
+        <span className="slope-axis" style={{ left: 0 }} />
+        <span className="slope-axis" style={{ right: 0 }} />
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          {race.cars.filter((c) => c.lap1 !== null).map((c) => {
+            const gain = c.grid - c.lap1!;
+            return (
+              <line key={c.abbreviation} x1="0" x2="100" y1={y(c.grid)} y2={y(c.lap1!)} vectorEffect="non-scaling-stroke"
+                    className={`slope-line${gainTone(gain)}`} strokeWidth={Math.abs(gain) >= 2 ? 2.4 : 1.4} />
+            );
+          })}
+        </svg>
+        {race.cars.map((c) => (
+          <span key={c.abbreviation} className="slope-label is-left num" style={{ top: `${y(c.grid)}%` }}>
+            <i>P{c.grid}</i>{c.abbreviation}<b style={{ background: `#${c.team_color ?? "555"}` }} />
+          </span>
+        ))}
+        {race.cars.filter((c) => c.lap1 !== null).map((c) => (
+          <span key={c.abbreviation} className="slope-label is-right num" style={{ top: `${y(c.lap1!)}%` }}>
+            <i>P{c.lap1}</i>{c.abbreviation}<em className={gainTone(c.grid - c.lap1!)}>{gainText(c.grid - c.lap1!)}</em>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function StartsTable({ drivers }: { drivers: DriverStarts[] }) {
   if (drivers.length === 0) return <p className="panel-note">No starts to count yet.</p>;
+  const reach = Math.max(0.01, ...drivers.map((d) => Math.abs(d.vs_normal ?? 0)));
   return (
-    <div className="standings-table is-starts" role="table" aria-label="Places gained on lap 1">
-      <div className="standings-row is-head" role="row">
-        <span role="columnheader" className="num">Pos</span>
+    <div className="starts-table" role="table" aria-label="Places gained on lap 1">
+      <div className="starts-row is-head cap" role="row">
+        <span role="columnheader" className="right">#</span>
         <span role="columnheader" />
-        <span role="columnheader">Driver</span>
-        <span role="columnheader" className="num" title="Places gained on lap 1, on average, compared with other drivers starting from the same spots">Start rating</span>
-        <span role="columnheader" className="num" title="Places gained on lap 1, on average">Avg gained</span>
-        <span role="columnheader" className="mid" title="How many starts the driver gained, kept or lost places">Gained · kept · lost</span>
-        <span role="columnheader">Best start</span>
-        <span role="columnheader">Worst start</span>
-        <span role="columnheader" className="num" title="Out of the race on lap 1: not counted as places lost">Crashed lap 1</span>
-        <span role="columnheader" className="num">Starts</span>
+        <span role="columnheader">Drv</span>
+        <span role="columnheader" />
+        <span role="columnheader" className="mid">Worse · better</span>
+        <span role="columnheader" className="right" title="Places gained on lap 1, on average, compared with other drivers starting from the same spots">Rating</span>
+        <span role="columnheader" className="right" title="Places gained on lap 1, on average">Avg</span>
+        <span role="columnheader" className="right" title="The most places gained in one start">Best</span>
       </div>
-      {drivers.map((d, i) => (
-        <div key={d.abbreviation} role="row" className="standings-row">
-          <span role="cell" className="num pos">{d.vs_normal === null ? "" : i + 1}</span>
-          <span role="cell" className="team-bar" style={{ background: `#${d.team_color ?? "555"}` }} />
-          <span role="cell" className="who"><b className="code">{d.abbreviation}</b><small>{d.team}</small></span>
-          <span role="cell" className={`num points${tone(d.vs_normal)}`}>{places(d.vs_normal)}</span>
-          <span role="cell" className="num gap">{places(d.gained)}</span>
-          <span role="cell" className="mid split">{d.up} · {d.same} · {d.down}</span>
-          <span role="cell" className="split">{startText(d.best)}</span>
-          <span role="cell" className="split">{startText(d.worst)}</span>
-          <span role="cell" className="num gap">{d.out_lap1 || ""}</span>
-          <span role="cell" className="num gap">{d.starts}</span>
-        </div>
-      ))}
+      {drivers.map((d, i) => {
+        const w = ((Math.abs(d.vs_normal ?? 0)) / reach) * 50;
+        return (
+          <div key={d.abbreviation} role="row" className="starts-row"
+               title={`${d.starts} starts: gained ${d.up}, kept ${d.same}, lost ${d.down}${d.out_lap1 ? `; out on lap 1 ${d.out_lap1}` : ""}\nBest ${startText(d.best)}\nWorst ${startText(d.worst)}`}>
+            <span role="cell" className="num right strong">{d.vs_normal === null ? "" : i + 1}</span>
+            <span role="cell" className="team-bar" style={{ background: `#${d.team_color ?? "555"}` }} />
+            <span role="cell" className="num strong">{d.abbreviation}</span>
+            <span role="cell" className="panel-meta starts-team">{d.team}</span>
+            <span role="cell" className="starts-div" aria-hidden="true">
+              {d.vs_normal !== null && <i className={tone(d.vs_normal)} style={{ left: `${d.vs_normal >= 0 ? 50 : 50 - w}%`, width: `${w}%` }} />}
+            </span>
+            <span role="cell" className={`num right strong${tone(d.vs_normal)}`}>{places(d.vs_normal)}</span>
+            <span role="cell" className="num right starts-dim">{places(d.gained)}</span>
+            <span role="cell" className="num right starts-dim">{d.best ? gainText(d.best.gain) : "—"}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -124,24 +187,30 @@ export function places(value: number | null): string {
 
 /** "P14 → P7, Chinese" (a sprint keeps its "sprint") */
 export function startText(start: StartRecord | null): string {
-  return start ? `P${start.grid} → P${start.lap1}, ${start.event_name.replace(" Grand Prix", "")}` : "—";
+  return start ? `P${start.grid} → P${start.lap1}, ${shortName(start.event_name)}` : "—";
 }
 
 function tone(value: number | null): string {
   return value === null || Math.abs(value) < 0.005 ? "" : value > 0 ? " is-quick" : " is-slow";
 }
 
-/** The starts' headline figures, for the races, sprints or both on show. */
-export function startsTiles(drivers: DriverStarts[]) {
-  const rated = drivers.filter((d) => d.vs_normal !== null);
-  const best = rated[0];
-  const worst = rated[rated.length - 1];
-  const gainer = [...drivers].filter((d) => d.gained !== null).sort((a, b) => b.gained! - a.gained!)[0];
-  const out = drivers.reduce((n, d) => n + d.out_lap1, 0);
+/**
+ * The headline figures: the chosen start's best and worst lap 1 and how many
+ * cars changed place, and the season's best starter against the slot's normal.
+ */
+export function startsTiles(drivers: DriverStarts[], race: StartRace | null) {
+  const ran = (race?.cars ?? []).filter((c) => c.lap1 !== null).map((c) => ({ ...c, gain: c.grid - c.lap1! }));
+  const best = [...ran].sort((a, b) => b.gain - a.gain)[0];
+  const worst = [...ran].sort((a, b) => a.gain - b.gain)[0];
+  const name = race ? shortName(race.event_name) : "";
+  const out = (race?.cars.length ?? 0) - ran.length;
+  const season = drivers.find((d) => d.vs_normal !== null);
+  // Several cars often share the figure: the tile names one and says so.
+  const tied = (gain: number) => { const others = ran.filter((r) => r.gain === gain).length - 1; return others ? `, level with ${others} more` : ""; };
   return [
-    best && { label: "Best starter", value: `${best.abbreviation} · ${places(best.vs_normal)}`, note: "places a start against the grid slot's normal", tone: "good" as const },
-    worst && worst !== best && { label: "Worst starter", value: `${worst.abbreviation} · ${places(worst.vs_normal)}`, note: "places a start against the grid slot's normal", tone: "bad" as const },
-    gainer && { label: "Most places gained", value: `${gainer.abbreviation} · ${places(gainer.gained)}`, note: "a start, on average, raw" },
-    drivers.length > 0 && { label: "Out on lap 1", value: String(out), note: "not counted as places lost" },
+    best && { label: `Best launch at ${name}`, value: `${best.abbreviation} ${gainText(best.gain)}`, note: `P${best.grid} to P${best.lap1}${tied(best.gain)}`, tone: best.gain > 0 ? "good" as const : undefined },
+    worst && { label: `Worst lap 1 at ${name}`, value: `${worst.abbreviation} ${gainText(worst.gain)}`, note: `P${worst.grid} to P${worst.lap1}${tied(worst.gain)}`, tone: worst.gain < 0 ? "bad" as const : undefined },
+    season && { label: "Season's best starter", value: `${season.abbreviation} ${places(season.vs_normal)}`, note: "places a start against the grid slot's normal" },
+    race && { label: "Places changed on lap 1", value: `${ran.filter((c) => c.gain !== 0).length} cars`, note: `at ${name}${out ? `, ${out} out on lap 1` : ", all cars"}` },
   ];
 }

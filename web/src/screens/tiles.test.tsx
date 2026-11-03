@@ -74,8 +74,14 @@ describe("headline tiles", () => {
   it("starts and qualifying name the best and the worst", () => {
     const s = (code: string, vs: number | null, gained: number | null, out = 0) =>
       ({ abbreviation: code, vs_normal: vs, gained, out_lap1: out }) as DriverStarts;
-    expect(shown(startsTiles([s("LAW", 1.32, 2.1), s("HUL", -0.9, -0.4, 1), s("EEE", null, null, 2)])).map((t) => t.value))
-      .toEqual(["LAW · +1.32", "HUL · −0.90", "LAW · +2.10", "3"]);
+    const race = { session_key: "k", round: 2, code: "R", event_name: "Chinese Grand Prix", cars: [
+      { abbreviation: "VER", team_color: null, grid: 1, lap1: 3 }, { abbreviation: "LAW", team_color: null, grid: 4, lap1: 1 },
+      { abbreviation: "HUL", team_color: null, grid: 3, lap1: 2 }, { abbreviation: "EEE", team_color: null, grid: 2, lap1: null }] };
+    const tiles = shown(startsTiles([s("EEE", null, null, 2), s("LAW", 1.32, 2.1), s("HUL", -0.9, -0.4, 1)], race));
+    expect(tiles.map((t) => t.value)).toEqual(["LAW +3", "VER −2", "LAW +1.32", "3 cars"]);
+    expect(tiles.map((t) => t.label)[0]).toBe("Best launch at Chinese");
+    expect(tiles[3]!.note).toBe("at Chinese, 1 out on lap 1");
+    expect(shown(startsTiles([], null))).toEqual([]);
     const q = (code: string, pos: number, left: number | null, season: number | null) =>
       ({ abbreviation: code, position: pos, best_s: 94.035, left_s: left, season_left_s: season, season_sessions: 18 }) as QualiDriver;
     expect(shown(qualiTiles([q("ANT", 1, 0.13, 0.049), q("HAD", 3, 0, 0.074), q("BOR", 13, 0.214, 0.062)])).map((t) => t.value))

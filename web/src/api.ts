@@ -773,11 +773,21 @@ export interface DriverStarts {
 
 export type StartKind = "races" | "sprints" | "both";
 
+/** One start: every car's grid slot and place after lap 1 (null: out on it). */
+export interface StartRace {
+  session_key: string;
+  round: number;
+  code: string;
+  event_name: string;
+  cars: { abbreviation: string; team_color: string | null; grid: number; lap1: number | null }[];
+}
+
 export interface Starts {
   year: number;
   moment: StandingsMoment;
   drivers: Record<StartKind, DriverStarts[]>;
   sessions: Record<StartKind, number>;
+  races?: StartRace[];
   notes: string[];
 }
 

@@ -31,9 +31,11 @@ class Starts:
     drivers: dict[str, list[dict]]           # by KINDS key
     sessions: dict[str, int]                 # starts counted per kind: sessions, not cars
     notes: list[str] = field(default_factory=list)
+    races: list[dict] = field(default_factory=list)   # each counted start, in running order: grid to end of lap 1
 
     def as_dict(self) -> dict:
-        return {"year": self.year, "drivers": self.drivers, "sessions": self.sessions, "notes": self.notes}
+        return {"year": self.year, "drivers": self.drivers, "sessions": self.sessions, "notes": self.notes,
+                "races": self.races}
 
 
 def season(con, year: int, as_of: pd.Timestamp | None = None) -> Starts:
@@ -65,7 +67,18 @@ def season(con, year: int, as_of: pd.Timestamp | None = None) -> Starts:
                   drivers={kind: _drivers(counted[counted["code"].isin(codes)]) for kind, codes in KINDS.items()},
                   sessions={kind: int(counted.loc[counted["code"].isin(codes), "session_key"].nunique())
                             for kind, codes in KINDS.items()},
-                  notes=notes)
+                  notes=notes, races=_races(counted))
+
+
+def _races(counted: pd.DataFrame) -> list[dict]:
+    """Each start of the season, in running order, with every car's grid slot and place after lap 1 (None: out on it)."""
+    out = []
+    for key, mine in counted.sort_values(["date_utc", "grid"]).groupby("session_key", sort=False):
+        first = mine.iloc[0]
+        out.append({"session_key": key, "round": int(first["round"]), "code": first["code"], "event_name": _label(first),
+                    "cars": [{"abbreviation": r.abbreviation, "team_color": r.team_color, "grid": int(r.grid),
+                              "lap1": None if pd.isna(r.lap1) else int(r.lap1)} for r in mine.itertuples()]})
+    return out
 
 
 def _every_start(con, cut: pd.Timestamp | None) -> pd.DataFrame:

@@ -2349,9 +2349,8 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 
 /* ---------------------------------------------------------------- starts */
 .standings-table.is-quali { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.4rem 6.4rem 6rem 13rem 7.4rem; }
-.standings-table.is-starts { --st-cols: 2rem 4px minmax(7rem, 1fr) 6.6rem 6rem 12rem minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) 7.4rem 3.8rem; }
-.standings-table.is-starts .is-head span, .standings-table.is-quali .is-head span { white-space: nowrap; }
-.standings-table.is-starts .mid, .standings-table.is-quali .mid { text-align: center; }
+.standings-table.is-quali .is-head span { white-space: nowrap; }
+.standings-table.is-quali .mid { text-align: center; }
 .standings-row .is-quick { color: var(--green); }
 .standings-row .is-slow { color: var(--red); }
 .standings-basis .is-quick { color: var(--green); }
@@ -2649,3 +2648,46 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .trace-driver.is-head { position: sticky; top: 0; z-index: 2; height: 26px !important; background: #0B0D10; cursor: default; font-size: 9px; }
 .trace-check { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #3A414B; display: inline-flex; align-items: center; justify-content: center; }
 @media (max-width: 1099px) { .trace-layout { overflow: visible !important; } .trace-panel { height: 520px; } .trace-drivers { height: 480px; } }
+
+/* Starts as racecraft-ui.html draws it (D-025): four tiles over one start's slope chart beside the season. */
+.starts-body { overflow: hidden; }
+.starts-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.starts-slope, .starts-season { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.starts-notes { flex: none; margin: 0 !important; }
+.slope-heads { display: flex; justify-content: space-between; flex: none; padding: 8px 110px 0; }
+.slope { position: relative; flex: 1 1 auto; min-height: 0; margin: 10px 110px 12px; }
+.slope svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.slope-axis { position: absolute; top: 0; bottom: 0; width: 2px; background: #262B33; }
+.slope-line { stroke: #5B626C; stroke-opacity: 0.6; }
+.slope-line.is-up { stroke: #4ADE80; stroke-opacity: 1; }
+.slope-line.is-down { stroke: #FF6B6B; stroke-opacity: 1; }
+.slope-label { position: absolute; display: flex; align-items: center; gap: 6px; transform: translateY(-50%); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.slope-label.is-left { right: calc(100% + 10px); }
+.slope-label.is-right { left: calc(100% + 10px); }
+.slope-label i { font-style: normal; font-weight: 500; color: var(--ink-faint); }
+.slope-label b { width: 3px; height: 11px; border-radius: 1px; }
+.slope-label em { font-style: normal; color: var(--ink-faint); }
+.slope-label em.is-up { color: #4ADE80; }
+.slope-label em.is-down { color: #FF6B6B; }
+.starts-table { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
+.starts-row { display: grid; grid-template-columns: 24px 3px 36px minmax(0, 1fr) 110px 44px 44px 34px; align-items: center; gap: 8px; min-height: 26px; padding: 0 12px;
+  border-bottom: 1px solid #161A1F; font-size: 11.5px; }
+.starts-row:hover { background: rgba(255, 255, 255, 0.03); }
+.starts-row.is-head { position: sticky; top: 0; z-index: 2; background: #0B0D10; font-size: 9px; border-bottom: 1px solid var(--rule); }
+.starts-row .right { text-align: right; }
+.starts-row .mid { text-align: center; }
+.starts-row .team-bar { height: 60%; min-height: 12px; }
+.starts-row .is-quick { color: #4ADE80; }
+.starts-row .is-slow { color: #FF6B6B; }
+.starts-team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.starts-dim { color: var(--ink-soft); }
+.starts-div { position: relative; height: 10px; }
+.starts-div::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.2); }
+.starts-div i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.starts-div i.is-quick { background: #4ADE80; }
+.starts-div i.is-slow { background: #FF6B6B; }
+@media (max-width: 1099px) {
+  .starts-body { overflow: auto; }
+  .starts-grid { grid-template-columns: minmax(0, 1fr); }
+  .starts-slope, .starts-season { min-height: 560px; }
+}

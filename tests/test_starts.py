@@ -82,6 +82,17 @@ def test_lap_one_retirements_pit_lane_and_no_grid_are_kept_apart(con):
     assert table.sessions == {"races": 2, "sprints": 1, "both": 3}
 
 
+def test_each_start_lists_grid_to_lap_one_in_running_order(con):
+    races = starts.season(con, 2024).races
+    assert [(r["round"], r["code"]) for r in races] == [(1, "R"), (2, "S"), (2, "R")]      # round 3 had no grid
+    # Pole lost one, the pit-lane start is left out, and EEE went out on lap 1.
+    assert [(c["abbreviation"], c["grid"], c["lap1"]) for c in races[0]["cars"]] == [
+        ("AAA", 1, 2), ("BBB", 2, 1), ("CCC", 3, 3), ("EEE", 4, None)]
+    assert races[1]["event_name"] == "Round 2 Grand Prix sprint"
+    assert "EEE" not in [c["abbreviation"] for c in races[2]["cars"]]                      # did not start
+    assert starts.season(con, 2024, as_of=pd.Timestamp("2024-03-08", tz="UTC")).as_dict()["races"][-1]["round"] == 1
+
+
 def test_sprints_apart_and_together(con):
     table = starts.season(con, 2024)
     assert _row(table, "sprints", "AAA")["starts"] == 1 and _row(table, "sprints", "AAA")["vs_normal"] == 0
