@@ -129,3 +129,8 @@ def test_recent_is_the_last_half_minute_by_time():
     assert len(window["t"]) == 30 * 8 + 1
     assert window["brake"][-1] is True                                     # 24 s in: braking
     assert window["speed"][-1] == pytest.approx(108)
+    assert window["rpm"] == [None] * len(window["t"])                      # a feed without revs says so
+
+    car = _car()
+    revs = Channel(t=car.t, values={**car.values, "rpm": np.full(len(car.t), 11000.0)})
+    assert telemetry.recent(_data({1: revs}, [(1, 1, 1000.0, 1060.0)]), 1, t=1024.0)["rpm"][-1] == pytest.approx(11000.0)

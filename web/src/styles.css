@@ -1734,7 +1734,9 @@ button.prediction-row:hover { background: var(--panel-2); }
 .card-gear b { font: 900 28px var(--font-display); line-height: 1; }
 .card-meters { display: grid; grid-template-columns: 54px minmax(0, 1fr) 48px; gap: 9px 8px; align-items: center; }
 .meter { position: relative; height: 10px; border-radius: 2px; background: #07080A; border: 1px solid var(--rule); overflow: hidden; }
-.meter i { position: absolute; left: 0; top: 0; bottom: 0; }
+/* Eased on the compositor (D-027): set every frame, each restart closes on the value, so a slammed throttle or a brake glides in about 100 ms. */
+.meter i { position: absolute; inset: 0; transform: scaleX(0); transform-origin: left center; transition: transform 0.12s linear; will-change: transform; }
+@media (prefers-reduced-motion: reduce) { .meter i { transition: none; } }
 .meter-value { font-size: 11px; font-weight: 600; text-align: right; }
 .meter-value.is-on { color: #FF6B6B; }
 .card-gaps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding-top: 8px; border-top: 1px solid var(--rule-soft); font-size: 11px; color: var(--ink-mid); }

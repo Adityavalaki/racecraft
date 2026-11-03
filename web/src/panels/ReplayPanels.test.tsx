@@ -99,7 +99,7 @@ describe("DriverCards", () => {
       // Fetched in one go: the half-minute behind the clock and fifteen seconds ahead of it.
       await waitFor(() => expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2025_17_R/recent?driver=16&t=4015.00&seconds=47"));
       // Read at the clock's own time: answered from 4015, so 4000 is halfway from 120 at 3995 to 200 at 4005.
-      await waitFor(() => expect(container.querySelector(".card-speed")?.textContent).toBe("160 km/h"));
+      await waitFor(() => expect(container.querySelector(".card-speed")?.textContent).toBe("160 km/h"), { timeout: 2000 });
     } finally {
       vi.unstubAllGlobals();
     }
@@ -107,6 +107,39 @@ describe("DriverCards", () => {
 });
 
 describe("the card's telemetry, as the clock runs", () => {
+  it("moves the bars and states with every frame while the figures hold", async () => {
+    // Samples at 3968, 3990, 3995, 4005 and 4015, as below.
+    const trace = { driver_number: 16, seconds: 47, t: [-47, -25, -20, -10, 0], speed: [300, 250, 100, 200, 310],
+                    throttle: [100, 100, 0, 60, 100], brake: [false, false, true, false, false], gear: [8, 7, 3, 5, 8],
+                    rpm: [11000, 11000, 6000, 8000, 12000] };
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => trace }) as unknown as Response));
+    try {
+      const props = { selected: [16], drivers: field, cars: {}, hasDrs: true, onUnpick: vi.fn(), sessionKey: "2025_17_R" };
+      const { container, rerender } = render(<DriverCards {...props} t={4000} />);
+      const speedAt = () => container.querySelector(".card-speed")?.textContent;
+      await waitFor(() => expect(speedAt()).toBe("150 km/h"));
+      const bars = () => Array.from(container.querySelectorAll<HTMLElement>(".meter i")).map((b) => b.style.transform);
+      const values = () => Array.from(container.querySelectorAll(".meter-value")).map((v) => v.textContent);
+      // Halfway from 3995 to 4005: revs 7000 of 15000, throttle 30%, and on the brake.
+      expect(bars()).toEqual([`scaleX(${7000 / 15000})`, "scaleX(0.3)", "scaleX(1)"]);
+      expect(values()).toEqual(["7,000", "30%", "ON"]);
+
+      rerender(<DriverCards {...props} t={4006} />);
+      // Off the brake and up a gear at once, and the bars have moved...
+      expect(container.querySelector(".card-gear b")?.textContent).toBe("5");
+      expect(values()[2]).toBe("OFF");
+      expect(bars()[2]).toBe("scaleX(0)");
+      expect(bars()[1]).toBe("scaleX(0.64)");
+      // ...while the figures wait for the second to turn.
+      expect(speedAt()).toBe("150 km/h");
+      expect(values().slice(0, 2)).toEqual(["7,000", "30%"]);
+      await waitFor(() => expect(values().slice(0, 2)).toEqual(["8,400", "64%"]), { timeout: 2000 });
+      expect(speedAt()).toBe("211 km/h");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("slides with the clock without asking again, and reads speed between samples", async () => {
     // Samples at 3968, 3990, 3995, 4005 and 4015: the server answers relative to the end it was asked for.
     const trace = { driver_number: 16, seconds: 47, t: [-47, -25, -20, -10, 0], speed: [300, 250, 100, 200, 310],
@@ -119,7 +152,8 @@ describe("the card's telemetry, as the clock runs", () => {
       const speedAt = () => container.querySelector(".card-speed")?.textContent;
       await waitFor(() => expect(speedAt()).toBe("150 km/h"));   // halfway from 100 at 3995 to 200 at 4005
       rerender(<DriverCards {...props} t={4002} />);
-      expect(speedAt()).toBe("170 km/h");
+      expect(speedAt()).toBe("150 km/h");                     // the figure holds, so it can be read
+      await waitFor(() => expect(speedAt()).toBe("170 km/h"), { timeout: 2000 });   // and ticks within the second
       expect(fetchMock).toHaveBeenCalledTimes(1);             // still inside what was fetched
     } finally {
       vi.unstubAllGlobals();

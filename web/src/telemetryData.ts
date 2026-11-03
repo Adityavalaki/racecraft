@@ -73,14 +73,16 @@ interface Buffer {
   throttle: (number | null)[];
   brake: (boolean | null)[];
   gear: (number | null)[];
+  rpm?: (number | null)[];
 }
 
-/** The car at one instant, between samples: speed and throttle blend, gear and brake hold. */
+/** The car at one instant, between samples: speed, throttle and revs blend, gear and brake hold. */
 export interface CarNow {
   speed: number | null;
   throttle: number | null;
   brake: boolean | null;
   gear: number | null;
+  rpm: number | null;
 }
 
 function lowerBound(values: number[], target: number): number {
@@ -95,7 +97,7 @@ function lowerBound(values: number[], target: number): number {
 }
 
 /** The car at `t`, read off the buffer: what the card's figures show, every frame. */
-export function carAt(buffer: Pick<Buffer, "t" | "speed" | "throttle" | "brake" | "gear">, t: number): CarNow | null {
+export function carAt(buffer: Pick<Buffer, "t" | "speed" | "throttle" | "brake" | "gear" | "rpm">, t: number): CarNow | null {
   const n = buffer.t.length;
   if (n < 2 || t < buffer.t[0]! || t > buffer.t[n - 1]!) return null;
   const hi = Math.min(Math.max(lowerBound(buffer.t, t), 1), n - 1);
@@ -108,6 +110,7 @@ export function carAt(buffer: Pick<Buffer, "t" | "speed" | "throttle" | "brake" 
     throttle: blend(buffer.throttle[lo] ?? null, buffer.throttle[hi] ?? null),
     brake: buffer.brake[lo] ?? null,
     gear: buffer.gear[lo] ?? null,
+    rpm: blend(buffer.rpm?.[lo] ?? null, buffer.rpm?.[hi] ?? null),
   };
 }
 
@@ -175,7 +178,7 @@ export function useTelemetry(sessionKey: string | null, driver: number | null, t
             return;
           }
           buffer.current = { key, t: next.t.map((offset) => end + offset), speed: next.speed, throttle: next.throttle,
-                             brake: next.brake, gear: next.gear };
+                             brake: next.brake, gear: next.gear, rpm: next.rpm };
           setError(null);
           setVersion((v) => v + 1);
         })

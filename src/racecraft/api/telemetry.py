@@ -181,7 +181,7 @@ def brake_zones(distance: np.ndarray, t: np.ndarray, speed: np.ndarray, brake: n
 
 
 def recent(data, driver: int, t: float, seconds: float = 30.0) -> dict:
-    """The last `seconds` before `t`, by time: speed, throttle, brake and gear."""
+    """The last `seconds` before `t`, by time: speed, throttle, brake, gear and revs."""
     seconds = float(min(max(seconds, 1.0), RECENT_MAX_S))
     car = data.car.get(driver)
     if car is None or len(car.t) == 0:
@@ -199,6 +199,7 @@ def recent(data, driver: int, t: float, seconds: float = 30.0) -> dict:
         "throttle": sampled["throttle"],
         "brake": [None if v is None else bool(v) for v in sampled["brake"]],
         "gear": [None if v is None else int(v) for v in sampled["gear"]],
+        "rpm": sampled.get("rpm", [None] * len(times)),
     }
 
 

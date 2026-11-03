@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { COMPOUND_COLORS, type CarState, type DriverTiming } from "../api";
+import { useHeld } from "../held";
 import { speedIn, type Settings } from "../settings";
 import { useTelemetry } from "../telemetryData";
 
@@ -93,6 +94,15 @@ export const DriverCards = memo(function DriverCards(props: Props) {
   return <div className="driver-cards">{shown.map(card)}</div>;
 });
 
+/** A bar drawn by scaling, not by width, so it eases on the compositor without laying the card out each frame. */
+function Meter({ share, color, title }: { share: number; color: string; title?: string }) {
+  return (
+    <span className="meter" title={title}>
+      <i style={{ transform: `scaleX(${Math.max(0, Math.min(1, share))})`, background: color }} />
+    </span>
+  );
+}
+
 function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, onUnpick, sessionKey, t, units,
                       playbackSpeed, name }: {
   number: number;
@@ -110,17 +120,19 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   name?: string;
 }) {
   const { now } = useTelemetry(sessionKey, number, t, playbackSpeed);
-  // Speed, gear and pedals from the buffered telemetry, read at this very
+  // Speed, gear, pedals and revs from the buffered telemetry, read at this very
   // frame; the state's own figures, a few times a second, until it arrives.
-  const speed = speedIn(now?.speed ?? car.speed, units);
   const gear = now?.gear ?? car.gear;
   const throttle = now?.throttle ?? car.throttle ?? null;
   const braking = Boolean(now?.brake ?? car.brake);
-  const rpm = car.rpm ?? null;
+  const rpm = now?.rpm ?? car.rpm ?? null;
+  // The bars follow every frame; the figures tick once a second, or they blur past unread (D-027).
+  const speed = speedIn(useHeld(now?.speed ?? car.speed ?? null), units);
+  const throttleShown = useHeld(throttle);
+  const rpmShown = useHeld(rpm);
   const code = driver?.abbreviation ?? String(number);
   const aid = !hasDrs && hasOvertake ? overtakeLabel(driver?.overtake) : drsLabel(car.drs, hasDrs);
   const colour = `#${driver?.team_color ?? "555555"}`;
-  const pct = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
   return (
     <article className="panel driver-card" aria-label={`${code} telemetry`} style={{ ["--team" as string]: colour }}>
       <header className="card-head">
@@ -152,15 +164,13 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
         </div>
         <div className="card-meters">
           <span className="cap">RPM</span>
-          <span className="meter" title={`Full scale: the ${RPM_LIMIT.toLocaleString("en")} rpm limit`}>
-            <i style={{ width: rpm == null ? "0%" : pct((rpm / RPM_LIMIT) * 100), background: "#A78BFA" }} />
-          </span>
-          <span className="num meter-value">{rpm == null ? "—" : Math.round(rpm).toLocaleString("en")}</span>
+          <Meter share={rpm == null ? 0 : rpm / RPM_LIMIT} color="#A78BFA" title={`Full scale: the ${RPM_LIMIT.toLocaleString("en")} rpm limit`} />
+          <span className="num meter-value">{rpmShown == null ? "—" : Math.round(rpmShown).toLocaleString("en")}</span>
           <span className="cap">Throttle</span>
-          <span className="meter"><i style={{ width: throttle == null ? "0%" : pct(throttle), background: "#22C55E" }} /></span>
-          <span className="num meter-value">{throttle == null ? "—" : `${Math.round(throttle)}%`}</span>
+          <Meter share={throttle == null ? 0 : throttle / 100} color="#22C55E" />
+          <span className="num meter-value">{throttleShown == null ? "—" : `${Math.round(throttleShown)}%`}</span>
           <span className="cap">Brake</span>
-          <span className="meter"><i style={{ width: braking ? "100%" : "0%", background: "#EF4444" }} /></span>
+          <Meter share={braking ? 1 : 0} color="#EF4444" />
           <span className={`num meter-value${braking ? " is-on" : ""}`}>{braking ? "ON" : "OFF"}</span>
         </div>
         <div className="card-gaps">

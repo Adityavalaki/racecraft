@@ -1,3 +1,4 @@
+import { useHeld } from "../held";
 import type { DriverTiming, LapTrace } from "../api";
 import { useLapTrace } from "../telemetryData";
 
@@ -69,7 +70,7 @@ export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
                 <span className="cap">{ch.label} {ch.unit && <small>{ch.unit}</small>}</span>
                 <span className="tel-values num">
                   {lines.map((l) => (
-                    <span key={l.driver.driver_number} style={{ color: l.colour }}>{valueText(l.trace, ch.id, l.at)}</span>
+                    <ChannelValue key={l.driver.driver_number} text={valueText(l.trace, ch.id, l.at)} color={l.colour} hold={ch.id === "speed" || ch.id === "throttle"} />
                   ))}
                 </span>
               </div>
@@ -95,6 +96,12 @@ export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
       )}
     </section>
   );
+}
+
+/** A channel's figure at the cursor: speed and throttle tick once a second to be read; brake and gear are states, and stay live. */
+function ChannelValue({ text, color, hold }: { text: string; color: string; hold: boolean }) {
+  const held = useHeld(text);
+  return <span style={{ color }}>{hold ? held : text}</span>;
 }
 
 /** The SVG path of one channel across the lap, in a 1000-wide box `height` tall. */

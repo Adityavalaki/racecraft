@@ -947,6 +947,7 @@ export interface RecentTrace {
   throttle: (number | null)[];
   brake: (boolean | null)[];
   gear: (number | null)[];
+  rpm?: (number | null)[];
 }
 
 export interface LapComparison {
