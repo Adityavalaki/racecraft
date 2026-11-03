@@ -433,21 +433,24 @@ describe("Teammates", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ScreenView id="teammates" ctx={context()} />);
 
-    const table = within(await screen.findByRole("table", { name: "Mercedes: ANT against RUS, head to head" }));
+    const card = within(await screen.findByRole("region", { name: "Mercedes: ANT against RUS" }));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/sessions/2026_15_R/teammates?moment=before");
-    expect(table.getByText("ANT 0.231 s quicker (0.25%)")).toBeDefined();
-    expect(table.getByText("ANT 0.304 s a lap quicker · 2 sessions")).toBeDefined();
-    expect(table.getByText("RUS 0.110 s quicker · 5 sessions")).toBeDefined();
-    expect(table.getByText("retirements: ANT 0, RUS 1")).toBeDefined();
-    expect(table.getByText("Qualified ahead")).toBeDefined();
-    expect(table.queryByText("Sprints ahead")).toBeNull();                 // no sprint run yet
+    expect(card.getByText("Kimi Antonelli")).toBeDefined();
+    expect(card.getByText("2 rounds · 43 pts")).toBeDefined();
+    expect(card.getByText("ANT 0.231 s quicker")).toBeDefined();           // the gap the bars show
+    expect(card.getByTitle("ANT 0.231 s quicker (0.25%)")).toBeDefined();  // the score says how much on hover
+    expect(card.getByTitle(/retirements: ANT 0, RUS 1/)).toBeDefined();
+    expect(card.queryByText("Sprints")).toBeNull();                        // no sprint run yet
     expect(screen.getByText("a note")).toBeDefined();
+    expect(screen.getByText("ANT v RUS, 1–1")).toBeDefined();              // the closest pair
 
     // Qualifying first: one round each way.
     expect(screen.getByRole("img", { name: "Qualifying gap by round: ANT quicker in 1, RUS in 1" })).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: "Race pace" }));
     expect(screen.getByRole("img", { name: "Race pace gap by round: ANT quicker in 1, RUS in 0" })).toBeDefined();
-    expect(screen.getByText("Round 2, Chinese Grand Prix: nothing to compare")).toBeDefined();
+    expect(screen.getByTitle("Round 2, Chinese Grand Prix: nothing to compare")).toBeDefined();
+    expect(card.getByText("ANT 0.304 s a lap quicker")).toBeDefined();
+    expect(card.getByTitle("ANT 0.304 s a lap quicker · 2 sessions")).toBeDefined();
 
     fireEvent.click(screen.getByRole("radio", { name: "After it" }));
     await waitFor(() => expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/api/sessions/2026_15_R/teammates?moment=after"));
