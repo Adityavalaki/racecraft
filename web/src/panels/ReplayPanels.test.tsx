@@ -2,9 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import type { DriverTiming } from "../api";
 import { ClockBar, statusBands } from "./ClockBar";
-import { DriverCards, drsLabel, MAX_FOLLOWED, overtakeLabel } from "./DriverCards";
-import { PedalColumn } from "./PedalColumn";
-import { channelPath, cursorIndex } from "./TelemetryStrip";
+import { assignSlots, DriverCards, drsLabel, MAX_FOLLOWED, overtakeLabel } from "./DriverCards";
+import { channelPath, cursorIndex, TelemetryStrip } from "./TelemetryStrip";
 import { Leaderboard } from "./Leaderboard";
 
 function driver(n: number, code: string, position: number, over: Partial<DriverTiming> = {}): DriverTiming {
@@ -71,11 +70,11 @@ describe("DriverCards", () => {
     expect(container.querySelector(".card-speed")?.textContent).toBe("179 mph");
   });
 
-  it("keeps the newest two followed, and unfollows from the card", () => {
+  it("shows a dashboard for up to four followed, and unfollows from the card", () => {
     const onUnpick = vi.fn();
     render(<DriverCards selected={[1, 4, 16, 44]} drivers={field} cars={{}} hasDrs onUnpick={onUnpick} />);
     expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label")))
-      .toEqual(["LEC telemetry", "HAM telemetry"]);
+      .toEqual(["VER telemetry", "NOR telemetry", "LEC telemetry", "HAM telemetry"]);
     fireEvent.click(screen.getByRole("button", { name: "Stop following HAM" }));
     expect(onUnpick).toHaveBeenCalledWith(44);
   });
@@ -116,30 +115,72 @@ describe("DriverCards", () => {
   });
 });
 
-describe("the pedal column", () => {
-  const pedalCars = {
-    "1": { x: 0, y: 0, speed: 300, gear: 8, throttle: 100, brake: 0, drs: 0 },
-    "4": { x: 0, y: 0, speed: 120, gear: 3, throttle: 0, brake: 1, drs: 0 },
-    "16": { x: 0, y: 0, speed: 200, gear: 5, throttle: 64, brake: 0, drs: 0 },
-    "44": { x: 0, y: 0, speed: 0, gear: 0, throttle: null, brake: null, drs: 0 },
-  };
-
-  it("shows every followed driver's throttle and brake, up to four", () => {
+describe("four dashboards", () => {
+  it("keeps each driver in their slot: new picks fill gaps, and a fifth takes the oldest's place", () => {
     expect(MAX_FOLLOWED).toBe(4);
-    render(<PedalColumn selected={[1, 4, 16, 44]} drivers={field} cars={pedalCars as never} sessionKey={null} t={0} playbackSpeed={1} />);
-    const rows = screen.getAllByRole("group");
-    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["VER pedals", "NOR pedals", "LEC pedals", "HAM pedals"]);
-    const row = (i: number) => Array.from(rows[i]!.querySelectorAll(".meter-value")).map((v) => v.textContent);
-    expect(row(0)).toEqual(["100%", "OFF"]);
-    expect(row(1)).toEqual(["0%", "ON"]);
-    expect(row(2)).toEqual(["64%", "OFF"]);
-    expect(row(3)).toEqual(["—", "—"]);                     // no reading: not off, and not 104%
-    expect(rows[2]!.querySelector<HTMLElement>(".meter i")!.style.transform).toBe("scaleX(0.64)");
+    const empty = [null, null, null, null];
+    expect(assignSlots(empty, [1, 4])).toEqual([1, 4, null, null]);          // the first two go under the map
+    const full = assignSlots(assignSlots(empty, [1, 4]), [1, 4, 16, 44]);
+    expect(full).toEqual([1, 4, 16, 44]);
+    expect(assignSlots(full, [4, 16, 44, 63])).toEqual([63, 4, 16, 44]);     // a fifth pick: 1 dropped, nobody else moves
+    expect(assignSlots(full, [1, 16, 44])).toEqual([1, null, 16, 44]);       // unfollowing leaves the others where they are
+    expect(assignSlots([1, null, 16, 44], [1, 16, 44, 63])).toEqual([1, 63, 16, 44]);
   });
 
-  it("asks for drivers when nobody is followed", () => {
-    render(<PedalColumn selected={[]} drivers={field} cars={{}} sessionKey={null} t={0} playbackSpeed={1} />);
-    expect(screen.getByText(/up to four/)).toBeDefined();
+  it("draws the dashboard for its slot, and asks for a driver in an empty one", () => {
+    const { rerender } = render(<DriverCards slot={2} slots={[1, 4, 16, null]} selected={[1, 4, 16]} drivers={field} cars={{}} hasDrs onUnpick={vi.fn()} />);
+    expect(screen.getByRole("article", { name: /LEC telemetry/ })).toBeDefined();
+    rerender(<DriverCards slot={3} slots={[1, 4, 16, null]} selected={[1, 4, 16]} drivers={field} cars={{}} hasDrs onUnpick={vi.fn()} />);
+    expect(screen.getByText("A fourth driver shows here.")).toBeDefined();
+  });
+});
+
+describe("the telemetry strip's driver chips", () => {
+  const lap = (n: number) => ({ driver_number: n, abbreviation: "X", lap: 29, lap_time_s: 90, compound: "SOFT", tyre_life: 3, start_t: 0, length_m: 1000, step_m: 500,
+    distance: [0, 500, 1000], t: [0, 45, 90], speed: [100, 300, 200], throttle: [0, 100, 50], brake: [true, false, false], gear: [2, 8, 5],
+    x: [0, 1, 2], y: [0, 1, 2], brake_zones: [], corners: [], summary: {} });
+
+  it("offers every followed driver, draws the two under the map first, and turns any on or off", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const n = Number(/driver=(\d+)/.exec(url)?.[1] ?? /laps?\/(\d+)/.exec(url)?.[1]);
+      return { ok: true, json: async () => lap(n) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      // VER and NOR under the map, LEC and HAM beside it.
+      const { container } = render(<TelemetryStrip sessionKey="2025_17_R" followed={[1, 4, 16, 44]} drivers={field} cars={{}} />);
+      const chip = (code: string) => screen.getByRole("button", { name: new RegExp(`^${code}`) });
+      await waitFor(() => expect(chip("VER").textContent).toContain("L29"));
+      expect(["VER", "NOR", "LEC", "HAM"].map((c) => chip(c).getAttribute("aria-pressed"))).toEqual(["true", "true", "false", "false"]);
+      const speedLines = () => container.querySelectorAll(".tel-speed path").length;
+      await waitFor(() => expect(speedLines()).toBe(2));
+
+      fireEvent.click(chip("HAM"));
+      await waitFor(() => expect(speedLines()).toBe(3));
+      fireEvent.click(chip("VER"));
+      await waitFor(() => expect(speedLines()).toBe(2));
+      expect(chip("VER").getAttribute("aria-pressed")).toBe("false");
+
+      // All off is a choice the screen explains.
+      fireEvent.click(chip("NOR"));
+      fireEvent.click(chip("HAM"));
+      expect(await screen.findByText(/pick a driver above/i)).toBeDefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("dashes the later team-mate, since they share a colour", async () => {
+    const pair = [driver(63, "RUS", 1, { team_color: "00D7B6" }), driver(12, "ANT", 2, { team_color: "00D7B6" })];
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => lap(1) }) as Response));
+    try {
+      const { container } = render(<TelemetryStrip sessionKey="2025_17_R" followed={[63, 12, null, null]} drivers={pair} cars={{}} />);
+      await waitFor(() => expect(container.querySelectorAll(".tel-speed path")).toHaveLength(2));
+      const dashes = Array.from(container.querySelectorAll(".tel-speed path")).map((path) => path.getAttribute("stroke-dasharray"));
+      expect(dashes).toEqual([null, "5 3"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

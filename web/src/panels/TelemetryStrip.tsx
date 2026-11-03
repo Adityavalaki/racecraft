@@ -1,11 +1,12 @@
+import { useState } from "react";
 import { useHeld } from "../held";
 import type { DriverTiming, LapTrace } from "../api";
 import { useLapTrace } from "../telemetryData";
 
 interface Props {
   sessionKey: string;
-  /** The followed drivers, A then B (up to two). */
-  followed: number[];
+  /** Who is in each dashboard slot, null for an empty one (four). */
+  followed: (number | null)[];
   drivers: DriverTiming[];
   /** Where each car is on the map now, to place its cursor on its lap. */
   cars: Record<number, { x: number; y: number }>;
@@ -24,18 +25,39 @@ const CHANNELS: { id: Channel; label: string; unit: string; height: number }[] =
  * distance: speed, throttle, brake and gear, the corners marked along the top.
  * Each car's cursor is where it is on the map now, found as the nearest point
  * of its lap: so the trace ahead of the cursor is the last lap, not this one.
+ *
+ * Up to four are followed, and four laps on one graph is a lot, so chips choose
+ * whose to draw: any of them, starting with the two dashboards under the map
+ * (D-029). Team-mates share a colour, so the later one is dashed.
  */
 export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
-  const timing = (n: number | undefined) => (n === undefined ? undefined : drivers.find((d) => d.driver_number === n));
-  const a = timing(followed[0]);
-  const b = timing(followed[1]);
-  const traceA = useLapTrace(sessionKey, a?.driver_number ?? null, a?.laps_completed ?? null).trace;
-  const traceB = useLapTrace(sessionKey, b?.driver_number ?? null, b?.laps_completed ?? null).trace;
-  const lines = [
-    a && traceA ? { driver: a, trace: traceA } : null,
-    b && traceB ? { driver: b, trace: traceB } : null,
-  ].filter((x): x is { driver: DriverTiming; trace: LapTrace } => x !== null)
-    .map((line) => ({ ...line, colour: `#${line.driver.team_color ?? "8E959F"}`, at: cursorIndex(line.trace, cars[line.driver.driver_number]) }));
+  // Whose lap the reader has turned on or off; otherwise the two under the map are on.
+  const [picks, setPicks] = useState<Record<number, boolean>>({});
+  const isOn = (slot: number) => {
+    const n = followed[slot];
+    return n !== null && n !== undefined && (picks[n] ?? slot < 2);
+  };
+  const shownIn = (slot: number) => (isOn(slot) ? drivers.find((d) => d.driver_number === followed[slot]) : undefined);
+  const [a, b, c, d] = [shownIn(0), shownIn(1), shownIn(2), shownIn(3)];
+  const traces = [
+    useLapTrace(sessionKey, a?.driver_number ?? null, a?.laps_completed ?? null).trace,
+    useLapTrace(sessionKey, b?.driver_number ?? null, b?.laps_completed ?? null).trace,
+    useLapTrace(sessionKey, c?.driver_number ?? null, c?.laps_completed ?? null).trace,
+    useLapTrace(sessionKey, d?.driver_number ?? null, d?.laps_completed ?? null).trace,
+  ];
+  const seen = new Set<string>();
+  const lines = [a, b, c, d].flatMap((driver, slot) => {
+    const trace = traces[slot];
+    if (!driver || !trace) return [];
+    const colour = `#${driver.team_color ?? "8E959F"}`;
+    const dashed = seen.has(colour);
+    seen.add(colour);
+    return [{ driver, trace, colour, dashed, at: cursorIndex(trace, cars[driver.driver_number]) }];
+  });
+  const chips = followed.flatMap((n, slot) => {
+    const driver = n === null ? undefined : drivers.find((row) => row.driver_number === n);
+    return driver ? [{ driver, on: isOn(slot) }] : [];
+  });
   const ref = lines[0]?.trace;
   const topSpeed = Math.max(300, ...lines.map((l) => Math.max(...l.trace.speed)));
 
@@ -44,17 +66,22 @@ export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
       <div className="panel-bar">
         <h2>Telemetry</h2>
         <span className="panel-meta">Last full lap by distance · cursor where the car is now</span>
-        <span className="tel-keys">
-          {lines.map((l) => (
-            <span key={l.driver.driver_number} className="tel-key num">
-              <i style={{ background: l.colour }} />
-              <b>{l.driver.abbreviation}</b> L{l.trace.lap}
-            </span>
-          ))}
+        <span className="tel-keys" role="group" aria-label="Whose lap to draw">
+          {chips.map(({ driver, on }) => {
+            const line = lines.find((l) => l.driver === driver);
+            return (
+              <button key={driver.driver_number} type="button" aria-pressed={on} className={`tel-key num${on ? " is-on" : ""}`}
+                      onClick={() => setPicks((current) => ({ ...current, [driver.driver_number]: !on }))}>
+                <i className={line?.dashed ? "is-dashed" : ""} style={{ color: `#${driver.team_color ?? "8E959F"}` }} />
+                <b>{driver.abbreviation}</b>{line ? ` L${line.trace.lap}` : ""}
+              </button>
+            );
+          })}
         </span>
       </div>
       {lines.length === 0 ? (
-        <p className="panel-note">Follow a driver in the timing tower to see their last full lap here, channel by channel.</p>
+        <p className="panel-note">{chips.length === 0 ? "Follow a driver in the timing tower to see their last full lap here, channel by channel."
+          : chips.some((chip) => chip.on) ? "No full lap for these drivers yet." : "Pick a driver above to see their last full lap."}</p>
       ) : (
         <div className="tel-body">
           <div className="tel-ruler" aria-hidden="true">
@@ -82,7 +109,7 @@ export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
                      aria-label={`${ch.label} through the lap for ${lines.map((l) => l.driver.abbreviation).join(" and ")}`}>
                   {lines.map((l) => (
                     <path key={l.driver.driver_number} d={channelPath(l.trace, ch.id, ch.height, topSpeed)} fill="none"
-                          stroke={l.colour} strokeWidth={1.6} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                          stroke={l.colour} strokeWidth={1.6} strokeLinejoin="round" strokeDasharray={l.dashed ? "5 3" : undefined} vectorEffect="non-scaling-stroke" />
                   ))}
                 </svg>
                 {lines.map((l) => l.at === null ? null : (

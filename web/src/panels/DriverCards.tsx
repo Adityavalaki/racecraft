@@ -4,10 +4,8 @@ import { useHeld } from "../held";
 import { speedIn, type Settings } from "../settings";
 import { useTelemetry } from "../telemetryData";
 
-/** How many drivers can be followed at once: each has their pedals beside the map (D-028). */
+/** How many drivers can be followed at once: a dashboard each (D-029). */
 export const MAX_FOLLOWED = 4;
-/** How many of them get a full dashboard: the newest. */
-const DASHBOARDS = 2;
 
 /** The regulated rev limit, the full scale of the RPM bar (Technical Regulations, 15,000 rpm). */
 export const RPM_LIMIT = 15000;
@@ -28,11 +26,35 @@ interface Props {
   units?: Settings["units"];
   /** Playback speed, so the telemetry is fetched far enough ahead to keep up. */
   playbackSpeed?: number;
-  /** One dashboard only, for a place of its own in the replay's grid: 0 the older followed, 1 the newer. */
-  slot?: 0 | 1;
+  /** One dashboard only, for a place of its own in the replay's grid: this slot of `slots`. */
+  slot?: number;
+  /** Who is in each dashboard slot (`assignSlots`). */
+  slots?: (number | null)[];
   /** Full names by number, for the dashboard's header. */
   names?: Record<number, string>;
 }
+
+/**
+ * Who sits in which dashboard: a driver keeps their slot for as long as they
+ * are followed, and a new one takes the first free slot. So a fifth pick, which
+ * drops the oldest, lands in that driver's place and nobody else moves.
+ */
+export function assignSlots(previous: (number | null)[], selected: number[]): (number | null)[] {
+  const slots = previous.map((n) => (n !== null && selected.includes(n) ? n : null));
+  for (const n of selected) {
+    const free = slots.indexOf(null);
+    if (!slots.includes(n) && free >= 0) slots[free] = n;
+  }
+  return slots;
+}
+
+/** What an empty dashboard asks for, by slot. */
+const EMPTY = [
+  "Click a driver in the timing tower to follow them here.",
+  "Follow a second driver to compare them here.",
+  "A third driver shows here.",
+  "A fourth driver shows here.",
+];
 
 /** DRS codes in the feed: 8 is within a second with the flap shut; 10 and up is open. */
 export function drsLabel(code: number | null | undefined, hasDrs: boolean): { text: string; state: string } {
@@ -56,7 +78,7 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
 }
 
 /**
- * A dashboard for each followed driver, read like a steering wheel: speed,
+ * A dashboard for each followed driver, up to four, read like a steering wheel: speed,
  * gear, revs, throttle and brake now; where they stand (position, tyre, the
  * cars either side, DRS or overtake mode). The lap's traces are in the
  * telemetry strip beside the dashboards. Gaps are the timing's, exact at each crossing of
@@ -65,7 +87,7 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
  */
 export const DriverCards = memo(function DriverCards(props: Props) {
   const { selected, drivers, slot } = props;
-  const shown = selected.slice(-DASHBOARDS);
+  const shown = selected.slice(-MAX_FOLLOWED);
   const byNumber = new Map(drivers.map((driver, index) => [driver.driver_number, index]));
   const card = (number: number) => {
     const index = byNumber.get(number);
@@ -80,24 +102,22 @@ export const DriverCards = memo(function DriverCards(props: Props) {
     );
   };
   if (slot !== undefined) {
-    const number = shown[slot];
-    if (number !== undefined) return card(number);
+    const number = props.slots?.[slot];
+    if (number != null) return card(number);
     return (
-      <section className="panel dash-empty" aria-label={`Driver ${slot === 0 ? "A" : "B"}`}>
-        <p className="cards-empty">
-          {slot === 0 || shown.length === 0 ? "Click a driver in the timing tower to follow them. The newest two get a dashboard here." : "Follow a second driver to compare them here."}
-        </p>
+      <section className="panel dash-empty" aria-label={`Driver ${"ABCD"[slot]}`}>
+        <p className="cards-empty">{EMPTY[slot]}</p>
       </section>
     );
   }
   if (!shown.length) {
-    return <p className="cards-empty">Click a driver in the timing tower to follow them. The newest two get a dashboard here.</p>;
+    return <p className="cards-empty">{EMPTY[0]}</p>;
   }
   return <div className="driver-cards">{shown.map(card)}</div>;
 });
 
 /** A bar drawn by scaling, not by width, so it eases on the compositor without laying the card out each frame. */
-export function Meter({ share, color, title }: { share: number; color: string; title?: string }) {
+function Meter({ share, color, title }: { share: number; color: string; title?: string }) {
   return (
     <span className="meter" title={title}>
       <i style={{ transform: `scaleX(${Math.max(0, Math.min(1, share))})`, background: color }} />

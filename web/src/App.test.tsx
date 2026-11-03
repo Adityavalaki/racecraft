@@ -190,12 +190,12 @@ describe("App", () => {
     expect(within(bar).getByRole("combobox", { name: /choose a session/i })).toBeDefined();
     await waitFor(() => expect(bar.textContent).toContain("12/57"));
 
-    // The pit wall: the tower beside the map and the pedal column, both dashboards under them; race control and telemetry below. No team radio.
+    // The pit wall: the tower beside the map and two dashboards, two more under them; race control and telemetry below. No team radio.
     const wall = container.querySelector(".pitwall") as HTMLElement;
     expect(Array.from(wall.children).map((el) => el.className.split(" ").find((c) => c.startsWith("pw-")) ?? el.className))
       .toEqual(["pw-tower", "pw-maprow", "pw-drv", "pw-rc", "pw-tel"]);
-    expect(Array.from(wall.querySelector(".pw-maprow")!.children).map((el) => el.getAttribute("aria-label")))
-      .toEqual(["Track map", "Followed drivers' pedals"]);
+    expect(wall.querySelector(".pw-maprow > .pw-map")).not.toBeNull();
+    expect(wall.querySelectorAll(".pw-maprow > .pw-side > .pw-dash")).toHaveLength(2);
     expect(wall.querySelectorAll(".pw-drv > .pw-dash")).toHaveLength(2);
     expect(wall.querySelector(".team-radio")).toBeNull();
     expect(wall.querySelector(".pw-tower .leaderboard")).not.toBeNull();
