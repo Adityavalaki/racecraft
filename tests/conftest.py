@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from racecraft import config
+
 T0 = pd.Timestamp("2024-03-02 14:03:42.431")
 
 
@@ -148,3 +150,9 @@ def kill(proc):
     proc.kill()
     proc.wait(timeout=10)
     proc.stdout.close()
+
+
+@pytest.fixture(autouse=True)
+def _no_writing_into_the_real_data_folder(tmp_path_factory, monkeypatch):
+    """Saved model answers go under DATA_DIR (D-030): never the developer's, from a test."""
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path_factory.mktemp("data"))

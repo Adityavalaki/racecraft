@@ -27,15 +27,21 @@ between them means something.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import os
+import sys
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 
 import duckdb
 import numpy as np
 import pandas as pd
 
+from racecraft import config, resources
 from racecraft.model import circuit as circuit_model
 from racecraft.model import compounds as compounds_model
 from racecraft.model import race_inputs as race_inputs_model
@@ -109,7 +115,12 @@ def for_session(session_key: str, scale: float = DEFAULT_SCALE) -> dict:
         if key in _answer_cache:
             _answer_cache.move_to_end(key)
             return _answer_cache[key]
-    answer = _for_session(session_key, scale)
+    # On disk too: without this every start of the app pays for the fit again (D-030).
+    path = _saved_path(session_key, scale)
+    answer = _read_saved(path)
+    if answer is None:
+        answer = _for_session(session_key, scale)
+        _save(path, session_key, answer)
     with _lock:
         _answer_cache[key] = answer
         while len(_answer_cache) > MAX_ANSWERS:
@@ -503,6 +514,42 @@ def _why_no_plans(measured: dict, loss: dict | None, total_laps: int | None,
 
 # Every key starts with `_lake()`, the lake's path and version: a new ingest
 # changes it, and nothing fitted on the old files is served again.
+def _code_stamp() -> str:
+    """Changes when the code that makes the answer does: the app's own file, or in a checkout the model's sources."""
+    if resources.frozen():
+        return str(Path(sys.executable).stat().st_mtime_ns)
+    sources = [Path(__file__), *Path(strategy_model.__file__).parent.glob("*.py")]
+    return str(max(p.stat().st_mtime_ns for p in sources))
+
+
+def _saved_path(session_key: str, scale: float) -> Path:
+    """Where a session's answer is kept: its name changes with the lake's contents and the code, so old ones are never read."""
+    check_key(session_key)
+    sessions, ingested = connect().sql("select count(*), max(ingested_at) from sessions").fetchone()
+    stamp = hashlib.sha256(f"{_code_stamp()}|{sessions}|{ingested}".encode()).hexdigest()[:16]
+    return config.DATA_DIR / "cache" / "insight" / f"{session_key}_{scale:g}_{stamp}.json"
+
+
+def _read_saved(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):                # none yet, or half-written by a crash: work it out again
+        return None
+
+
+def _save(path: Path, session_key: str, answer: dict) -> None:
+    """A failure here only loses the head start next time."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for old in path.parent.glob(f"{session_key}_*.json"):
+            old.unlink(missing_ok=True)
+        scratch = path.with_suffix(f".{os.getpid()}.tmp")
+        scratch.write_text(json.dumps(answer), encoding="utf-8")
+        os.replace(scratch, path)
+    except (OSError, TypeError, ValueError) as error:
+        log.warning("%s: could not save the model's answer: %s", session_key, error)
+
+
 _tables_cache: dict[tuple[str, int], dict] = {}
 _circuit_cache: OrderedDict[tuple, dict] = OrderedDict()
 _season_cache: OrderedDict[tuple, SeasonFits] = OrderedDict()

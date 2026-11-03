@@ -16,6 +16,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-5s %(message)s", datefmt="%H:%M:%S")
+    if not args.reload:
+        from racecraft.api import preload
+        preload.start()
     uvicorn.run("racecraft.api.app:app", host=args.host, port=args.port, reload=args.reload)
     return 0
 

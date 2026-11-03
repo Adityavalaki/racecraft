@@ -993,6 +993,45 @@ async function post<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * The season screens' answers, kept for the session so a screen opens at once and
+ * opening it twice costs nothing: they change only when new data arrives, which
+ * clears them. One fetch however many ask, and a screen leaving does not cancel it
+ * for the next: its own signal only stops it listening. A failure is not kept.
+ */
+const answers = new Map<string, Promise<unknown>>();
+
+export function clearAnswers(): void {
+  answers.clear();
+}
+
+function shared<T>(key: string, path: string, signal?: AbortSignal): Promise<T> {
+  if (key === LIVE_KEY) return get<T>(path, signal);          // a live session grows while it is watched
+  let answer = answers.get(path) as Promise<T> | undefined;
+  if (!answer) {
+    answer = get<T>(path);
+    answers.set(path, answer);
+    answer.catch(() => answers.delete(path));
+  }
+  if (!signal) return answer;
+  return new Promise<T>((resolve, reject) => {
+    signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    answer!.then(resolve, reject);
+  });
+}
+
+/** Fetches a session's season screens ahead, one at a time so the replay stays smooth; each opens at once afterwards. */
+export async function prefetchSeason(key: string): Promise<void> {
+  const race = /_(R|S)$/.test(key);
+  const steps: (() => Promise<unknown>)[] = [
+    () => api.standings(key, "before"), () => api.title(key, "before"), () => api.pitCrews(key, "before"),
+    () => api.teammates(key, "before"), () => api.starts(key, "before"), () => api.qualifying(key, "before", "Q"),
+    () => api.raceReview(key, "before"), () => api.tyreSets(key),
+    ...(race ? [() => api.standings(key, "after"), () => api.title(key, "after")] : []),
+  ];
+  for (const step of steps) await step().catch(() => undefined);
+}
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal });
   if (!response.ok) throw await failure(response);
@@ -1030,7 +1069,7 @@ export const api = {
   places: (key: string, grid: number, tyres: "car" | "new" = "car", signal?: AbortSignal) =>
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),
   tyreSets: (key: string, signal?: AbortSignal) =>
-    get<TyreSets>(`/api/sessions/${key}/tyre-sets`, signal),
+    shared<TyreSets>(key, `/api/sessions/${key}/tyre-sets`, signal),
   /** Slow the first time for a season (the model is fitted), then quick. */
   pitWindows: (key: string, t: number, signal?: AbortSignal) =>
     get<PitWindows>(`/api/sessions/${key}/pit-windows?t=${t.toFixed(2)}`, signal),
@@ -1055,20 +1094,20 @@ export const api = {
   forecast: (key: string, signal?: AbortSignal) => get<WeekendForecast>(`/api/sessions/${key}/forecast`, signal),
   /** The season's championships, from results before this session (or with it, `after`). */
   standings: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<Standings>(`/api/sessions/${key}/standings?moment=${moment}`, signal),
+    shared<Standings>(key, `/api/sessions/${key}/standings?moment=${moment}`, signal),
   pitCrews: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<PitCrews>(`/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
+    shared<PitCrews>(key, `/api/sessions/${key}/pit-crews?moment=${moment}`, signal),
   teammates: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<Teammates>(`/api/sessions/${key}/teammates?moment=${moment}`, signal),
+    shared<Teammates>(key, `/api/sessions/${key}/teammates?moment=${moment}`, signal),
   starts: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<Starts>(`/api/sessions/${key}/starts?moment=${moment}`, signal),
+    shared<Starts>(key, `/api/sessions/${key}/starts?moment=${moment}`, signal),
   qualifying: (key: string, moment: StandingsMoment, kind: QualiKind, signal?: AbortSignal) =>
-    get<QualiLaps>(`/api/sessions/${key}/qualifying?moment=${moment}&kind=${kind}`, signal),
+    shared<QualiLaps>(key, `/api/sessions/${key}/qualifying?moment=${moment}&kind=${kind}`, signal),
   raceReview: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<RaceReview>(`/api/sessions/${key}/race-review?moment=${moment}`, signal),
+    shared<RaceReview>(key, `/api/sessions/${key}/race-review?moment=${moment}`, signal),
   /** A few seconds the first time for a season: the rest of it is simulated. */
   title: (key: string, moment: StandingsMoment, signal?: AbortSignal) =>
-    get<TitleOdds>(`/api/sessions/${key}/title?moment=${moment}`, signal),
+    shared<TitleOdds>(key, `/api/sessions/${key}/title?moment=${moment}`, signal),
   /** Points live at the newest recording. Attaching again to the same one changes nothing. */
   liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
   /** Starts a sync of the latest race weekends, or reports the one running. */

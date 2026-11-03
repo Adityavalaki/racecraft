@@ -10,6 +10,8 @@ Two properties matter more than the plumbing and are checked directly:
 """
 
 import numpy as np
+import json
+
 import pandas as pd
 import pytest
 
@@ -129,6 +131,24 @@ def lake_dir(tmp_path, monkeypatch):
     insight._circuit_cache.clear()
     insight._tables_cache.clear()
     insight._season_cache.clear()
+
+
+def test_the_answer_survives_a_restart_and_is_dropped_when_the_lake_changes(lake_dir, monkeypatch, tmp_path):
+    """D-030: the fit took half a minute after every start, because it lived only in memory."""
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    key = f"{YEAR}_01_R"
+    first = insight.for_session(key)
+    insight._answer_cache.clear()                                       # as a restart would
+
+    def not_again(*_):
+        raise AssertionError("worked out again, not read from disk")
+
+    monkeypatch.setattr(insight, "_for_session", not_again)
+    assert json.loads(json.dumps(first)) == insight.for_session(key)
+    insight._answer_cache.clear()
+    monkeypatch.setattr(insight, "_saved_path", lambda *_: tmp_path / "data" / "cache" / "insight" / f"{key}_new.json")
+    with pytest.raises(AssertionError, match="worked out again"):       # a new name: new data or new code
+        insight.for_session(key)
 
 
 def test_a_races_own_stops_are_not_evidence_about_it(lake_dir):

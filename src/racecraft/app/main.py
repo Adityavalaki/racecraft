@@ -224,6 +224,8 @@ def _open_window(webview, sock, parts: dict, log_file) -> None:
             # Recorded before starting, so closing the window stops a partial start.
             server = ServerThread(api, sock)
             parts["server"] = server
+            from racecraft.api import preload
+            preload.start()                  # the slow models, ready before they are asked for (D-030)
 
             # Each feature opens in a window of its own, made here: the page's
             # own window.open would land in the system browser. They follow the

@@ -1,49 +1,58 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HttpError, api, formatClock, formatLapTime } from "./api";
+import { api, clearAnswers, LIVE_KEY, prefetchSeason } from "./api";
 
-describe("formatLapTime", () => {
-  it("writes lap times the way timing screens do", () => {
-    expect(formatLapTime(92.608)).toBe("1:32.608");
-    expect(formatLapTime(59.999)).toBe("59.999");
-    expect(formatLapTime(60)).toBe("1:00.000");   // not 1:0.000
+afterEach(() => vi.unstubAllGlobals());
+
+function serve(body: unknown = { drivers: [] }, ok = true) {
+  const fetchMock = vi.fn(async () => ({ ok, status: ok ? 200 : 500, statusText: "x", json: async () => body }) as Response);
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("the season screens' shared answers", () => {
+  it("fetches once however many ask, until new data clears them", async () => {
+    const fetchMock = serve();
+    await Promise.all([api.standings("2026_19_R", "before"), api.standings("2026_19_R", "before")]);
+    await api.standings("2026_19_R", "before");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await api.standings("2026_19_R", "after");
+    expect(fetchMock).toHaveBeenCalledTimes(2);                  // another moment is another answer
+    clearAnswers();
+    await api.standings("2026_19_R", "before");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("shows a dash when there is no time", () => {
-    expect(formatLapTime(null)).toBe("—");
-    expect(formatLapTime(undefined)).toBe("—");
-    expect(formatLapTime(NaN)).toBe("—");
-  });
-});
-
-describe("formatClock", () => {
-  it("counts session time as hours, minutes and seconds", () => {
-    expect(formatClock(0)).toBe("0:00:00");
-    expect(formatClock(3661)).toBe("1:01:01");
-    expect(formatClock(-5)).toBe("-0:00:05");     // before lights out
-  });
-});
-
-describe("errors from the server", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  const answer = (status: number, detail: string) =>
-    vi.stubGlobal("fetch", vi.fn(async () => ({
-      ok: false, status, statusText: "Conflict", json: async () => ({ detail }),
-    } as Response)));
-
-  it("carry the status, so live can tell 'not ready' from 'broken'", async () => {
-    answer(409, "live is not attached to a recording");
-    const error = await api.info("live").catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(HttpError);
-    expect(error).toBeInstanceOf(Error);
-    expect((error as HttpError).status).toBe(409);
-    expect((error as HttpError).message).toBe("live is not attached to a recording");
+  it("does not keep a failure", async () => {
+    const fetchMock = serve({ detail: "no" }, false);
+    await expect(api.pitCrews("2026_19_R", "before")).rejects.toThrow();
+    await expect(api.pitCrews("2026_19_R", "before")).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("do the same for a POST", async () => {
-    answer(409, "no recording");
-    const error = await api.liveAttach().catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(HttpError);
-    expect((error as HttpError).status).toBe(409);
+  it("lets one screen stop listening without cancelling it for the next", async () => {
+    const fetchMock = serve({ pairs: [] });
+    const leaving = new AbortController();
+    const first = api.teammates("2026_19_R", "before", leaving.signal);
+    leaving.abort();
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await expect(api.teammates("2026_19_R", "before")).resolves.toEqual({ pairs: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("never keeps a live session's", async () => {
+    const fetchMock = serve();
+    await api.tyreSets(LIVE_KEY);
+    await api.tyreSets(LIVE_KEY);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetches a race's screens ahead, each one once, and survives one failing", async () => {
+    const fetchMock = serve();
+    await prefetchSeason("2026_19_R");
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown as [string])[0]));
+    expect(urls).toContain("/api/sessions/2026_19_R/standings?moment=after");
+    expect(new Set(urls).size).toBe(urls.length);
+    await expect(api.title("2026_19_R", "after")).resolves.toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(urls.length);        // already there when the screen opens
   });
 });

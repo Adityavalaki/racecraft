@@ -4,6 +4,7 @@ import { useClock } from "./clock";
 import { openFeature, screenById, type FeatureId, type ScreenId } from "./features";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
+import { clearAnswers, prefetchSeason } from "./api";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
 import { ReplayScreen } from "./screens/ReplayScreen";
 import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
@@ -38,6 +39,9 @@ function loadScreen(): ScreenId {
  * popped out into a window of its own follows it (see sync.ts): its controls
  * are requests to this window, so every window always agrees.
  */
+/** The replay's own requests first. */
+const PREFETCH_DELAY_MS = 1500;
+
 export default function App() {
   const { sessions, listState, sessionKey, setSessionKey, reloadSessions } = useSessionList();
   const [screen, setScreenState] = useState<ScreenId>(loadScreen);
@@ -79,6 +83,20 @@ export default function App() {
     setSelected([]);
     setFollowing(true);
   }, [sessionKey]);
+
+  const syncedData = useCallback(() => {
+    clearAnswers();
+    reloadSessions();
+  }, [reloadSessions]);
+  // New data can change any season screen's answer.
+  useEffect(() => clearAnswers(), [sessions.length]);
+  // Once the session is on screen, the season screens' data is fetched ahead, so opening one is instant.
+  const sessionReady = Boolean(info);
+  useEffect(() => {
+    if (!sessionKey || !sessionReady || sessionKey === LIVE_KEY) return;
+    const timer = setTimeout(() => void prefetchSeason(sessionKey), PREFETCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [sessionKey, sessionReady]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data), clock.speed);
@@ -210,7 +228,7 @@ export default function App() {
 
   const body = () => {
     if (screen === "settings") {
-      return <SettingsScreen settings={settings} update={updateSettings} onSynced={reloadSessions} />;
+      return <SettingsScreen settings={settings} update={updateSettings} onSynced={syncedData} />;
     }
     if (!info || !sessionKey) {
       // The picker stays on screen while a session loads, or fails to: another can always be chosen.
@@ -262,7 +280,7 @@ export default function App() {
         )}
       </div>
       </div>
-      <StatusBar sessions={sessions.length} info={info} onSynced={reloadSessions} />
+      <StatusBar sessions={sessions.length} info={info} onSynced={syncedData} />
     </div>
   );
 }
