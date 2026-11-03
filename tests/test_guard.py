@@ -81,10 +81,21 @@ def test_its_own_pages_and_the_app_itself_can(client):
 
 
 def test_reading_from_another_site_is_left_to_cors(client):
-    """A GET is not refused here; the browser keeps another site from reading it."""
+    """A client that is not a browser page gets an answer, without any permission for a page to read it."""
     response = client.get("/api/circuits", headers={"Origin": "https://evil.example"})
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+def test_another_sites_page_cannot_set_the_models_working(client, site):
+    """It could not read the answer, but asking is enough to burn many seconds of fitting."""
+    assert client.get("/api/circuits", headers={"Sec-Fetch-Site": site}).status_code == 403
+
+
+@pytest.mark.parametrize("site", ["same-origin", "none"])
+def test_its_own_pages_can_read(client, site):
+    assert client.get("/api/circuits", headers={"Sec-Fetch-Site": site}).status_code == 200
 
 
 def test_the_api_docs_are_off(client):

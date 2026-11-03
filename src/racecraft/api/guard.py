@@ -12,6 +12,8 @@ same computer can still send it requests. Three checks close that:
   page that sent it in the Origin header, and another site's is refused. The
   desktop app's own calls (a second launch asking the first to come forward)
   come from no page, carry no Origin, and pass.
+* **Another site's page cannot ask the API for anything**, even to read: it
+  could not see the answer, but it could set the slow models working.
 * **Every response carries headers** that stop it being framed by another site,
   sniffed as another type, or used to load scripts from anywhere else.
 
@@ -89,6 +91,11 @@ class Guard:
             return
         if scope["method"] not in SAFE_METHODS and not _same_origin(headers, host):
             await _refuse(send, "requests that change something must come from Racecraft's own pages")
+            return
+        # CORS stops another site reading an answer, not asking for one, and some answers
+        # take many seconds of model fitting: a page could keep the computer busy for nothing.
+        if scope["path"].startswith("/api/") and headers.get("sec-fetch-site") in ("cross-site", "same-site"):
+            await _refuse(send, "the API answers Racecraft's own pages only")
             return
 
         async def with_headers(message) -> None:
