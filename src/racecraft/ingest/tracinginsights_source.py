@@ -129,7 +129,8 @@ def improve(tables: dict[str, pd.DataFrame], season: int, event: str, session: s
 
 def tyres_over(openf1: pd.DataFrame, ti: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     """OpenF1's laps with FastF1's tyre fields over them, lap by lap; and how many laps'
-    times the two disagree on. Laps the archive does not have keep OpenF1's tyres."""
+    times the two disagree on. Laps the archive does not have keep OpenF1's tyres, unless
+    the two numberings then contradict each other: that car keeps OpenF1's throughout."""
     on = ["driver_number", "lap_number"]
     theirs = ti.set_index(on)
     out = openf1.set_index(on)
@@ -139,6 +140,19 @@ def tyres_over(openf1: pd.DataFrame, ti: pd.DataFrame) -> tuple[pd.DataFrame, in
         # refuse to fill from wider values. `_frame` casts the table back to the schema.
         out[column] = out[column].astype(object)
         out.loc[shared, column] = theirs.loc[shared, column]
+    # The sources number stints differently, so a file stopping early (BUG-008: lap 25 of a car's
+    # 32) splices one numbering onto the other and the history runs backwards. Each is sound alone.
+    ordered = out.sort_index()
+    stint, life = pd.to_numeric(ordered["stint"]), pd.to_numeric(ordered["tyre_life"])
+    cars = ordered.index.get_level_values("driver_number")
+    backwards = (stint.groupby(cars).diff() < 0) | (life.groupby([cars, stint]).diff() < 0)
+    spliced = backwards.index.get_level_values("driver_number")[backwards].unique()
+    if len(spliced):
+        log.info("TracingInsights' tyres contradict OpenF1's for cars %s: keeping OpenF1's for them", sorted(int(c) for c in spliced))
+        kept = openf1.set_index(on)
+        rows = out.index[out.index.get_level_values("driver_number").isin(spliced)]
+        for column in TYRES:
+            out.loc[rows, column] = kept.loc[rows, column].astype(object)
     both = out.index.intersection(theirs.index)
     gap = (out.loc[both, "lap_time_s"] - theirs.loc[both, "lap_time_s"]).abs()
     return _frame(out.reset_index()[openf1.columns], "laps"), int((gap > 0.01).sum())

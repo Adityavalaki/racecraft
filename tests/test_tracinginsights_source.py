@@ -54,6 +54,14 @@ def test_fastf1s_tyres_replace_openf1s():
     assert differ == 1                                                                # 98.9 against 98.715
 
 
+def test_a_tyre_file_stopping_early_leaves_the_car_on_openf1s_tyres():
+    """BUG-008: Mexico 2026 FP3. The archive's stints ended lap 2 on stint 5; OpenF1 calls lap 3 stint 4."""
+    theirs = ti.laps(LAPTIMES, "k").iloc[:1].assign(lap_number=1.0, stint=5.0, tyre_life=9.0)
+    openf1 = pd.concat([ti.laps(LAPTIMES, "k")] * 1).assign(lap_number=[1.0, 2.0], stint=[3.0, 4.0], tyre_life=[2.0, 3.0], fresh_tyre=True)
+    out, _ = ti.tyres_over(openf1, theirs)
+    assert list(out["stint"]) == [3, 4] and list(out["tyre_life"]) == [2, 3]
+
+
 def test_a_session_openf1_lacks_is_built_from_the_archive(monkeypatch):
     rcm = {"time": ["2026-10-23T17:40:00.000000000", "2026-10-23T17:41:00.000000000"], "cat": ["Flag", "Flag"],
            "msg": ["YELLOW IN TRACK SECTOR 5", "CLEAR IN TRACK SECTOR 5"], "status": ["None", "None"],
