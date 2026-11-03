@@ -22,6 +22,7 @@ import type { ScreenContext } from "./ScreenView";
  */
 export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [tab, setTab] = useState<"drivers" | "teams">("drivers");
   const [table, setTable] = useState<Standings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [odds, setOdds] = useState<TitleOdds | null>(null);
@@ -54,18 +55,26 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
   }, [ctx.session, moment]);
 
   const switcher = (
-    <div className="segmented" role="radiogroup" aria-label="Which results count">
-      {([["before", "Going into this session"], ["after", "After it"]] as [StandingsMoment, string][]).map(([key, text]) => (
-        <button key={key} type="button" role="radio" aria-checked={moment === key} className={moment === key ? "is-on" : ""}
-                onClick={() => setMoment(key)}>{text}</button>
-      ))}
-    </div>
+    <>
+      <div className="segmented" role="radiogroup" aria-label="Championship">
+        {([["drivers", "Drivers"], ["teams", "Constructors"]] as const).map(([key, text]) => (
+          <button key={key} type="button" role="radio" aria-checked={tab === key} className={tab === key ? "is-on" : ""}
+                  onClick={() => setTab(key)}>{text}</button>
+        ))}
+      </div>
+      <div className="segmented" role="radiogroup" aria-label="Which results count">
+        {([["before", "Going into this session"], ["after", "After it"]] as [StandingsMoment, string][]).map(([key, text]) => (
+          <button key={key} type="button" role="radio" aria-checked={moment === key} className={moment === key ? "is-on" : ""}
+                  onClick={() => setMoment(key)}>{text}</button>
+        ))}
+      </div>
+    </>
   );
 
   return (
     <div className="screen">
       {header(switcher)}
-      <main className="screen-body">
+      <main className="screen-body standings-body">
         {error && <div className="panel-note error">{error}</div>}
         {!error && !table && <div className="panel-note">Adding up the season's points…</div>}
         {table && (
@@ -81,8 +90,10 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
             <KpiRow tiles={standingsTiles(table, odds)} />
             {table.drivers.length > 0 && (
               <div className="standings">
-                <DriversTable drivers={table.drivers} selected={ctx.selected} onSelect={ctx.onSelect} odds={odds} />
-                <ConstructorsTable teams={table.constructors} odds={odds} />
+                {tab === "drivers"
+                  ? <DriversTable drivers={table.drivers} selected={ctx.selected} onSelect={ctx.onSelect} odds={odds} />
+                  : <ConstructorsTable teams={table.constructors} odds={odds} />}
+                <PointsChart rounds={table.rounds ?? []} drivers={table.drivers} selected={ctx.selected} />
               </div>
             )}
             {table.notes.length > 0 && (
@@ -104,9 +115,9 @@ function DriversTable({ drivers, selected, onSelect, odds }: {
   const chance = new Map(odds?.drivers.map((d) => [d.abbreviation, d]) ?? []);
   const contenders = odds?.drivers.filter((d) => d.alive).length ?? 0;
   return (
-    <section className="panel standings-panel" aria-label="Drivers' championship">
-      <h2 className="card-label">Drivers' championship</h2>
-      <div className="standings-table is-drivers" role="table" aria-label="Drivers' standings">
+    <section className="panel standings-main" aria-label="Drivers' championship">
+      <div className="panel-bar"><h2>Drivers</h2><span className="panel-meta">form: last five results, newest on the right</span></div>
+      <div className="standings-table is-drivers standings-scroll" role="table" aria-label="Drivers' standings">
         <div className="standings-row is-head" role="row">
           <span role="columnheader" className="num">Pos</span>
           <span role="columnheader" />
@@ -151,13 +162,12 @@ function DriversTable({ drivers, selected, onSelect, odds }: {
 }
 
 function ConstructorsTable({ teams, odds }: { teams: ConstructorStanding[]; odds: TitleOdds | null }) {
-  const top = teams[0]?.points || 1;
   const chance = new Map(odds?.constructors.map((t) => [t.team, t]) ?? []);
   const contenders = odds?.constructors.filter((t) => t.alive).length ?? 0;
   return (
-    <section className="panel standings-panel" aria-label="Constructors' championship">
-      <h2 className="card-label">Constructors' championship</h2>
-      <div className="standings-table is-teams" role="table" aria-label="Constructors' standings">
+    <section className="panel standings-main" aria-label="Constructors' championship">
+      <div className="panel-bar"><h2>Constructors</h2><span className="panel-meta">bar: how its drivers split the points</span></div>
+      <div className="standings-table is-teams standings-scroll" role="table" aria-label="Constructors' standings">
         <div className="standings-row is-head" role="row">
           <span role="columnheader" className="num">Pos</span>
           <span role="columnheader" />
@@ -172,22 +182,86 @@ function ConstructorsTable({ teams, odds }: { teams: ConstructorStanding[]; odds
           <div key={t.team} className="standings-row" role="row">
             <span role="cell" className="num pos">{t.position}</span>
             <span role="cell" className="team-bar" style={{ background: `#${t.team_color ?? "555"}` }} />
-            <span role="cell" className="who">
-              <b>{t.team}</b>
-              <span className="share" aria-hidden="true">
-                <i style={{ width: `${(t.points / top) * 100}%`, background: `#${t.team_color ?? "555"}` }} />
-              </span>
-            </span>
+            <span role="cell" className="who"><b>{t.team}</b></span>
             <span role="cell" className="num points">{t.points}</span>
             <span role="cell" className="num gap">{t.gap ? `−${t.gap}` : "—"}</span>
             <span role="cell" className="num">{t.wins || "—"}</span>
             <TitleCell odds={odds} entry={chance.get(t.team)} clinched={contenders === 1} />
             <span role="cell" className="split" title={t.drivers.map((d) => `${d.abbreviation} ${d.points}`).join(" · ")}>
-              {t.drivers.map((d) => `${d.abbreviation} ${d.points}`).join(" · ")}
+              <span className="split-bar" aria-hidden="true">
+                {t.drivers.map((d, k) => (
+                  <i key={d.abbreviation} style={{ flexGrow: d.points, background: `#${t.team_color ?? "555"}`, opacity: k ? 0.45 : 1 }} />
+                ))}
+              </span>
+              <span className="split-text">{t.drivers.map((d) => `${d.abbreviation} ${d.points}`).join(" · ")}</span>
             </span>
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+/**
+ * The lines on the points chart: the top six and anyone followed, as running
+ * totals. Team-mates share a colour, so the lower-placed one is dashed: the end
+ * labels and the dash keep them apart without relying on colour.
+ */
+export function pointsLines(drivers: DriverStanding[], selected: number[]) {
+  const seen = new Set<string>();
+  const lines = drivers.filter((d, i) => i < 6 || selected.includes(d.driver_number)).map((d) => {
+    const color = d.team_color ?? "777777";
+    const dashed = seen.has(color);
+    seen.add(color);
+    let sum = 0;
+    return { code: d.abbreviation, number: d.driver_number, color, dashed, totals: (d.points_by_round ?? []).map((p) => (sum += p)) };
+  });
+  const most = Math.max(1, ...lines.map((l) => l.totals.at(-1) ?? 0));
+  return { lines, top: Math.ceil(most / 50) * 50 };
+}
+
+function PointsChart({ rounds, drivers, selected }: {
+  rounds: { round: number; event_name: string }[];
+  drivers: DriverStanding[];
+  selected: number[];
+}) {
+  const { lines, top } = pointsLines(drivers, selected);
+  const x = (k: number) => (k / Math.max(rounds.length - 1, 1)) * 100;
+  const y = (v: number) => 100 - (v / top) * 100;
+  // End labels, nudged apart so a tight fight stays readable.
+  let last = -Infinity;
+  const labels = [...lines].sort((a, b) => (b.totals.at(-1) ?? 0) - (a.totals.at(-1) ?? 0)).map((l) => {
+    last = Math.max(y(l.totals.at(-1) ?? 0), last + 3.6);
+    return { ...l, top: last };
+  });
+  return (
+    <section className="panel standings-main" aria-label="Points by round">
+      <div className="panel-bar"><h2>Points by round</h2><span className="panel-meta">running total, sprints included · top six and anyone followed · hover a round</span></div>
+      {rounds.length < 2 ? <p className="empty">The chart starts after the second round.</p> : (
+        <div className="points-wrap">
+          <div className="points-plot">
+            {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+              <span key={f} className="tyres-gl" style={{ top: `${y(f * top)}%` }}><i className="num">{Math.round(f * top)}</i></span>
+            ))}
+            {rounds.map((r, k) => (
+              <span key={r.round} className="tyres-gv" style={{ left: `${x(k)}%` }}><i className="num">{r.round}</i></span>
+            ))}
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Running points total by round for the leading drivers">
+              {lines.map((l) => (
+                <path key={l.code} d={l.totals.map((v, k) => `${k ? "L" : "M"}${x(k).toFixed(2)} ${y(v).toFixed(2)}`).join("")} fill="none" stroke={`#${l.color}`}
+                      strokeWidth={selected.includes(l.number) ? 2.6 : 1.8} strokeDasharray={l.dashed ? "5 4" : undefined} vectorEffect="non-scaling-stroke" />
+              ))}
+            </svg>
+            {labels.map((l) => (
+              <span key={l.code} className="points-end num" style={{ top: `${l.top}%`, color: `#${l.color}` }}>{l.code} {l.totals.at(-1)}</span>
+            ))}
+            {rounds.map((r, k) => (
+              <span key={r.round} className="points-hit" style={{ left: `${x(k)}%`, width: `${100 / rounds.length}%` }}
+                    title={`Round ${r.round}, ${r.event_name}\n${labels.map((l) => `${l.code} ${l.totals[k] ?? 0}`).join("\n")}`} />
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -41,10 +41,12 @@ class Standings:
     sprints: int                                 # sprints counted
     last: dict | None                            # the latest result counted
     notes: list[str] = field(default_factory=list)
+    rounds: list[dict] = field(default_factory=list)   # the rounds counted, in order: each driver's points_by_round lines up
 
     def as_dict(self) -> dict:
         return {"year": self.year, "drivers": self.drivers, "constructors": self.constructors,
-                "races": self.races, "sprints": self.sprints, "last": self.last, "notes": self.notes}
+                "races": self.races, "sprints": self.sprints, "last": self.last, "notes": self.notes,
+                "rounds": self.rounds}
 
 
 def results(con, year: int, codes: tuple[str, ...] = ("R", "S")) -> pd.DataFrame:
@@ -141,6 +143,8 @@ def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
         last={"round": latest_round, "event_name": str(last["event_name"]),
               "session": "sprint" if last["code"] == "S" else "Grand Prix"},
         notes=notes,
+        rounds=[{"round": int(r), "event_name": str(e)} for r, e in
+                sessions.drop_duplicates("round", keep="last").sort_values("round")[["round", "event_name"]].itertuples(index=False)],
     )
 
 
@@ -189,6 +193,7 @@ def _drivers(df: pd.DataFrame, earlier: pd.DataFrame) -> list[dict]:
         prior = earlier.groupby("abbreviation")["points"].sum().to_dict()
         before = {code: i for i, code in enumerate(_ranked(prior, lambda c: earlier[earlier["abbreviation"] == c]), 1)}
     leader = totals[order[0]]
+    rounds = sorted(df["round"].unique())
     out = []
     for place, code in enumerate(order, start=1):
         rows = df[df["abbreviation"] == code]
@@ -196,6 +201,7 @@ def _drivers(df: pd.DataFrame, earlier: pd.DataFrame) -> list[dict]:
         races = rows[rows["code"] == "R"]
         out.append({
             "position": place,
+            "points_by_round": [_number(p) for p in rows.groupby("round")["points"].sum().reindex(rounds, fill_value=0.0)],
             "driver_number": int(latest["driver_number"]),
             "abbreviation": str(code),
             "full_name": None if pd.isna(latest["full_name"]) else str(latest["full_name"]),

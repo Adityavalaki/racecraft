@@ -2216,12 +2216,33 @@ button.prediction-row:hover { background: var(--panel-2); }
 /* ---------------------------------------------------------------- standings */
 .standings-basis { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-soft); }
 .standings-basis b { color: var(--ink); font-weight: 600; }
-.standings { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; align-items: start; }
-@media (max-width: 1240px) { .standings { grid-template-columns: minmax(0, 1fr); } }
+/* Standings as racecraft-ui.html lays it out (D-025): four tiles over one championship table beside the points chart. */
+.standings-body { overflow: hidden; }
+.standings { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.standings-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.standings-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
+.standings-scroll .standings-row { gap: 6px; }
+.standings-scroll .who .code { flex: none; overflow: visible; }
+.standings-scroll .who small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standings-scroll .standings-row.is-head { position: sticky; top: 0; z-index: 2; background: #0B0D10; }
+.split-bar { display: flex; gap: 1px; height: 8px; border-radius: 2px; overflow: hidden; background: #1A1E25; }
+.split-bar i { display: block; flex: 1 1 0; min-width: 1px; }
+.split-text { display: block; margin-top: 3px; font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.points-wrap { flex: 1 1 auto; min-height: 0; display: flex; padding: 14px 72px 30px 44px; }
+.points-plot { position: relative; flex: 1 1 auto; }
+.points-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.points-end { position: absolute; left: calc(100% + 8px); transform: translateY(-50%); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.points-hit { position: absolute; top: 0; bottom: 0; transform: translateX(-50%); }
+.points-hit:hover { background: rgba(255, 255, 255, 0.05); }
+@media (max-width: 1099px) {
+  .standings-body { overflow: auto; }
+  .standings { grid-template-columns: minmax(0, 1fr); }
+  .standings-main { min-height: 480px; }
+}
 .standings-panel { padding: 0 0 4px; display: flex; flex-direction: column; gap: 0; min-width: 0; }
 .standings-panel > .card-label { margin: 0; padding: 0 10px; min-height: 36px; display: flex; align-items: center; background: var(--panel-2); border-bottom: 1px solid var(--rule); font: 700 12px var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
 .standings-table.is-drivers { --st-cols: 2rem 2.2rem 4px minmax(6rem, 1fr) 3.2rem 3.2rem 2.6rem 2.6rem 3.2rem 4.6rem 7.4rem; }
-.standings-table.is-teams { --st-cols: 2rem 4px minmax(6rem, 1fr) 3rem 3.2rem 2.4rem 3rem minmax(5rem, 1.2fr); }
+.standings-table.is-teams { --st-cols: 2rem 4px minmax(6rem, 1fr) 3rem 3.2rem 2.4rem 3rem minmax(7rem, 1.2fr); }
 .standings-row {
   display: grid;
   grid-template-columns: var(--st-cols);

@@ -299,12 +299,13 @@ describe("StandingsScreen", () => {
     last: { round: 15, event_name: "Azerbaijan Grand Prix", session: moment === "before" ? "sprint" : "Grand Prix" },
     drivers: [
       { position: 1, driver_number: 63, abbreviation: "RUS", full_name: "George Russell", team_name: "Mercedes",
-        team_color: "00D7B6", points: 238, gap: 0, wins: 3, podiums: 8, sprint_wins: 1, change: 1,
+        team_color: "00D7B6", points: 238, gap: 0, wins: 3, podiums: 8, sprint_wins: 1, change: 1, points_by_round: [100, 138],
         form: [{ round: 14, event_name: "Italian Grand Prix", position: 1, status: null },
                { round: 15, event_name: "Azerbaijan Grand Prix", position: null, status: "R" }] },
       { position: 2, driver_number: 3, abbreviation: "VER", full_name: "Max Verstappen", team_name: "Red Bull Racing",
-        team_color: "4781D7", points: 213, gap: 25, wins: 2, podiums: 9, sprint_wins: 0, change: -1, form: [] },
+        team_color: "4781D7", points: 213, gap: 25, wins: 2, podiums: 9, sprint_wins: 0, change: -1, points_by_round: [113, 100], form: [] },
     ],
+    rounds: [{ round: 14, event_name: "Italian Grand Prix" }, { round: 15, event_name: "Azerbaijan Grand Prix" }],
     constructors: [
       { position: 1, team: "Mercedes", team_color: "00D7B6", points: 573, gap: 0, wins: 11, podiums: 22,
         drivers: [{ abbreviation: "ANT", points: 335 }, { abbreviation: "RUS", points: 238 }] },
@@ -339,19 +340,26 @@ describe("StandingsScreen", () => {
     expect(await drivers.findByText("82%")).toBeDefined();                // RUS's title chance
     expect(drivers.getByText("74%")).toBeDefined();                       // ...and the results-only second opinion
     expect(drivers.getByRole("columnheader", { name: "Results only" })).toBeDefined();
-    expect(within(screen.getByRole("table", { name: "Constructors' standings" })).getByText("out")).toBeDefined();
     expect(screen.getByText(/the 1 Grand Prix and 1 sprint still to run simulated 10,000 times from these standings, up to 33 points/)).toBeDefined();
     expect(drivers.getByText("−25")).toBeDefined();                       // VER's gap to the leader
     expect(drivers.getByLabelText("up 1 since the last weekend")).toBeDefined();
     expect(drivers.getByLabelText("Latest finishes: P1, retired")).toBeDefined();
-    const teams = within(screen.getByRole("table", { name: "Constructors' standings" }));
-    expect(teams.getByText("573")).toBeDefined();
-    expect(teams.getByText("VER 213 · LAW 14")).toBeDefined();            // who scored them
     expect(screen.getByText(/after 14 Grands Prix and 5 sprints, the latest the Azerbaijan Grand Prix sprint/)).toBeDefined();
     expect(screen.getByText(/the feed sent no points/)).toBeDefined();
+    // The chart beside the table: running totals, ended by a label with the total.
+    const chart = within(screen.getByRole("region", { name: "Points by round" }));
+    expect(chart.getByText("RUS 238")).toBeDefined();
+    expect(chart.getByText("VER 213")).toBeDefined();
 
     fireEvent.click(drivers.getByText("VER"));
     expect(onSelect).toHaveBeenCalledWith(3);
+
+    // Constructors are the other tab.
+    fireEvent.click(screen.getByRole("radio", { name: "Constructors" }));
+    const teams = within(screen.getByRole("table", { name: "Constructors' standings" }));
+    expect(teams.getByText("573")).toBeDefined();
+    expect(teams.getByText("out")).toBeDefined();
+    expect(teams.getByText("VER 213 · LAW 14")).toBeDefined();            // who scored them
 
     fireEvent.click(screen.getByRole("radio", { name: "After it" }));
     expect(await screen.findByText(/after 15 Grands Prix/)).toBeDefined();

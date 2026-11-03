@@ -67,6 +67,15 @@ def test_points_add_up_over_races_and_sprints(con):
     assert leader["gap"] == 0 and all(d["gap"] == leader["points"] - d["points"] for d in table.drivers)
 
 
+def test_points_by_round_add_a_weekends_sprint_and_race_and_sum_to_the_total(con):
+    table = standings.standings(con, 2024)
+    assert [r["round"] for r in table.rounds] == [1, 2, 3]
+    by_driver = {d["abbreviation"]: d for d in table.drivers}
+    assert by_driver["CCC"]["points_by_round"] == [15, 8 + 12, 18]     # round 2: sprint win, then the race
+    assert all(sum(d["points_by_round"]) == d["points"] for d in table.drivers)
+    assert table.as_dict()["rounds"][1]["event_name"] == "Round 2 Grand Prix"
+
+
 def test_level_on_points_the_most_wins_goes_first(con):
     table = standings.standings(con, 2024)
     order = [d["abbreviation"] for d in table.drivers]

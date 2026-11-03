@@ -618,6 +618,8 @@ export interface DriverStanding {
   /** Places gained (+) or lost since before the latest weekend counted; null for a first appearance. */
   change: number | null;
   form: StandingsFinish[];
+  /** Points scored each round (sprint and race together), lined up with `Standings.rounds`. */
+  points_by_round?: number[];
 }
 
 export interface ConstructorStanding {
@@ -642,6 +644,8 @@ export interface Standings {
   races: number;
   sprints: number;
   last: { round: number; event_name: string; session: string } | null;
+  /** The rounds counted, in order. */
+  rounds?: { round: number; event_name: string }[];
   notes: string[];
 }
 
