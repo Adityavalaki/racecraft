@@ -5,6 +5,7 @@ import {
 } from "../api";
 import { percent } from "../panels/PredictionBoard";
 import { KpiRow } from "../shell/KpiRow";
+import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
 /**
@@ -21,7 +22,7 @@ import type { ScreenContext } from "./ScreenView";
  * after the tables, since the first time for a season takes a few seconds.
  */
 export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [moment, setMoment] = useSeasonMoment(ctx);
   const [tab, setTab] = useState<"drivers" | "teams">("drivers");
   const [table, setTable] = useState<Standings | null>(null);
   const [error, setError] = useState<string | null>(null);

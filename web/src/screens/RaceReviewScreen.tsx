@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type RaceReview, type ReviewDriver, type ReviewStop, type StandingsMoment } from "../api";
 import { KpiRow } from "../shell/KpiRow";
+import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
 const SHORT: Record<ReviewStop["kind"], string> = { green: "", "safety car": "SC", VSC: "VSC", "red flag": "red", penalty: "pen" };
@@ -21,7 +22,7 @@ const keeps = (filter: Filter, stop: ReviewStop) => filter === "all" || (filter 
  * and left out as not reliable (D-023).
  */
 export function RaceReviewScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [moment, setMoment] = useSeasonMoment(ctx);
   const [data, setData] = useState<RaceReview | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The driver open in the inspector, by code: kept across a moment switch if they raced both.

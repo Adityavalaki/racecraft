@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type StandingsMoment, type TeammateGap, type TeammatePair, type TeammateRound, type Teammates } from "../api";
+import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
 type Metric = "quali" | "race" | "practice";
@@ -22,7 +23,7 @@ const CLIP_TIMES = 3;
  * instead of showing a sign.
  */
 export function TeammatesScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [moment, setMoment] = useSeasonMoment(ctx);
   const [metric, setMetric] = useState<Metric>("quali");
   const [data, setData] = useState<Teammates | null>(null);
   const [error, setError] = useState<string | null>(null);

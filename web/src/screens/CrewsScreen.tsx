@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type CrewStanding, type PitCrews, type PitLaneTrip, type StandingsMoment } from "../api";
 import { percent } from "../panels/PredictionBoard";
 import { KpiRow } from "../shell/KpiRow";
+import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
 /** Why a trip down the pit lane is not counted as a crew's stop, as the screen says it. */
@@ -27,7 +28,7 @@ const AXIS_S = 2.5;
  * session's own stops, up to the replay clock.
  */
 export function CrewsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [moment, setMoment] = useSeasonMoment(ctx);
   const [crews, setCrews] = useState<PitCrews | null>(null);
   const [error, setError] = useState<string | null>(null);
 

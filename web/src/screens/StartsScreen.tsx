@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type DriverStarts, type StandingsMoment, type StartKind, type StartRace, type StartRecord, type Starts } from "../api";
 import { KpiRow } from "../shell/KpiRow";
+import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
 const KINDS: [StartKind, string][] = [["races", "Races"], ["sprints", "Sprints"], ["both", "Both"]];
@@ -16,7 +17,7 @@ const CODES: Record<StartKind, string[]> = { races: ["R"], sprints: ["S"], both:
  * Cars out on lap 1 are counted apart; pit-lane starts are left out.
  */
 export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [moment, setMoment] = useState<StandingsMoment>("before");
+  const [moment, setMoment] = useSeasonMoment(ctx);
   const [kind, setKind] = useState<StartKind>("races");
   const [picked, setPicked] = useState<string | null>(null);
   const [data, setData] = useState<Starts | null>(null);

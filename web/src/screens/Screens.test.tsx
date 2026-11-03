@@ -368,6 +368,31 @@ describe("StandingsScreen", () => {
   });
 });
 
+describe("the season screens' moment", () => {
+  it("counts the race once the replay reaches the flag, undoes it on scrubbing back, and a choice holds", async () => {
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ drivers: [], constructors: [], moment: "x", remaining: [], runs: 0, notes: [], last: null, races: 0, sprints: 0 }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const urls = () => fetchMock.mock.calls.map((c) => c[0]);
+    const racing = context();
+    const over = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 1, { status: "finished" }), driver(3, "VER", 2)] } });
+    const { rerender } = render(<ScreenView id="standings" ctx={racing} />);
+    await waitFor(() => expect(urls()).toContain("/api/sessions/2026_15_R/standings?moment=before"));
+    expect(urls()).not.toContain("/api/sessions/2026_15_R/standings?moment=after");
+
+    rerender(<ScreenView id="standings" ctx={over} />);
+    await waitFor(() => expect(urls()).toContain("/api/sessions/2026_15_R/standings?moment=after"));
+    expect(urls()).toContain("/api/sessions/2026_15_R/title?moment=after");
+    expect(screen.getByRole("radio", { name: "After it" }).getAttribute("aria-checked")).toBe("true");
+
+    rerender(<ScreenView id="standings" ctx={racing} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Going into this session" }).getAttribute("aria-checked")).toBe("true"));
+
+    fireEvent.click(screen.getByRole("radio", { name: "After it" }));          // the reader's choice beats the clock
+    rerender(<ScreenView id="standings" ctx={racing} />);
+    expect(screen.getByRole("radio", { name: "After it" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
 it("calls a title certain only once nobody else can reach the leader", () => {
   expect(titleChance(0.999, false)).toBe(">99%");
   expect(titleChance(1, false)).toBe(">99%");
