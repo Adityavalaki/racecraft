@@ -2158,6 +2158,18 @@ button.prediction-row:hover { background: var(--panel-2); }
 .pred-range-band { position: absolute; top: 8px; height: 10px; border-radius: 2px; background: rgba(76, 154, 255, 0.55); }
 .pred-range-mark { position: absolute; top: 4px; width: 3px; height: 18px; margin-left: -1.5px; border-radius: 1px; background: #F2F3F5; }
 .pred-range-actual { position: absolute; top: -4px; transform: translateX(-50%); padding: 0 4px; border-radius: 2px; background: #FBBF24; color: #07080A; font-size: 9.5px; font-weight: 700; }
+/* The saved finishing distribution (D-026): heat cells in the table, bars in the inspector. */
+.prediction-table.has-heat { --pred-cols: 2rem 4px 3.4rem 2.6rem repeat(3, minmax(3.4rem, 4.4rem)) 2.8rem 2.8rem minmax(16rem, 1fr) 2.6rem; }
+.prediction-table.has-heat:has(.actual) { --pred-cols: 2rem 4px 3.4rem 2.6rem repeat(3, minmax(3.4rem, 4.4rem)) 2.8rem 2.8rem minmax(16rem, 1fr) 2.6rem 3rem; }
+.heat { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px; text-align: center; letter-spacing: 0; }
+.prediction-row .heat > span { display: flex; align-items: center; justify-content: center; min-height: 18px; border-radius: 2px; font: 600 9px var(--font-mono); }
+.prediction-row.is-head .heat > span { min-height: 0; color: inherit; }
+.pred-dist { display: grid; gap: 3px; align-items: end; height: 120px; padding-top: 14px; }
+.pred-dist > div { position: relative; min-height: 1px; border-radius: 2px 2px 0 0; }
+.pred-dist > div.is-actual { outline: 2px solid #FBBF24; outline-offset: 1px; }
+.pred-dist span { position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); font-size: 8.5px; font-weight: 600; color: #C9CED6; white-space: nowrap; }
+.pred-dist-axis { position: relative; height: 12px; font-size: 9.5px; color: var(--ink-faint); }
+.pred-dist-axis span { position: absolute; transform: translateX(-50%); }
 .pred-why { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid #161A1F; font-size: 11.5px; color: #D6DAE0; }
 .pred-why .right { text-align: right; }
 .score-card .prediction-score, .prediction-side .prediction-score { margin: 0; border: 0; max-width: none; }

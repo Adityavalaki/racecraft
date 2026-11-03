@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Prediction, PredictionDriver, WeekendInfo } from "../api";
-import { PredictionBoard, openingKind, percent, signalRanking } from "./PredictionBoard";
+import { PredictionBoard, openingKind, percent, signalRanking, expectedPoints } from "./PredictionBoard";
 
 /**
  * The prediction board shows chances, not a call. What it must get right on
@@ -137,6 +137,36 @@ describe("PredictionBoard", () => {
     mock({ detail: "the prediction is made once qualifying is in" }, false);
     render(<PredictionBoard sessionKey="2026_17_FP1" selected={[]} onSelect={vi.fn()} />);
     expect(await screen.findByText(/once qualifying is in/)).toBeDefined();
+  });
+
+  it("draws heat cells and expected points once every driver has a distribution; older predictions keep the bar", async () => {
+    const finish = [0.7, 0.2, 0.05, 0.05, ...Array(18).fill(0)] as number[];
+    expect(expectedPoints(finish, false)).toBeCloseTo(0.7 * 25 + 0.2 * 18 + 0.05 * 15 + 0.05 * 12);
+    expect(expectedPoints(finish, true)).toBeCloseTo(0.7 * 8 + 0.2 * 7 + 0.05 * 6 + 0.05 * 5);
+
+    const body = answer();
+    body.drivers = body.drivers.map((d) => ({ ...d, finish }));
+    mock(body);
+    const { container, unmount } = render(<PredictionBoard sessionKey="2025_04_Q" selected={[]} onSelect={vi.fn()} />);
+    await screen.findByRole("table", { name: "Predicted finishing order" });
+    expect(container.querySelector(".prediction-table.has-heat")).not.toBeNull();
+    expect(container.querySelector(".prediction-row:not(.is-head) .range")).toBeNull();
+    const cells = container.querySelectorAll("button.prediction-row .heat > span");
+    expect(cells.length).toBe(40);                               // ten a driver
+    expect(cells[0]!.textContent).toBe("70");
+    expect(cells[2]!.textContent).toBe("");                      // 5%: too small to print, still shaded
+    expect(screen.getAllByText("22.5").length).toBeGreaterThan(0);  // 0.7×25 + 0.2×18 + 0.05×15 + 0.05×12
+    expect(screen.getByRole("img", { name: /Chance of each finishing place: P1 70%, P2 20%/ })).toBeDefined();
+    unmount();
+
+    // One driver without it (saved before it was kept) is enough for the whole table to keep the bar.
+    const old = answer();
+    old.drivers = old.drivers.map((d, k) => (k ? { ...d, finish } : d));
+    mock(old);
+    const second = render(<PredictionBoard sessionKey="2025_04_Q" selected={[]} onSelect={vi.fn()} />);
+    await screen.findByRole("table", { name: "Predicted finishing order" });
+    expect(second.container.querySelector(".prediction-table.has-heat")).toBeNull();
+    expect(second.container.querySelector(".prediction-row:not(.is-head) .range")).not.toBeNull();
   });
 
   it("offers the sprint on a sprint weekend, and opens on it before the Grand Prix's qualifying", async () => {

@@ -243,6 +243,14 @@ def test_the_quickest_car_is_the_favourite_and_the_chances_add_up(con):
     assert result.drivers[0]["driver_number"] == 1
     assert rows[1]["win"] > 0.5
     assert sum(d["win"] for d in result.drivers) == pytest.approx(1.0, abs=0.01)
+    # The saved distribution: one chance a place, agreeing with the headline chances it sits beside.
+    for row in result.drivers:
+        assert len(row["finish"]) == len(result.drivers)
+        assert sum(row["finish"]) == pytest.approx(1.0, abs=0.01)
+        assert row["finish"][0] == pytest.approx(row["win"], abs=0.001)
+        assert sum(row["finish"][:3]) == pytest.approx(row["podium"], abs=0.002)
+    for place in range(len(result.drivers)):                                # one car in each place, every run
+        assert sum(d["finish"][place] for d in result.drivers) == pytest.approx(1.0, abs=0.02)
     assert sum(d["podium"] for d in result.drivers) == pytest.approx(3.0, abs=0.02)
     assert sum(d["points"] for d in result.drivers) == pytest.approx(10.0, abs=0.05)
     for d in result.drivers:

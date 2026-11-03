@@ -575,6 +575,8 @@ export interface PredictionDriver {
   points: number;
   dnf: number;
   expected: number;
+  /** The chance of each place, P1 first; missing from predictions saved before it was kept. Retirements sit at the back. */
+  finish?: number[];
   /** The likely range if the car finishes (10th to 90th percentile). */
   p10: number;
   /** The median finish, if the car finishes. */

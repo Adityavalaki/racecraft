@@ -344,6 +344,8 @@ def _summarise(order, table: pd.DataFrame, positions: dict[int, list[int]],
             "points": round(float((finishes <= points_places).mean()), 4),
             "expected": round(float(finishes.mean()), 2),
             "dnf": round(float(out.mean()), 4),
+            # The chance of each place, P1 first; retirements are classified at the back, so the last places carry them.
+            "finish": [round(float(v), 4) for v in np.bincount(finishes, minlength=len(order) + 1)[1:] / len(finishes)],
             # The likely range if the car finishes; retiring is the separate chance above.
             "p10": int(np.percentile(classified, 10)),
             "p50": int(np.median(classified)),

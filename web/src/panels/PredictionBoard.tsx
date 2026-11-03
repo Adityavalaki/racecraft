@@ -25,6 +25,15 @@ const SIGNAL_WORDS: Record<PredictionKind, Record<string, string>> = {
             form_s: "recent race pace", carry_s: "last season's form" },
 };
 const SPRINT_SESSIONS = ["SQ", "SS", "S"];
+const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1];
+/** How many places the heat cells show. */
+const HEAT_PLACES = 10;
+
+/** The points a driver scores on average, from the chance of each place. */
+export function expectedPoints(finish: number[], sprint: boolean): number {
+  return (sprint ? SPRINT_POINTS : RACE_POINTS).reduce((sum, points, place) => sum + points * (finish[place] ?? 0), 0);
+}
 const NO_WEEKEND: WeekendInfo = { sessions: [], sprint: false };
 
 /**
@@ -112,6 +121,8 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
   const finish = answer.result?.finish ?? null;
   const cars = answer.drivers.length;
   const worth = signalRanking(answer, sprint ? "sprint" : "race");
+  // Predictions saved before the distribution was kept have none, and are never rewritten (D-026): those keep the range bar.
+  const heat = answer.drivers.length > 0 && answer.drivers.every((d) => d.finish?.length);
   // The inspector: the last car followed in the replay, or the favourite when none is in this field.
   const inspected = [...selected].reverse().map((n) => answer.drivers.find((d) => d.driver_number === n)).find(Boolean)
     ?? [...answer.drivers].sort((a, b) => b.win - a.win)[0];
@@ -134,9 +145,9 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
       <div className="prediction-grid">
         <section className="panel prediction-main" aria-label="Finishing chances">
           <div className="panel-bar"><h2>Finishing chances</h2>
-            <span className="panel-meta">click a driver · bar: the likely range if it finishes, mark at the median</span></div>
+            <span className="panel-meta">{heat ? `click a driver · cells: chance of finishing P1 to P${HEAT_PLACES}` : "click a driver · bar: the likely range if it finishes, mark at the median"}</span></div>
           <div className="prediction-scroll">
-            <div className="prediction-table" role="table" aria-label="Predicted finishing order">
+            <div className={`prediction-table${heat ? " has-heat" : ""}`} role="table" aria-label="Predicted finishing order">
               <div className="prediction-row is-head cap" role="row">
                 <span role="columnheader">Pos</span>
                 <span role="columnheader" />
@@ -146,12 +157,17 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
                 <span role="columnheader">Podium</span>
                 <span role="columnheader" title={sprint ? "Finishing in the top eight, who score in a sprint" : "Finishing in the top ten"}>Points</span>
                 <span role="columnheader" className="num" title="Average simulated finish, retirements counted at the back">Exp.</span>
-                <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
+                {heat && <span role="columnheader" className="num" title="Points scored on average, from the chance of each place">xPts</span>}
+                {heat ? (
+                  <span role="columnheader" className="heat">{Array.from({ length: HEAT_PLACES }, (_, k) => <span key={k}>P{k + 1}</span>)}</span>
+                ) : (
+                  <span role="columnheader" title="If it finishes: 10th to 90th percentile, and the median">Likely range, P1 to P{cars}</span>
+                )}
                 <span role="columnheader" className="num" title="Chance of not finishing">DNF</span>
                 {finish && <span role="columnheader" className="num">Actual</span>}
               </div>
               {answer.drivers.map((driver, index) => (
-                <Row key={driver.driver_number} driver={driver} position={index + 1} cars={cars}
+                <Row key={driver.driver_number} driver={driver} position={index + 1} cars={cars} heat={heat} sprint={sprint}
                      actual={finish ? finish[String(driver.driver_number)] ?? null : undefined}
                      selected={selected.includes(driver.driver_number)} onSelect={onSelect} />
               ))}
@@ -160,7 +176,7 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
         </section>
 
         <section className="panel prediction-side" aria-label="Selected driver">
-          {inspected && <Inspector driver={inspected} cars={cars} event={event}
+          {inspected && <Inspector driver={inspected} cars={cars} event={event} sprint={sprint}
                                    actual={finish ? finish[String(inspected.driver_number)] ?? null : undefined} />}
           <div className="inspector-body prediction-side-foot">
             {answer.result && <Scorecard model={answer.result.scores.model} grid={answer.result.scores.grid} />}
@@ -200,10 +216,11 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
  * One driver's prediction: where it finishes if it finishes (the likely range
  * on the full field), its chances, and the readings its race pace came from.
  */
-function Inspector({ driver, cars, event, actual }: {
+function Inspector({ driver, cars, event, sprint, actual }: {
   driver: PredictionDriver;
   cars: number;
   event: "race" | "sprint";
+  sprint: boolean;
   actual: number | null | undefined;
 }) {
   const at = (p: number) => `${((Math.min(Math.max(p, 1), cars) - 1) / Math.max(cars - 1, 1)) * 100}%`;
@@ -216,18 +233,22 @@ function Inspector({ driver, cars, event, actual }: {
           <span className="card-code">{driver.abbreviation}</span>
           <span className="panel-meta">{driver.team_name ?? ""}{driver.grid < 99 ? ` · from P${driver.grid}` : " · from the pit lane"}</span>
         </div>
-        <div className="inspector-pos"><span className="cap">Expected</span><b className="num">P{driver.expected.toFixed(1)}</b></div>
+        <div className="inspector-pos"><span className="cap">Expected{driver.finish ? ` · ${expectedPoints(driver.finish, sprint).toFixed(1)} pts` : ""}</span><b className="num">P{driver.expected.toFixed(1)}</b></div>
       </div>
       <div className="inspector-body">
         <div className="inspector-block">
           <span className="cap">Where {driver.abbreviation} finishes</span>
-          <div className="pred-range" aria-label={`P${driver.p10} to P${driver.p90}, most likely P${driver.p50}`}>
-            <span className="pred-range-track" />
-            <span className="pred-range-band" style={{ left: at(driver.p10), width: `calc(${at(driver.p90)} - ${at(driver.p10)})` }} />
-            <span className="pred-range-mark" style={{ left: at(driver.p50) }} />
-            {actual != null && <span className="pred-range-actual num" style={{ left: at(actual) }}>P{actual}</span>}
-          </div>
-          <div className="race-strip-axis num"><span>P1</span><span>P{cars}</span></div>
+          {driver.finish ? <Distribution finish={driver.finish} color={`#${driver.team_color ?? "777"}`} actual={actual ?? null} /> : (
+            <>
+              <div className="pred-range" aria-label={`P${driver.p10} to P${driver.p90}, most likely P${driver.p50}`}>
+                <span className="pred-range-track" />
+                <span className="pred-range-band" style={{ left: at(driver.p10), width: `calc(${at(driver.p90)} - ${at(driver.p10)})` }} />
+                <span className="pred-range-mark" style={{ left: at(driver.p50) }} />
+                {actual != null && <span className="pred-range-actual num" style={{ left: at(actual) }}>P{actual}</span>}
+              </div>
+              <div className="race-strip-axis num"><span>P1</span><span>P{cars}</span></div>
+            </>
+          )}
           <p className="inspector-note">
             If it finishes: most likely P{driver.p50}, and P{driver.p10} to P{driver.p90} in eight {event}s out of ten.
             {actual !== undefined && (actual === null ? " It did not finish." : ` It finished P${actual}.`)}
@@ -259,10 +280,46 @@ function Inspector({ driver, cars, event, actual }: {
   );
 }
 
-function Row({ driver, position, cars, actual, selected, onSelect }: {
+/** The chance of each place as a bar; retirements are classified at the back, so the last bars include them. */
+function Distribution({ finish, color, actual }: { finish: number[]; color: string; actual: number | null }) {
+  const top = Math.max(...finish, 0.001);
+  const marks = [1, 5, 10, 15, finish.length].filter((p, i, all) => p <= finish.length && all.indexOf(p) === i);
+  return (
+    <>
+      <div className="pred-dist" style={{ gridTemplateColumns: `repeat(${finish.length}, minmax(0, 1fr))` }} role="img"
+           aria-label={`Chance of each finishing place: ${finish.map((p, k) => `P${k + 1} ${percent(p)}`).filter((_, k) => finish[k]! >= 0.06).join(", ")}`}>
+        {finish.map((p, k) => (
+          <div key={k} className={k + 1 === actual ? "is-actual" : ""} title={`P${k + 1}: ${percent(p)}${k + 1 === actual ? ", where it finished" : ""}`}
+               style={{ height: `${Math.max(1, (p / top) * 100)}%`, background: k < 3 ? color : k < HEAT_PLACES ? "rgba(76, 154, 255, 0.8)" : "#3A414B" }}>
+            {p >= 0.06 && <span className="num">{Math.round(p * 100)}</span>}
+          </div>
+        ))}
+      </div>
+      <div className="pred-dist-axis num">{marks.map((p) => <span key={p} style={{ left: `${((p - 0.5) / finish.length) * 100}%` }}>P{p}</span>)}</div>
+    </>
+  );
+}
+
+/** One place's chance: the deeper the blue the likelier, and the figure once it is worth reading. */
+function HeatCells({ finish }: { finish: number[] }) {
+  return (
+    <span role="cell" className="heat">
+      {finish.slice(0, HEAT_PLACES).map((p, k) => (
+        <span key={k} title={`P${k + 1}: ${percent(p)}`} aria-label={`P${k + 1} ${percent(p)}`}
+              style={{ background: `rgba(76, 154, 255, ${Math.min(0.95, p * 1.8).toFixed(2)})`, color: p > 0.3 ? "#FFFFFF" : "#CFE2FF" }}>
+          {p >= 0.08 ? Math.round(p * 100) : ""}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Row({ driver, position, cars, heat, sprint, actual, selected, onSelect }: {
   driver: PredictionDriver;
   position: number;
   cars: number;
+  heat: boolean;
+  sprint: boolean;
   actual: number | null | undefined;
   selected: boolean;
   onSelect: (driver: number) => void;
@@ -291,11 +348,14 @@ function Row({ driver, position, cars, actual, selected, onSelect }: {
       <Chance value={driver.podium} kind="podium" />
       <Chance value={driver.points} kind="points" />
       <span role="cell" className="num">{driver.expected.toFixed(1)}</span>
-      <span role="cell" className="range" aria-label={`P${driver.p10} to P${driver.p90}, most likely P${median}`}>
-        <i style={{ left: `${left}%`, width: `${width}%` }} />
-        <b style={{ left: `${mark}%` }} />
-        <em>P{driver.p10}–P{driver.p90}</em>
-      </span>
+      {heat && <span role="cell" className="num">{expectedPoints(driver.finish!, sprint).toFixed(1)}</span>}
+      {heat ? <HeatCells finish={driver.finish!} /> : (
+        <span role="cell" className="range" aria-label={`P${driver.p10} to P${driver.p90}, most likely P${median}`}>
+          <i style={{ left: `${left}%`, width: `${width}%` }} />
+          <b style={{ left: `${mark}%` }} />
+          <em>P{driver.p10}–P{driver.p90}</em>
+        </span>
+      )}
       <span role="cell" className="num dnf">{percent(driver.dnf)}</span>
       {actual !== undefined && (
         <span role="cell" className={`num actual${surprise(actual, driver)}`}
