@@ -98,7 +98,7 @@ export function TelemetryStrip({ sessionKey, followed, drivers, cars }: Props) {
   );
 }
 
-/** A channel's figure at the cursor: speed and throttle tick once a second to be read; brake and gear are states, and stay live. */
+/** A channel's figure at the cursor: speed and throttle tick every half second to be read; brake and gear are states, and stay live. */
 function ChannelValue({ text, color, hold }: { text: string; color: string; hold: boolean }) {
   const held = useHeld(text);
   return <span style={{ color }}>{hold ? held : text}</span>;

@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import type { DriverTiming } from "../api";
 import { ClockBar, statusBands } from "./ClockBar";
-import { DriverCards, drsLabel, overtakeLabel } from "./DriverCards";
+import { DriverCards, drsLabel, MAX_FOLLOWED, overtakeLabel } from "./DriverCards";
+import { PedalColumn } from "./PedalColumn";
 import { channelPath, cursorIndex } from "./TelemetryStrip";
 import { Leaderboard } from "./Leaderboard";
 
@@ -79,6 +80,15 @@ describe("DriverCards", () => {
     expect(onUnpick).toHaveBeenCalledWith(44);
   });
 
+  it("says the pedals are unknown rather than guessing, while speed still reads (BUG-007)", () => {
+    const blind = { "16": { x: 0, y: 0, speed: 296, gear: 8, throttle: null, brake: null, drs: 0 } };
+    const { container } = render(<DriverCards selected={[16]} drivers={field} cars={blind as never} hasDrs onUnpick={vi.fn()} />);
+    const values = Array.from(container.querySelectorAll(".meter-value")).map((v) => v.textContent);
+    expect(values.slice(1)).toEqual(["—", "—"]);
+    expect(container.querySelector(".meter-value.is-on")).toBeNull();
+    expect(container.querySelector(".card-speed")?.textContent).toBe("296 km/h");
+  });
+
   it("reads the DRS codes as the feed means them, and shows none for 2026", () => {
     expect(drsLabel(12, true).text).toBe("DRS open");
     expect(drsLabel(10, true).text).toBe("DRS open");
@@ -103,6 +113,33 @@ describe("DriverCards", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("the pedal column", () => {
+  const pedalCars = {
+    "1": { x: 0, y: 0, speed: 300, gear: 8, throttle: 100, brake: 0, drs: 0 },
+    "4": { x: 0, y: 0, speed: 120, gear: 3, throttle: 0, brake: 1, drs: 0 },
+    "16": { x: 0, y: 0, speed: 200, gear: 5, throttle: 64, brake: 0, drs: 0 },
+    "44": { x: 0, y: 0, speed: 0, gear: 0, throttle: null, brake: null, drs: 0 },
+  };
+
+  it("shows every followed driver's throttle and brake, up to four", () => {
+    expect(MAX_FOLLOWED).toBe(4);
+    render(<PedalColumn selected={[1, 4, 16, 44]} drivers={field} cars={pedalCars as never} sessionKey={null} t={0} playbackSpeed={1} />);
+    const rows = screen.getAllByRole("group");
+    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["VER pedals", "NOR pedals", "LEC pedals", "HAM pedals"]);
+    const row = (i: number) => Array.from(rows[i]!.querySelectorAll(".meter-value")).map((v) => v.textContent);
+    expect(row(0)).toEqual(["100%", "OFF"]);
+    expect(row(1)).toEqual(["0%", "ON"]);
+    expect(row(2)).toEqual(["64%", "OFF"]);
+    expect(row(3)).toEqual(["—", "—"]);                     // no reading: not off, and not 104%
+    expect(rows[2]!.querySelector<HTMLElement>(".meter i")!.style.transform).toBe("scaleX(0.64)");
+  });
+
+  it("asks for drivers when nobody is followed", () => {
+    render(<PedalColumn selected={[]} drivers={field} cars={{}} sessionKey={null} t={0} playbackSpeed={1} />);
+    expect(screen.getByText(/up to four/)).toBeDefined();
   });
 });
 
@@ -153,7 +190,7 @@ describe("the card's telemetry, as the clock runs", () => {
       await waitFor(() => expect(speedAt()).toBe("150 km/h"));   // halfway from 100 at 3995 to 200 at 4005
       rerender(<DriverCards {...props} t={4002} />);
       expect(speedAt()).toBe("150 km/h");                     // the figure holds, so it can be read
-      await waitFor(() => expect(speedAt()).toBe("170 km/h"), { timeout: 2000 });   // and ticks within the second
+      await waitFor(() => expect(speedAt()).toBe("170 km/h"), { timeout: 1000 });   // and ticks within half a second
       expect(fetchMock).toHaveBeenCalledTimes(1);             // still inside what was fetched
     } finally {
       vi.unstubAllGlobals();

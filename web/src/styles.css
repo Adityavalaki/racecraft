@@ -169,7 +169,21 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   grid-template-areas: "tower map" "tower drv" "rc tel";
 }
 .pw-tower { grid-area: tower; display: flex; flex-direction: column; min-height: 0; }
-.pw-map { grid-area: map; }
+.pw-maprow { grid-area: map; display: flex; gap: 6px; min-width: 0; min-height: 0; }
+.pw-maprow > .pw-map { flex: 1 1 auto; min-width: 0; }
+/* Every followed driver's pedals beside the map (D-028): four even slots, so a driver joining moves nobody. */
+.pw-pedals { flex: 0 0 196px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.pedal-list { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: repeat(4, minmax(0, 1fr)); }
+.pedal-driver { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-height: 0; padding: 2px 10px; border-bottom: 1px solid #161A1F; }
+.pedal-driver:last-child { border-bottom: 0; }
+.pedal-head { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; }
+.pedal-head i { width: 3px; height: 12px; border-radius: 1px; background: var(--team); }
+.pedal-head small { margin-left: auto; font-size: 10px; font-weight: 500; color: var(--ink-faint); }
+.pedal-line { display: grid; grid-template-columns: 26px minmax(0, 1fr) 30px; align-items: center; gap: 6px; font-size: 9px; color: var(--ink-faint); }
+.pedal-line .meter { height: 8px; }
+.pedal-line .meter-value { font-size: 10px; color: var(--ink); }
+.pedal-line .meter-value.is-on { color: #FF6B6B; }
+.pw-pedals .cards-empty { margin: 0; padding: 12px; font-size: 11.5px; line-height: 1.5; }
 .pw-drv { grid-area: drv; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .pw-dash { flex: 1 1 360px; display: flex; min-width: 0; }
 .pw-dash > .panel { flex: 1; }
@@ -182,7 +196,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   .screen.replay { overflow: auto; }
   .pitwall { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: auto;
     grid-template-areas: "map map" "drv drv" "tel tel" "tower rc"; }
+  .pw-maprow { flex-direction: column; }
+  .pw-maprow > .pw-map { flex: none; }
   .pw-map { height: 340px; }
+  .pw-pedals { flex: none; }
+  .pedal-list { grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pedal-driver { min-height: 62px; }
   .pw-tel { height: 360px; }
   .pw-tower, .pw-rc { height: 440px; }
 }

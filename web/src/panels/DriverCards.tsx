@@ -4,8 +4,10 @@ import { useHeld } from "../held";
 import { speedIn, type Settings } from "../settings";
 import { useTelemetry } from "../telemetryData";
 
-/** How many drivers can be followed at once: a dashboard each. */
-export const MAX_FOLLOWED = 2;
+/** How many drivers can be followed at once: each has their pedals beside the map (D-028). */
+export const MAX_FOLLOWED = 4;
+/** How many of them get a full dashboard: the newest. */
+const DASHBOARDS = 2;
 
 /** The regulated rev limit, the full scale of the RPM bar (Technical Regulations, 15,000 rpm). */
 export const RPM_LIMIT = 15000;
@@ -63,7 +65,7 @@ export function overtakeLabel(status: DriverTiming["overtake"]): { text: string;
  */
 export const DriverCards = memo(function DriverCards(props: Props) {
   const { selected, drivers, slot } = props;
-  const shown = selected.slice(-MAX_FOLLOWED);
+  const shown = selected.slice(-DASHBOARDS);
   const byNumber = new Map(drivers.map((driver, index) => [driver.driver_number, index]));
   const card = (number: number) => {
     const index = byNumber.get(number);
@@ -83,19 +85,19 @@ export const DriverCards = memo(function DriverCards(props: Props) {
     return (
       <section className="panel dash-empty" aria-label={`Driver ${slot === 0 ? "A" : "B"}`}>
         <p className="cards-empty">
-          {slot === 0 || shown.length === 0 ? "Click a driver in the timing tower to follow them here, up to two." : "Follow a second driver to compare them here."}
+          {slot === 0 || shown.length === 0 ? "Click a driver in the timing tower to follow them. The newest two get a dashboard here." : "Follow a second driver to compare them here."}
         </p>
       </section>
     );
   }
   if (!shown.length) {
-    return <p className="cards-empty">Click a driver in the timing tower to follow them here, up to two.</p>;
+    return <p className="cards-empty">Click a driver in the timing tower to follow them. The newest two get a dashboard here.</p>;
   }
   return <div className="driver-cards">{shown.map(card)}</div>;
 });
 
 /** A bar drawn by scaling, not by width, so it eases on the compositor without laying the card out each frame. */
-function Meter({ share, color, title }: { share: number; color: string; title?: string }) {
+export function Meter({ share, color, title }: { share: number; color: string; title?: string }) {
   return (
     <span className="meter" title={title}>
       <i style={{ transform: `scaleX(${Math.max(0, Math.min(1, share))})`, background: color }} />
@@ -124,9 +126,11 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
   // frame; the state's own figures, a few times a second, until it arrives.
   const gear = now?.gear ?? car.gear;
   const throttle = now?.throttle ?? car.throttle ?? null;
-  const braking = Boolean(now?.brake ?? car.brake);
+  // Unknown is not off: the feed has stretches with no pedal reading at all (BUG-007).
+  const brake = now?.brake ?? car.brake ?? null;
+  const braking = Boolean(brake);
   const rpm = now?.rpm ?? car.rpm ?? null;
-  // The bars follow every frame; the figures tick once a second, or they blur past unread (D-027).
+  // The bars follow every frame; the figures tick every half second, or they blur past unread (D-027).
   const speed = speedIn(useHeld(now?.speed ?? car.speed ?? null), units);
   const throttleShown = useHeld(throttle);
   const rpmShown = useHeld(rpm);
@@ -171,7 +175,7 @@ function DriverCard({ number, driver, ahead, behind, car, hasDrs, hasOvertake, o
           <span className="num meter-value">{throttleShown == null ? "—" : `${Math.round(throttleShown)}%`}</span>
           <span className="cap">Brake</span>
           <Meter share={braking ? 1 : 0} color="#EF4444" />
-          <span className={`num meter-value${braking ? " is-on" : ""}`}>{braking ? "ON" : "OFF"}</span>
+          <span className={`num meter-value${braking ? " is-on" : ""}`}>{brake == null ? "—" : braking ? "ON" : "OFF"}</span>
         </div>
         <div className="card-gaps">
           <div><span className="cap">Ahead</span>

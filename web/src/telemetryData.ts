@@ -114,22 +114,6 @@ export function carAt(buffer: Pick<Buffer, "t" | "speed" | "throttle" | "brake" 
   };
 }
 
-/** The last `seconds` before `t`, as a trace relative to `t`: what the card draws. */
-export function windowAt(buffer: Buffer, t: number, seconds = TRACE_SECONDS): RecentTrace | null {
-  const from = lowerBound(buffer.t, t - seconds);
-  const to = lowerBound(buffer.t, t);
-  if (to - from < 2) return null;
-  return {
-    driver_number: 0,
-    seconds,
-    t: buffer.t.slice(from, to).map((time) => time - t),
-    speed: buffer.speed.slice(from, to),
-    throttle: buffer.throttle.slice(from, to),
-    brake: buffer.brake.slice(from, to),
-    gear: buffer.gear.slice(from, to),
-  };
-}
-
 /**
  * One car's telemetry around the clock, for its card: a half-minute behind
  * and a stretch ahead, fetched in one go and slid along every frame, so the
@@ -201,7 +185,6 @@ export function useTelemetry(sessionKey: string | null, driver: number | null, t
 
   const held = buffer.current;
   return {
-    trace: held ? windowAt(held, t) : null,
     now: held ? carAt(held, t) : null,
     error,
     hz: SAMPLE_HZ,

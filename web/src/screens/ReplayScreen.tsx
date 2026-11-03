@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { type RaceControlEvent, type SessionInfo, type SessionState } from "../api";
 import { DriverCards } from "../panels/DriverCards";
 import { Leaderboard } from "../panels/Leaderboard";
+import { PedalColumn } from "../panels/PedalColumn";
 import { RaceControl } from "../panels/RaceControl";
 import { TelemetryStrip } from "../panels/TelemetryStrip";
 import { GEAR_COLOURS, SPEED_COLOURS, TrackMap, type ColourBy } from "../panels/TrackMap";
@@ -29,9 +30,10 @@ interface Props {
 
 /**
  * The replay, laid out as a pit wall: the timing tower down the left beside
- * the track map, the two followed drivers' dashboards side by side under the
- * map; race control and the followed drivers' telemetry by lap distance
- * below. The lap, the clock and the weather are in the session bar.
+ * the track map, every followed driver's pedals in a column beside the map
+ * (D-028), the newest two's dashboards side by side under it; race control and
+ * their telemetry by lap distance below. The lap, the clock and the weather
+ * are in the session bar.
  *
  * The pedal map colours the circuit by one car's last full lap: the first
  * followed driver, or the leader while nobody is followed.
@@ -57,6 +59,7 @@ export function ReplayScreen(props: Props) {
           <Leaderboard drivers={drivers} selected={selected} onSelect={props.onSelect}
                        onOpenTower={props.onOpenTower} lap={state?.leader_lap} />
         </section>
+        <div className="pw-maprow">
           <section className="panel panel-map pw-map" aria-label="Track map">
             <div className="panel-bar">
               <h2>Track map</h2>
@@ -111,6 +114,9 @@ export function ReplayScreen(props: Props) {
               {hasDrs && aidOn && <span><i className="is-drs" />DRS zones</span>}
             </div>
           </section>
+          <PedalColumn selected={selected} drivers={drivers} cars={state?.cars ?? {}} sessionKey={props.sessionKey} t={props.t}
+                       playbackSpeed={props.playbackSpeed ?? 1} />
+        </div>
         <div className="pw-drv">
           {([0, 1] as const).map((slot) => (
             <div key={slot} className={`pw-dash pw-dash-${slot === 0 ? "a" : "b"}`} aria-label={`Followed driver ${slot === 0 ? "A" : "B"}`}>
