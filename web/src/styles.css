@@ -2350,7 +2350,7 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .standings-basis .is-quick { color: var(--green); }
 .standings-basis .is-slow { color: var(--red); }
 .crew-range { position: relative; height: 1rem; background: linear-gradient(to right, transparent calc(50% - 0.5px), var(--rule-strong) calc(50% - 0.5px), var(--rule-strong) calc(50% + 0.5px), transparent calc(50% + 0.5px)); }
-.crew-range i { position: absolute; top: 0.3rem; height: 0.4rem; background: var(--ink-soft); opacity: 0.55; border-radius: 2px; }
+.crew-range i { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; opacity: 0.75; }
 .crew-range b { position: absolute; top: 0.1rem; width: 2px; height: 0.8rem; margin-left: -1px; background: var(--ink); }
 .trip-note { color: var(--ink-soft); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

@@ -88,7 +88,7 @@ function CrewTable({ teams }: { teams: CrewStanding[] }) {
   return (
     <section className="panel crews-panel" aria-label="Pit crews">
       <div className="panel-bar"><h2>Pit crews, fastest first</h2>
-        <span className="panel-meta">every green-flag stop this season · bar: the middle half, white tick: the typical stop</span></div>
+        <span className="panel-meta">every green-flag stop this season · white tick: the typical stop · over {AXIS_S} s away sits on the edge</span></div>
       <div className="standings-table is-crews crews-scroll" role="table" aria-label="Pit crew ranking">
         <div className="standings-row is-head" role="row">
           <span role="columnheader" className="num">Pos</span>
@@ -111,7 +111,7 @@ function CrewTable({ teams }: { teams: CrewStanding[] }) {
               {seconds(t.typical_s)}
             </span>
             <span role="cell" className="crew-range" aria-label={`middle half from ${seconds(t.q1_s)} to ${seconds(t.q3_s)}`}>
-              <i style={{ left: `${axis(t.q1_s)}%`, width: `${Math.max(axis(t.q3_s) - axis(t.q1_s), 1)}%` }} />
+              {(t.stop_times_s ?? []).map((v, k) => <i key={k} style={{ left: `${axis(v)}%`, background: `#${t.team_color ?? "777"}` }} />)}
               <b style={{ left: `${axis(t.typical_s)}%` }} />
             </span>
             <span role="cell" className="num gap">{t.spread_s.toFixed(2)} s</span>

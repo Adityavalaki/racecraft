@@ -90,6 +90,7 @@ def test_crews_are_ranked_by_their_stops_against_the_races_typical_stop(con):
     assert order == ["Fast", "Mid", "Slow"]
     by = {t["team"]: t for t in ranking.teams}
     assert by["Fast"]["typical_s"] < 0 < by["Slow"]["typical_s"]
+    assert all(len(t["stop_times_s"]) == t["stops"] for t in ranking.teams)     # one per counted stop, for the strip
     # Round 1, every stop counted: the typical stop is Mid's, and the others sit exactly their crews' margin off it.
     round_1 = {t["driver_number"]: t["vs_typical_s"] for t in pit_crews.session_stops(con, "2024_01_R")}
     assert round_1[1] == pytest.approx(-0.6, abs=0.01) and round_1[3] == pytest.approx(0.0, abs=0.01)

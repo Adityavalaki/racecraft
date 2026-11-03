@@ -674,6 +674,8 @@ export interface CrewStanding {
   spread_s: number;
   q1_s: number;
   q3_s: number;
+  /** Every counted stop against its race's typical one. */
+  stop_times_s?: number[];
   slow_share: number;
   /** Too few stops yet to be a pattern: ranked last. */
   thin: boolean;

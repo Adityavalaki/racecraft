@@ -137,6 +137,7 @@ def ranking(con, year: int, as_of: pd.Timestamp | None = None) -> CrewRanking:
             "spread_s": round(float(q3 - q1), 2),
             "q1_s": round(float(q1), 2),
             "q3_s": round(float(q3), 2),
+            "stop_times_s": [round(float(v), 2) for v in rel],      # every counted stop, for the strip
             "slow_share": round(float((rel > SLOW_S).mean()), 3),
             "thin": bool(len(team) < FEW_STOPS),
         })
