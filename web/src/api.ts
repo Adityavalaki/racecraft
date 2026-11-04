@@ -510,6 +510,8 @@ export interface SyncStatus {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  /** Sessions already in the lake that a late source just changed: Jolpica's points, say. */
+  topped_up: number;
 }
 
 /** The one session key that is not in the lake. */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type SyncStatus } from "../api";
 
 interface Props {
-  /** Called once when a sync has written new sessions, so the list can be read again. */
+  /** Called once when a sync has changed the lake, so what was read from it can be read again. */
   onSynced: () => void;
   /** How often to ask how a running sync is going. */
   pollMs?: number;
@@ -66,7 +66,7 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
     return () => clearInterval(timer);
   }, [running, read, pollMs, idlePollMs]);
 
-  // A sync that finished since the last look and wrote something: say so once.
+  // A sync that finished since the last look and changed something: say so once.
   useEffect(() => {
     if (!status) return;
     if (status.state !== "done" && status.state !== "failed") {
@@ -79,7 +79,7 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
     }
     if (status.finished_at !== seenFinish.current) {
       seenFinish.current = status.finished_at;
-      if ((status.counts.written ?? 0) > 0) onSynced();
+      if ((status.counts.written ?? 0) > 0 || status.topped_up > 0) onSynced();
     }
   }, [status, onSynced]);
 

@@ -68,6 +68,8 @@ def test_gaps_are_filled_as_each_source_publishes(tmp_path, monkeypatch):
     # Jolpica has published, TracingInsights not yet: the results are filled, the tyres wait.
     assert topup.real_top_up(now=NOW) == 1
     con = connect()
+    stamped = con.execute("select ingested_at from sessions").fetchone()[0]             # saved answers go stale
+    assert stamped is not None
     result = con.execute("select team_id, q3_s from results").fetchone()
     assert result == ("mclaren", 76.5)
     assert _sources()["results"] == "OpenF1 + Jolpica" and _sources()["laps"] == "OpenF1"
@@ -78,6 +80,7 @@ def test_gaps_are_filled_as_each_source_publishes(tmp_path, monkeypatch):
     con = connect()
     assert [row[0] for row in con.execute("select tyre_life from laps order by lap_number").fetchall()] == [4, 5]
     assert con.execute("select count(*) from circuit_markers").fetchone()[0] == 2
+    assert con.execute("select ingested_at from sessions").fetchone()[0] > stamped
     assert con.execute("select circuit_rotation_deg from sessions").fetchone()[0] == 36.0
     assert _sources() == {"sessions": "OpenF1", "results": "OpenF1 + Jolpica", "laps": "OpenF1 + TracingInsights",
                           "circuit_markers": "TracingInsights"}

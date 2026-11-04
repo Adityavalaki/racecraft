@@ -65,6 +65,7 @@ class Job:
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
+    topped_up: int = 0                # sessions already in the lake that a late source just changed
 
     def as_dict(self) -> dict:
         counts = {state: sum(1 for item in self.items if item.state == state)
@@ -80,6 +81,7 @@ class Job:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "error": self.error,
+            "topped_up": self.topped_up,
         }
 
 
@@ -206,7 +208,9 @@ class Syncer:
                         item.state, item.detail = "present", ""
             # Sessions built before Jolpica or TracingInsights had published, completed now (D-019).
             try:
-                topup.top_up()
+                filled = topup.top_up()
+                with self._lock:
+                    self._job.topped_up = filled
             except Exception:                       # noqa: BLE001 - an extra must not fail the sync
                 log.warning("top-up failed", exc_info=True)
             if wrote:

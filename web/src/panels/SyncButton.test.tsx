@@ -10,7 +10,7 @@ import type { SyncStatus } from "../api";
  */
 function status(overrides: Partial<SyncStatus> = {}): SyncStatus {
   return {
-    state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null,
+    state: "idle", weekends: [], items: [], counts: {}, to_fetch: 0, current: null, topped_up: 0,
     started_at: null, finished_at: null, error: null, ...overrides,
   };
 }
@@ -138,6 +138,17 @@ describe("SyncButton, beside the desktop app's own syncs", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("added 1 session"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(onSynced).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads again when a late source changed a session it already had, as Jolpica's points do", async () => {
+    serve([
+      status({ state: "running", weekends: WEEKENDS }),
+      status({ state: "done", weekends: WEEKENDS, counts: { present: 21 }, topped_up: 1,
+               finished_at: "2026-09-25T16:05:00+00:00" }),
+    ]);
+    const onSynced = vi.fn();
+    render(<SyncButton onSynced={onSynced} pollMs={10} idlePollMs={10} />);
+    await waitFor(() => expect(onSynced).toHaveBeenCalledTimes(1));
   });
 
   it("does not treat the last sync before the page opened as news", async () => {

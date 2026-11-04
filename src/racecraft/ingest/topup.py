@@ -92,6 +92,8 @@ def fill(con, gap: dict) -> set[str]:
     tables["sources"] = pd.DataFrame(
         [(key, name, source, now if name in tables else known.get(name)) for name, source in sources.items()],
         columns=TABLES["sources"].names)
+    # Must change whenever these tables do: saved answers are filed under the newest stamp (api/insight.py).
+    tables["sessions"] = tables.get("sessions", _table(con, "sessions", key)).assign(ingested_at=now)
     lake.write_session(tables, season, rnd, ident)
     return set(tables) - {"sources", "sessions"}
 

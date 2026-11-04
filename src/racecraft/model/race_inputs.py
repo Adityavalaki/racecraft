@@ -66,9 +66,9 @@ class NotEnoughData(ValueError):
 # after it asks for it again: studying race k refits races 1..k-1, so a season's
 # backtest is quadratic without this. Keyed by lake as well as session, because
 # the same key in a different lake is different data.
-# shortcut: keyed by path, not lake version, because a race's own fit only
-# changes if that race is re-ingested with --force, which the sync never does
-# and the dict is unbounded per version. Restart the server after a --force.
+# shortcut: keyed by path, not lake version, because the dict is unbounded per
+# version. A race's fit misses a top-up's tyres (hours after a race) and a --force
+# until the server restarts; key on the session's `ingested_at` if that shows.
 _race_cache: dict[tuple[str, str], tuple] = {}
 
 
