@@ -62,7 +62,14 @@ _last_request = 0.0
 
 
 class NotAvailable(LookupError):
-    """OpenF1 has no such session, or would not serve it: the message says which."""
+    """OpenF1 has no such session: the message says why."""
+
+
+class RateLimited(requests.RequestException):
+    """
+    OpenF1 said slow down, however long it was given. WHY not NotAvailable: that falls back to TracingInsights,
+    which has no telemetry, and the session would be written without any and count as done for good.
+    """
 
 
 def _get(endpoint: str, **params) -> list[dict]:
@@ -82,7 +89,7 @@ def _get(endpoint: str, **params) -> list[dict]:
         response.raise_for_status()
         body = response.json()
         return body if isinstance(body, list) else []
-    raise NotAvailable(f"OpenF1 kept refusing {endpoint}: too many requests")
+    raise RateLimited(f"OpenF1 kept refusing {endpoint}: too many requests")
 
 
 def find_session(year: int, starts: pd.Timestamp, sessions: list[dict] | None = None) -> dict:

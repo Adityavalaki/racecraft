@@ -290,6 +290,18 @@ def test_no_session_near_the_scheduled_start_is_not_available(openf1, monkeypatc
         openf1_source.extract(2026, 19, "R", "Race", "2026_19_R")
 
 
+def test_being_told_to_slow_down_fails_the_session_rather_than_writing_it_short(monkeypatch):
+    """TracingInsights has no telemetry: falling back to it would leave a blank replay, marked done."""
+    class TooMany:
+        status_code = 429
+
+    monkeypatch.setattr(openf1_source.requests, "get", lambda *a, **k: TooMany())
+    monkeypatch.setattr(openf1_source.time, "sleep", lambda s: None)
+    with pytest.raises(openf1_source.RateLimited):
+        openf1_source._get("car_data", session_key=1)
+    assert not issubclass(openf1_source.RateLimited, openf1_source.NotAvailable)    # what cli falls back on
+
+
 def test_a_session_f1_refuses_is_taken_from_openf1(monkeypatch):
     def locked(*a, **k):
         raise fastf1_source.ArchiveLocked(fastf1_source.LOCKED)
