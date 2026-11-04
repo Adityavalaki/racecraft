@@ -374,9 +374,15 @@ describe("the season screens' moment", () => {
     vi.stubGlobal("fetch", fetchMock);
     const urls = () => fetchMock.mock.calls.map((c) => c[0]);
     const racing = context();
-    const over = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 1, { status: "finished" }), driver(3, "VER", 2)] } });
+    const over = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 1, { status: "finished" }), driver(3, "VER", 2, { status: "out" })] } });
+    // A classified car that has stopped, with the race still on: 2026_16_R's RUS, five laps from the end.
+    const stopped = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 20, { status: "finished" }), driver(3, "VER", 1)] } });
     const { rerender } = render(<ScreenView id="standings" ctx={racing} />);
     await waitFor(() => expect(urls()).toContain("/api/sessions/2026_15_R/standings?moment=before"));
+    expect(urls()).not.toContain("/api/sessions/2026_15_R/standings?moment=after");
+
+    rerender(<ScreenView id="standings" ctx={stopped} />);
+    expect(screen.getByRole("radio", { name: "Going into this session" }).getAttribute("aria-checked")).toBe("true");
     expect(urls()).not.toContain("/api/sessions/2026_15_R/standings?moment=after");
 
     rerender(<ScreenView id="standings" ctx={over} />);
