@@ -2153,6 +2153,9 @@ button.prediction-row:hover { background: var(--panel-2); }
 /* ---- Race prediction as racecraft-ui.html draws it: four tiles over the chances table beside a 360 px inspector */
 .prediction-body { overflow: hidden; }
 .prediction { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+/* WHY: this screen does not scroll, its table and side panel do. They only can if the board is held to the screen's
+   height, which the "keep their own height" rule below would undo, leaving the last drivers and the scorecard out of reach. */
+.screen-body > .prediction { flex: 1 1 auto; }
 .prediction-top { display: flex; align-items: center; gap: 10px; flex: none; }
 .prediction-top .prediction-basis { margin: 0; padding: 0; border: 0; flex: 1 1 auto; min-width: 0; }
 .prediction-runs { flex: none; padding: 3px 8px; border-radius: 3px; background: #2A1A3F; color: #DDD6FE; font-size: 11px; }
