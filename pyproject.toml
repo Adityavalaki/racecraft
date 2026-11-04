@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=78.1.1"]   # 78.1.1 fixes the path-traversal/command-injection advisories
+requires = ["setuptools>=84.1.0"]   # 84.1.0 fixes GHSA-xmj3; 78.1.1 the path-traversal/command-injection advisories
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -21,10 +21,14 @@ dependencies = [
     # cleanly under requests and fastf1): urllib3 GHSA-8988/gh4c/vxq7, PyJWT
     # GHSA-42vr. msgpack (GHSA-6v7p) cannot be floored here — signalrcore pins
     # it to 1.1.2 — but Racecraft records through fastf1's SignalR client, so
-    # its msgpack path is not on ours. `build.setuptools>=78.1.1` keeps the
-    # build tool patched too.
+    # its msgpack path is not on ours. `build.setuptools>=84.1.0` keeps the
+    # build tool patched too. certifi: emSign's compromised root, PYSEC-2026-4320
+    # (10.18 dropped all emSign roots, 10.19 restored the safe ones). pillow comes
+    # with matplotlib and ships in the app though nothing here opens an image.
     "urllib3>=2.8.0",
     "PyJWT>=2.15.0",
+    "certifi>=2026.10.19",
+    "pillow>=13.0.0",
 ]
 
 [project.optional-dependencies]
