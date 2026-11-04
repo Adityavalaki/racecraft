@@ -114,6 +114,15 @@ def test_a_throttle_of_104_is_stored_as_no_reading():
     assert pd.isna(car["throttle"].iloc[1])
 
 
+def test_a_gear_of_128_is_stored_as_no_reading_and_the_session_still_writes():
+    """BUG-016: one such sample overflowed the column, and a new install lost the whole session."""
+    car = openf1_source._car(pd.DataFrame({
+        "driver_number": [12, 12], "t": [1.0, 2.0], "rpm": [11000, 0], "speed": [300, 0], "n_gear": [8, 128],
+        "throttle": [100, 0], "brake": [0, 0]}), "2026_15_FP1")
+    table = lake.to_arrow(car, "car_data")
+    assert table["gear"].to_pylist() == [8, None]
+
+
 def test_the_tables_pass_the_quality_checks_and_write(race, tmp_path):
     findings = [f for f in quality.check_session(race) if f.check != "results.drivers"]   # a two-car field
     assert not quality.has_errors(findings), findings
