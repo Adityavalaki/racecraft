@@ -137,7 +137,10 @@ def remaining_events(con, year: int, after: pd.Timestamp) -> tuple[list[Event], 
         if not _season_finished(con, year):
             raise NoCalendar(f"the rest of the {year} calendar is not known offline")
         return known, []
-    seen = {(e.round, e.sprint) for e in known}
+    # Anything in the lake is run or in `known`, never still to come from the schedule. WHY all of it and not
+    # only `known`: OpenF1 sessions are dated an hour before their start, so at the flag the race just run is
+    # before `after` in the lake and after it on the schedule, and would count both in the points and as to come.
+    seen = {(e.round, e.sprint) for e in lake_events(con, year, None)}
     merged = known + [e for e in scheduled if (e.round, e.sprint) not in seen]
     return sorted(merged, key=lambda e: (e.round, not e.sprint)), []
 

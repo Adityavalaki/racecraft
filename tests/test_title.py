@@ -125,6 +125,17 @@ def test_the_title_route(con, monkeypatch):
     assert client.get("/api/sessions/live/title").status_code == 422
 
 
+def test_a_race_in_the_points_is_not_still_to_come(con, monkeypatch):
+    """An OpenF1 session is dated an hour before the schedule's start, so the schedule still lists it at the flag."""
+    from racecraft.api import title_view
+
+    monkeypatch.setattr(title, "calendar_events", lambda year, after: [title.Event(2, "Round 2 Grand Prix", False),
+                                                                       title.Event(3, "Round 3 Grand Prix", False)])
+    monkeypatch.setattr(title, "load_uncertainty", lambda path=None: SPLIT)
+    title_view.forget()
+    assert [e["round"] for e in title_view.for_session("2024_02_R", "after")["remaining"]] == [3]
+
+
 def test_offline_with_the_season_unfinished_says_so(con, monkeypatch):
     from racecraft.api import title_view
 
