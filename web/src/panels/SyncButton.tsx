@@ -136,13 +136,13 @@ function summaryOf(status: SyncStatus | null, error: string | null): string {
   if (written) parts.push(`added ${written} session${written === 1 ? "" : "s"}`);
   if (busy) parts.push(`${busy} still being fetched elsewhere`);
   if (failed) parts.push(`${failed} failed`);
-  if (locked) parts.push(`${locked} need F1 TV`);
+  if (locked) parts.push(`${locked} not published yet`);
   return parts.length ? parts.join(", ") : `up to date · ${status.weekends.length} weekends`;
 }
 
-/** Said once above the sessions F1 refused, rather than on every line. */
-const LOCKED_NOTE = "F1's timing archive needs an F1 TV subscription since October 2026, so these "
-  + "sessions could not be downloaded. Sessions already downloaded are unaffected.";
+/** Said once above the sessions nobody has yet, rather than on every line. */
+const LOCKED_NOTE = "No free source has these sessions yet, and F1's timing archive needs an F1 TV subscription "
+  + "since October 2026. They are asked for again on each refresh. Sessions already downloaded are unaffected.";
 
 function detailOf(status: SyncStatus | null, error: string | null): string {
   if (error) return error;

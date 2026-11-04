@@ -32,7 +32,7 @@ from racecraft.ingest import cli, topup
 from racecraft.ingest.fastf1_source import LOCKED
 from racecraft.store import lake
 
-LOCKED_DETAIL = f"not downloaded: {LOCKED}"
+LOCKED_DETAIL = f"not published yet: no free source has it, and {LOCKED}"
 
 log = logging.getLogger("racecraft.sync")
 
@@ -48,7 +48,7 @@ class Item:
     event: str
     name: str                         # FastF1's session name
     # pending, ingesting, written, present, busy (another process is fetching
-    # it right now), failed, locked (F1's archive wants an F1 TV login)
+    # it right now), failed, locked (F1's archive wants an F1 TV login and no free source has it)
     state: str = "pending"
     detail: str = ""
 
@@ -167,15 +167,10 @@ class Syncer:
             log.info("sync: %d weekends, %d sessions, %d to fetch", len(names), len(items),
                      sum(1 for item in items if item.state != "present"))
 
-            locked = False
+            # WHY every session is asked, though F1's wall is the same for all: "locked" also means the free
+            # sources lack this one, a cancelled FP3 say, and the sessions after it can still be there.
             for item in items:
                 if item.state == "present":
-                    continue
-                if locked:
-                    # The archive's sign-in wall is the same for every session: asking again
-                    # only costs requests. Marked without trying.
-                    with self._lock:
-                        item.state, item.detail = "locked", LOCKED_DETAIL
                     continue
                 with self._lock:
                     item.state = "ingesting"
@@ -202,7 +197,6 @@ class Syncer:
                         "locked": LOCKED_DETAIL,
                     }.get(item.state, "")
                 wrote += item.state == "written"
-                locked = locked or item.state == "locked"
 
             # Whoever was fetching a busy session may have finished while this
             # pass did the rest. Look once more, and trust only the lake.

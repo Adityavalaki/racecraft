@@ -544,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
 
     counts = run_once(args)
     hint = " (re-run with --verbose for tracebacks)" if counts["failed"] and not args.verbose else ""
-    log.info("done: %d written, %d skipped, %d failed, %d need F1 TV%s", counts["written"], counts["skipped"],
+    log.info("done: %d written, %d skipped, %d failed, %d not published yet%s", counts["written"], counts["skipped"],
              counts["failed"], counts["locked"], hint)
     log.info("lake size: %.1f MB at %s", lake.lake_size_bytes() / 1e6, config.LAKE_DIR)
     log.info("full log, including FastF1 feed warnings: %s", log_file)
