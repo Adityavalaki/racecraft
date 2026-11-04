@@ -31,6 +31,11 @@ def for_session(session_key: str, moment: str = "before") -> dict:
     """The odds from the standings when `session_key` started (`before`) or once it was over (`after`)."""
     con = connect()
     year, as_of = standings.as_of(con, session_key, moment)      # KeyError if not in the lake
+    # Must come before the odds: on points that are short they would be confidently wrong.
+    short = standings.standings(con, year, as_of).missing_rounds
+    if short:
+        raise NotAvailable(f"round{'s' if len(short) > 1 else ''} {', '.join(map(str, short))} of {year} "
+                           "not in yet, so the points are short: the next Refresh data fetches them")
     key = (lake_key(), year, as_of.isoformat())
     with _lock:
         if key in _answers:

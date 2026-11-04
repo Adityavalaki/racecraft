@@ -47,6 +47,15 @@ def no_real_top_up(monkeypatch):
     monkeypatch.setattr(topup, "top_up", lambda now=None: 0)
 
 
+@pytest.fixture(autouse=True)
+def no_real_season_results(monkeypatch):
+    """As above: a sync in a test must not ask Jolpica. `tests/test_season_results.py` calls the real one."""
+    from racecraft.ingest import season_results
+
+    monkeypatch.setattr(season_results, "real_fill", season_results.fill, raising=False)
+    monkeypatch.setattr(season_results, "fill", lambda seasons, now=None: 0)
+
+
 @pytest.fixture
 def fastf1_laps():
     """

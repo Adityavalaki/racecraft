@@ -164,7 +164,7 @@ def field_pace(con, year: int, rnd: int, calibration: predict.Calibration) -> pd
 
 def entrants(con, year: int, before: pd.Timestamp | None) -> pd.DataFrame:
     """The current field: who started the latest Grand Prix, with their team."""
-    df = standings.results(con, year)
+    df = standings.results(con, year, official=True)
     if before is not None and not df.empty:
         df = df[pd.to_datetime(df["date_utc"], utc=True) < before]
     races = df[df["code"] == "R"]
@@ -252,6 +252,12 @@ def odds(con, year: int, as_of: pd.Timestamp | None = None, *, runs: int = DEFAU
     constructors = _constructor_odds(table, field_now, points, left, left_team, rng)
     if not events:
         notes.append("the season is over: these are the final standings")
+    # The points cover every round (D-031), the pace only rounds with laps here: one race of it swung
+    # a title favourite from 87% to 41% against the full season's, so the odds say what they rest on.
+    with_laps = sum(1 for e in lake_events(con, year, None) if not e.sprint and e.round < next_round)
+    if events and with_laps < table.races:
+        notes.append(f"pace comes from the {with_laps} of {table.races} Grands Prix downloaded here, "
+                     "so these odds are less sure than the points")
     return TitleOdds(year=int(year), drivers=drivers, constructors=constructors, remaining=remaining,
                      runs=runs, race_noise_s=round(noise, 3), lasting_share=round(share, 3), notes=notes)
 

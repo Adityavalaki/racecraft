@@ -191,7 +191,7 @@ def odds_now(con, year: int, as_of: pd.Timestamp, *, events: list[title.Event] |
     Points are counted as the standings count them; the rest of the season is the
     lake's and the calendar's, as for `title.odds`.
     """
-    df = standings.results(con, year)
+    df = standings.results(con, year, official=True)
     if df.empty:
         return {}
     df = df[pd.to_datetime(df["date_utc"], utc=True) < pd.Timestamp(as_of).tz_convert("UTC")]

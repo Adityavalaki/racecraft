@@ -85,6 +85,10 @@ Recent sessions ingested before Jolpica or TracingInsights published are complet
 after every pass (`ingest/topup.py`, D-019): only the gaps, a few requests each.
 Each session's `sources` table says where each of its tables came from; the app
 names them beside the session picker (D-013). Sessions without one are FastF1's.
+The championships need every round, and a new install fetches five weekends, so each sync
+first takes the rest of the season's race and sprint results from Jolpica into `official_results`
+(`ingest/season_results.py`, D-031): one request a session, once. They count in the standings and
+title odds only; those rounds open no replay and do not feed Starts, Teammates or Pit crews.
 Team radio (`team_radio`: car, time, MP3 address) comes from OpenF1 and plays from F1's
 server in the replay (D-014); `racecraft-ingest --radio` adds it to older sessions.
 The prediction screen shows the weekend's forecast at the circuit from Open-Meteo

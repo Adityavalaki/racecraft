@@ -316,7 +316,9 @@ describe("StandingsScreen", () => {
   });
 
   const odds = {
-    year: 2026, moment: "before", runs: 10000, notes: [],
+    year: 2026, moment: "before", runs: 10000,
+    notes: ["pace comes from the 5 of 15 Grands Prix downloaded here, so these odds are less sure than the points",
+            "Singapore Grand Prix sprint: the feed sent no points, so they are worked out from the classified positions"],
     remaining: [{ round: 16, event_name: "Bahrain Grand Prix", session: "Grand Prix" },
                 { round: 17, event_name: "Singapore Grand Prix", session: "sprint" }],
     drivers: [{ abbreviation: "RUS", driver_number: 63, points: 238, title: 0.82, expected_points: 270, p10: 250, p90: 290, max_points: 271, alive: true },
@@ -360,6 +362,8 @@ describe("StandingsScreen", () => {
     expect(teams.getByText("573")).toBeDefined();
     expect(teams.getByText("out")).toBeDefined();
     expect(teams.getByText("VER 213 · LAW 14")).toBeDefined();            // who scored them
+    expect(await screen.findByText(/pace comes from the 5 of 15/)).toBeDefined();   // what the odds rest on
+    expect(screen.getAllByText(/Singapore Grand Prix sprint/)).toHaveLength(1);     // in both answers, said once
 
     fireEvent.click(screen.getByRole("radio", { name: "After it" }));
     expect(await screen.findByText(/after 15 Grands Prix/)).toBeDefined();

@@ -2,7 +2,7 @@
 The championships: drivers' and constructors' points, as they stood at a moment.
 
 Points are the feed's own, from every Grand Prix and sprint result in the lake,
-so penalties, disqualifications and (in 2023 and 2024) the fastest-lap point
+and from the official results of rounds it has no session of (D-031), so penalties, disqualifications and (in 2023 and 2024) the fastest-lap point
 are as F1 awarded them. Summed that way, 2023 to 2025 come out at the published
 final tables: Verstappen 575 and Red Bull 860; Verstappen 437 and McLaren 666;
 Norris 423 and McLaren 833.
@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+from racecraft.store.db import has_table
+
 # Points by finishing place: a Grand Prix pays the top ten, a sprint the top eight.
 RACE_POINTS = (25, 18, 15, 12, 10, 8, 6, 4, 2, 1)
 SPRINT_POINTS = (8, 7, 6, 5, 4, 3, 2, 1)
@@ -42,6 +44,7 @@ class Standings:
     last: dict | None                            # the latest result counted
     notes: list[str] = field(default_factory=list)
     rounds: list[dict] = field(default_factory=list)   # the rounds counted, in order: each driver's points_by_round lines up
+    missing_rounds: list[int] = field(default_factory=list)   # Grands Prix run before the latest and not counted
 
     def as_dict(self) -> dict:
         return {"year": self.year, "drivers": self.drivers, "constructors": self.constructors,
@@ -49,15 +52,31 @@ class Standings:
                 "rounds": self.rounds}
 
 
-def results(con, year: int, codes: tuple[str, ...] = ("R", "S")) -> pd.DataFrame:
-    """Every Grand Prix and sprint result (or `codes`') of the season, one row per driver per session, in running order."""
-    df = con.execute("""
+def results(con, year: int, codes: tuple[str, ...] = ("R", "S"), official: bool = False) -> pd.DataFrame:
+    """
+    Every Grand Prix and sprint result (or `codes`') of the season, one row per driver per session, in running order.
+
+    `official` adds the rounds with no session in the lake (D-031): for what adds up a season, and
+    not for what reads a session's laps or grid, which those rounds do not have.
+    """
+    query = """
         select s.session_key, s.year, cast(s.round as integer) as round, s."session" as code, s.event_name,
                s.date_utc, r.driver_number, r.abbreviation, r.full_name, r.team_name, r.team_id, r.team_color,
                r.position, r.classified_position, r.points, r.q1_s, r.q2_s, r.q3_s
         from results r join sessions s using (session_key)
-        where s.year = ? and list_contains(?, s."session")
-        order by s.date_utc, r.position""", [int(year), list(codes)]).df()
+        where s.year = ? and list_contains(?, s."session")"""
+    asked = [int(year), list(codes)]
+    if official and has_table(con, "official_results"):
+        query += """
+        union all
+        select o.session_key, o.year, cast(o.round as integer), o."session", o.event_name,
+               o.date_utc, o.driver_number, o.abbreviation, o.full_name, o.team_name, o.team_id, null,
+               o.position, o.classified_position, o.points, null, null, null
+        from official_results o
+        where o.year = ? and list_contains(?, o."session")
+          and o.session_key not in (select session_key from sessions)"""
+        asked = asked * 2
+    df = con.execute(f"select * from ({query}) order by date_utc, position", asked).df()
     if df.empty:
         return df
     df["classified"] = pd.to_numeric(df["classified_position"], errors="coerce")
@@ -121,7 +140,7 @@ def as_of(con, session_key: str, moment: str = "before") -> tuple[int, pd.Timest
 
 def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
     """The championships of `year`, counting results from sessions that started before `as_of` (all, if None)."""
-    df = results(con, year)
+    df = results(con, year, official=True)
     if not df.empty and as_of is not None:
         df = df[pd.to_datetime(df["date_utc"], utc=True) < pd.Timestamp(as_of).tz_convert("UTC")]
     if df.empty:
@@ -134,6 +153,11 @@ def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
     last = sessions.iloc[-1]
     latest_round = int(last["round"])
     earlier = df[df["round"] < latest_round]
+    counted_races = set(sessions.loc[sessions["code"] == "R", "round"])
+    missing = [r for r in range(1, latest_round) if r not in counted_races]
+    if missing:
+        notes.append(f"Round{'s' if len(missing) > 1 else ''} {', '.join(map(str, missing))} not in yet, "
+                     "so these points are short: the next Refresh data fetches them")
 
     drivers = _drivers(df, earlier)
     constructors = _constructors(df)
@@ -143,6 +167,7 @@ def standings(con, year: int, as_of: pd.Timestamp | None = None) -> Standings:
         last={"round": latest_round, "event_name": str(last["event_name"]),
               "session": "sprint" if last["code"] == "S" else "Grand Prix"},
         notes=notes,
+        missing_rounds=missing,
         rounds=[{"round": int(r), "event_name": str(e)} for r, e in
                 sessions.drop_duplicates("round", keep="last").sort_values("round")[["round", "event_name"]].itertuples(index=False)],
     )

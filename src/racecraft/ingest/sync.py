@@ -28,7 +28,7 @@ import fastf1
 import pandas as pd
 
 from racecraft import config
-from racecraft.ingest import cli, topup
+from racecraft.ingest import cli, season_results, topup
 from racecraft.ingest.fastf1_source import LOCKED
 from racecraft.store import lake
 
@@ -65,7 +65,7 @@ class Job:
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
-    topped_up: int = 0                # sessions already in the lake that a late source just changed
+    topped_up: int = 0                # results that came in beyond the sessions written: a late source, a past round
 
     def as_dict(self) -> dict:
         counts = {state: sum(1 for item in self.items if item.state == state)
@@ -169,6 +169,13 @@ class Syncer:
             log.info("sync: %d weekends, %d sessions, %d to fetch", len(names), len(items),
                      sum(1 for item in items if item.state != "present"))
 
+            # First, as it takes seconds and the sessions many minutes: the standings are right from the start (D-031).
+            official = 0
+            try:
+                official = season_results.fill({item.season for item in items})
+            except Exception:                       # noqa: BLE001 - an extra must not fail the sync
+                log.warning("could not fetch the season's results", exc_info=True)
+
             # WHY every session is asked, though F1's wall is the same for all: "locked" also means the free
             # sources lack this one, a cancelled FP3 say, and the sessions after it can still be there.
             for item in items:
@@ -208,11 +215,11 @@ class Syncer:
                         item.state, item.detail = "present", ""
             # Sessions built before Jolpica or TracingInsights had published, completed now (D-019).
             try:
-                filled = topup.top_up()
-                with self._lock:
-                    self._job.topped_up = filled
+                official += topup.top_up()
             except Exception:                       # noqa: BLE001 - an extra must not fail the sync
                 log.warning("top-up failed", exc_info=True)
+            with self._lock:
+                self._job.topped_up = official
             if wrote:
                 try:
                     cli.compact_http_cache()        # pruned responses only free space once compacted

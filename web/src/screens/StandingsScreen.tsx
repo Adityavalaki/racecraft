@@ -55,6 +55,9 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
     return () => controller.abort();
   }, [ctx.session, moment]);
 
+  // The odds start from the table's notes and add their own, so each is said once.
+  const notes = [...new Set([...(table?.notes ?? []), ...(odds?.notes ?? [])])];
+
   const switcher = (
     <>
       <div className="segmented" role="radiogroup" aria-label="Championship">
@@ -97,8 +100,8 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
                 <PointsChart rounds={table.rounds ?? []} drivers={table.drivers} selected={ctx.selected} />
               </div>
             )}
-            {table.notes.length > 0 && (
-              <ul className="prediction-notes">{table.notes.map((note) => <li key={note}>{note}</li>)}</ul>
+            {notes.length > 0 && (
+              <ul className="prediction-notes">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
             )}
           </>
         )}

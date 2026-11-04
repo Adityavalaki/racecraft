@@ -510,7 +510,7 @@ export interface SyncStatus {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
-  /** Sessions already in the lake that a late source just changed: Jolpica's points, say. */
+  /** Results that came in beyond the sessions written: a late source's points, a past round's. */
   topped_up: number;
 }
 

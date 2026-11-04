@@ -179,6 +179,22 @@ TEAM_RADIO = pa.schema([
     ("url", pa.string()),               # the MP3, as F1 serves it
 ])
 
+# A race's or sprint's official results, for rounds with no session in the lake (D-031): they
+# count towards the championships and open no replay. Dated by the schedule's start.
+OFFICIAL_RESULTS = pa.schema([
+    ("session_key", pa.string()),
+    ("event_name", pa.string()),
+    ("date_utc", pa.timestamp("us", tz="UTC")),
+    ("driver_number", pa.int16()),
+    ("abbreviation", pa.string()),
+    ("full_name", pa.string()),
+    ("team_name", pa.string()),
+    ("team_id", pa.string()),
+    ("position", pa.int16()),
+    ("classified_position", pa.string()),
+    ("points", pa.float32()),
+])
+
 TABLES: dict[str, pa.Schema] = {
     "sessions": SESSIONS,
     "results": RESULTS,
@@ -192,4 +208,5 @@ TABLES: dict[str, pa.Schema] = {
     "circuit_markers": CIRCUIT_MARKERS,
     "sources": SOURCES,
     "team_radio": TEAM_RADIO,
+    "official_results": OFFICIAL_RESULTS,
 }
