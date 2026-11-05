@@ -458,7 +458,8 @@ feature a judgment would earn its keep.
 | `GET /api/sessions/{key}/messages?until=&limit=&topic=` | race control up to `until`, newest first, each message read; `topic` is `stewards`, `track` or `noise` |
 | `GET /api/sessions/{key}/insight` | degradation, pit loss, neutralisation risk, ranked plans, plans checked per car |
 | `GET /api/sessions/{key}/tyre-sets` | every car's sets at the start of the session and during it |
-| `GET /api/sync`, `POST /api/sync?weekends=5` | bring the latest race weekends into the lake, and its progress |
+| `GET /api/sync`, `POST /api/sync` | bring what was chosen into the lake, and its progress; `?weekends=5` asks for that many of the latest instead |
+| `GET /api/data-choice`, `POST /api/data-choice?choice=` | how much this install downloads (`last5`, `season`, `everything`) and whether to ask; choosing saves it and begins (D-032) |
 | `GET /api/sessions/{key}/places?grid=&tyres=` | plans raced against the field, ranked in places, on that car's tyres or new ones |
 | `GET /api/circuits` | measured pit loss and neutralisation risk, every circuit |
 
@@ -1659,7 +1660,7 @@ src/racecraft/
   api/session.py           one session held in memory, ready to replay
   api/places_view.py       the places ranking for one session, cached
   api/sync_view.py         the sync button, and the caches it clears
-  ingest/sync.py           the latest race weekends, fetched on request
+  ingest/sync.py           the weekends a person chose, newest first, fetched on request
   api/tyre_sets_view.py    tyre sets for one session, and plans per car
   api/app.py               FastAPI routes
   model/pace.py            fuel vs tyre degradation
