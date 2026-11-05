@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- WHY: the page promises no tracking, so it can load nothing from anywhere else. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Racecraft: replay and predict F1 races on your computer</title>
+  <meta name="description" content="A free Windows app. Replay any F1 session since 2023 with full telemetry, compare drivers lap by lap, and predict the race before it starts.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="assets/Square44x44Logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top wrap">
+    <a class="brand" href="#top"><img src="assets/Square44x44Logo.png" alt="" width="28" height="28">RACECRAFT</a>
+    <nav aria-label="On this page">
+      <a href="#data">Race data</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/Adityavalaki/racecraft">Source</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <h1>Every F1 session since 2023, on your own computer.</h1>
+        <p class="lead">Replay any session with full telemetry, compare drivers lap by lap, and predict the race before it starts.</p>
+        <!-- The release is published by hand: this link 404s until the first one exists. -->
+        <a class="button" href="https://github.com/Adityavalaki/racecraft/releases/latest/download/Racecraft-windows-x64.zip">Download for Windows</a>
+        <p class="spec">Free. Windows 10 or 11, 64-bit. 141 MB.</p>
+      </div>
+      <img class="shot hero-shot" src="assets/replay.png" width="1440" height="900" fetchpriority="high"
+           alt="The Racecraft replay screen: timing tower, track map, four followed drivers and their telemetry during the 2026 Mexico City Grand Prix.">
+    </section>
+
+    <section class="predict wrap">
+      <h2>A race prediction you can check</h2>
+      <p>A thousand simulated races, built from Friday, Saturday and each driver's form. Each one uses only what was known before the race, and is scored against what happened.</p>
+      <img class="shot" src="assets/predict.png" width="1440" height="900" loading="lazy"
+           alt="The Race prediction screen: each driver's chance to win, reach the podium and score points, next to where they actually finished.">
+      <p class="figure"><b>0.69</b> rank correlation with the real finishing order across every race from 2023 to 2025, against <b>0.66</b> for assuming everyone finishes where they started. 1 would be a perfect call. It is a small edge, and the app shows its score on every race.</p>
+    </section>
+
+    <section class="season wrap">
+      <img class="shot" src="assets/standings.png" width="1440" height="900" loading="lazy"
+           alt="The Standings screen: the drivers' table, recent form, title odds and a chart of points by round.">
+      <div>
+        <h2>The whole season, explained</h2>
+        <p>Beyond the replay, Racecraft reads each race the way a strategist would.</p>
+        <dl class="tools">
+          <div><dt>Standings</dt><dd>Title odds, from the rest of the season simulated 10,000 times.</dd></div>
+          <div><dt>Strategy and tyres</dt><dd>Ranked pit plans, tyre wear and the sets each driver has left.</dd></div>
+          <div><dt>Review</dt><dd>Passes on track, and the places won or lost at each stop.</dd></div>
+          <div><dt>Pit crews and team-mates</dt><dd>Each crew's stops and each pairing, compared across the year.</dd></div>
+          <div><dt>Stewards</dt><dd>Penalties and investigations, at the moment they happened.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section id="data" class="data wrap">
+      <h2>You choose how much to download</h2>
+      <p>The app holds no race data until you open it. It then asks how much you want and fetches it from free public sources, newest race first. You can use it while it downloads.</p>
+      <table>
+        <thead><tr><th scope="col">Your choice</th><th scope="col">Time</th><th scope="col">Disk space</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">The last 5 races</th><td>About 1.5 hours</td><td>100 MB</td></tr>
+          <tr><th scope="row">The latest whole season</th><td>Up to 6.5 hours</td><td>450 MB</td></tr>
+          <tr><th scope="row">Everything since 2023</th><td>About 24 hours</td><td>1.6 GB</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Times depend on your connection. It only downloads while Racecraft is open, and carries on from where it stopped. You can get more at any time in Settings.</p>
+    </section>
+
+    <section id="install" class="install wrap">
+      <h2>Installing it</h2>
+      <ol>
+        <li><b>Download</b> the zip file above.</li>
+        <li><b>Unzip</b> it to any folder. Right-click it, then choose Extract All.</li>
+        <li><b>Open</b> Racecraft.exe in that folder, and choose how much data you want.</li>
+      </ol>
+      <div class="warn">
+        <h3>Windows will probably warn you</h3>
+        <p>Racecraft is not signed with a paid certificate yet, so SmartScreen may say "Windows protected your PC". To carry on, choose More info, then Run anyway. If you would rather check first, the <a href="https://github.com/Adityavalaki/racecraft">source code is public</a>.</p>
+      </div>
+    </section>
+
+    <section class="trust wrap">
+      <div>
+        <h2>No account, no tracking</h2>
+        <p>No sign-up and no ads. The app asks public sources for race data and sends nothing about you. What it downloads stays on your own disk, and it answers only your own computer.</p>
+      </div>
+      <div>
+        <h2>Where the data comes from</h2>
+        <p>Racecraft stands on free public work: <a href="https://github.com/theOehrly/Fast-F1">FastF1</a>, <a href="https://openf1.org">OpenF1</a>, <a href="https://github.com/jolpica/jolpica-f1">Jolpica F1</a>, <a href="https://github.com/TracingInsights">TracingInsights</a>, <a href="https://github.com/f1db/f1db">f1db</a> and <a href="https://open-meteo.com">weather data by Open-Meteo.com</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>Racecraft is an independent, non-commercial project. It is not affiliated with or endorsed by Formula 1, the FIA or any team. F1 and FORMULA 1 are trademarks of Formula One Licensing B.V.</p>
+    <p>Copyright 2026 Aditya Valaki. Predictions are estimates, not advice.</p>
+  </footer>
+</body>
+</html>

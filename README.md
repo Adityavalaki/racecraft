@@ -229,8 +229,8 @@ cd ..
 
 ### 4. Get some race data
 
-The data folder starts empty. Either let the app fetch the latest race weekends by
-itself (step 5), or fetch what you want:
+The data folder starts empty. Either let the app ask how much you want and fetch it
+(step 5), or fetch what you want:
 
 ```powershell
 .venv\Scripts\racecraft-ingest --season 2025 --rounds 4 --sessions FP2 Q R   # one weekend, quickly
@@ -252,8 +252,11 @@ grows by several gigabytes.
 .venv\Scripts\racecraft --install-shortcuts     # adds Racecraft to the Desktop and Start menu
 ```
 
-Then open **Racecraft**. It fetches the latest race weekends shortly after launch and
-every fifteen minutes while open, and stops completely when closed.
+Then open **Racecraft**. On an empty install it asks first: the last 5 races (about 1.5
+hours), the latest whole season (up to 6.5 hours) or everything since 2023 (about 24
+hours). Newest race first, and each session appears as it lands. It looks for anything
+new every fifteen minutes while open, stops completely when closed, and carries on where
+it stopped when reopened. Change the choice in Settings.
 
 **In a browser (any system):**
 
@@ -275,7 +278,7 @@ they need is missing.
 
 | Problem | Fix |
 |---|---|
-| The session list is empty | No data yet: press **Refresh data** at the foot of the rail, or run `racecraft-ingest`. |
+| The session list is empty | No data yet: choose how much to download when asked, press **Refresh data**, or run `racecraft-ingest`. |
 | `racecraft` is not recognised | Use the full path, `.venv\Scripts\racecraft`, or activate the environment first. |
 | The window is blank | Build the interface (step 3); check `data/logs/`. |
 | Ingest is "waiting" for a long time | It is respecting F1's rate limit. Leave it running. |
@@ -350,6 +353,13 @@ The frozen app runs on any Windows 10 or 11 machine without Python. Signing need
 a certificate you make once with `packaging\make_cert.ps1`; see
 [packaging/README.md](packaging/README.md). Installed, the app keeps its data in
 `%LOCALAPPDATA%\Racecraft`.
+
+The download page is in [site/](site/): plain HTML and CSS, nothing to build. Its button
+points at `Racecraft-windows-x64.zip` on the latest GitHub release. Make that zip with:
+
+```powershell
+Compress-Archive -Path dist\Racecraft -DestinationPath dist\release\Racecraft-windows-x64.zip
+```
 
 ---
 
