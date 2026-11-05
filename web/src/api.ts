@@ -497,6 +497,9 @@ export interface SyncItem {
   detail: string;
 }
 
+/** How much a person chose to keep on this computer. */
+export type DataChoice = "last5" | "season" | "everything";
+
 /** Bringing the latest race weekends into the lake, from the interface. */
 export interface SyncStatus {
   state: "idle" | "planning" | "running" | "done" | "failed";
@@ -1124,9 +1127,12 @@ export const api = {
     shared<TitleOdds>(key, `/api/sessions/${key}/title?moment=${moment}`, signal),
   /** Points live at the newest recording. Attaching again to the same one changes nothing. */
   liveAttach: (signal?: AbortSignal) => post<LiveStatus>("/api/live/attach", signal),
-  /** Starts a sync of the latest race weekends, or reports the one running. */
+  /** Starts a sync of what was chosen, or reports the one running. */
   sync: () => post<SyncStatus>("/api/sync"),
   syncStatus: (signal?: AbortSignal) => get<SyncStatus>("/api/sync", signal),
+  dataChoice: () => get<{ choice: DataChoice | null; ask: boolean }>("/api/data-choice"),
+  /** Saves how much to download and begins. */
+  chooseData: (choice: DataChoice) => post<SyncStatus>(`/api/data-choice?choice=${choice}`),
 };
 
 /** 92.608 -> "1:32.608", the way lap times are always written. */

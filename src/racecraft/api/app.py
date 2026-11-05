@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -464,14 +465,26 @@ def sync_status() -> dict:
 
 
 @app.post("/api/sync")
-def sync_start(weekends: int = Query(5, ge=1, le=10, description="latest race weekends to bring in"),
+def sync_start(weekends: int | None = Query(None, ge=1, le=10, description="latest race weekends, instead of what was chosen"),
                telemetry: bool = Query(True, description="include car and position data")) -> dict:
     """
-    Bring the latest race weekends into the lake: every session whose data has
-    been published and is not already there. Runs in the background — poll
+    Bring what was chosen into the lake: every session whose data has been
+    published and is not already there. Runs in the background — poll
     GET /api/sync — and a second request while one is running reports that one.
     """
     return sync_view.start(weekends=weekends, telemetry=telemetry)
+
+
+@app.get("/api/data-choice")
+def data_choice() -> dict:
+    """How much this install downloads, and whether the person still has to be asked."""
+    return sync_view.choice()
+
+
+@app.post("/api/data-choice")
+def data_choice_set(choice: Literal["last5", "season", "everything"] = Query(...)) -> dict:
+    """Save how much to download and begin. Reports the sync, as POST /api/sync does."""
+    return sync_view.choose(choice)
 
 
 @app.get("/api/live")

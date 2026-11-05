@@ -376,7 +376,7 @@ describe("App on a new install", () => {
     mockEmptyLake();
     render(<App />);
     await waitFor(() => expect(screen.getByText("No sessions yet.")).toBeDefined());
-    expect(screen.getByText(/Refresh data, at the foot of the rail, downloads the latest race weekends/)).toBeDefined();
+    expect(screen.getByText(/They appear here as they download/)).toBeDefined();
     expect(screen.queryByText(/Loading/)).toBeNull();
     const sync = screen.getByRole("button", { name: /^refresh data$/i }) as HTMLButtonElement;
     expect(sync.disabled).toBe(false);

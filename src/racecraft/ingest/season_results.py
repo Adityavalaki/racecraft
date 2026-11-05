@@ -64,7 +64,8 @@ def fill(seasons, now: pd.Timestamp | None = None) -> int:
     now = now if now is not None else pd.Timestamp.now(tz="UTC")
     con = connect()
     added = 0
-    for season in sorted(seasons):
+    # Newest first: what a new user opens first, and an error stops the rest of this pass.
+    for season in sorted(seasons, reverse=True):
         for gap in missing(con, season, now):
             official = jolpica_source.official(season, gap["round"], gap["ident"])
             if official is None:

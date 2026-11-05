@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { api, type DataChoice } from "../api";
 import { screenById } from "../features";
+import { DATA_OPTIONS } from "../panels/DataChooser";
 import { SyncButton } from "../panels/SyncButton";
 import { ScreenHeader } from "../shell/ScreenHeader";
 import { SHORTCUTS } from "../shortcuts";
@@ -54,6 +56,19 @@ export function SettingsScreen({ settings, update, picker, onSynced }: {
   const screen = screenById("settings")!;
   const fast = speedIn(312, settings.units);
   const fast2 = speedIn(305, settings.units);
+  // A server that cannot say simply shows no row.
+  const [dataChoice, setDataChoice] = useState<DataChoice | null>(null);
+  useEffect(() => {
+    api.dataChoice().then((answer) => setDataChoice(answer.choice ?? null)).catch(() => undefined);
+  }, []);
+  const chooseData = async (next: DataChoice) => {
+    try {
+      await api.chooseData(next);
+      setDataChoice(next);
+    } catch {
+      // Still showing the old choice, which is still the one in force.
+    }
+  };
   return (
     <div className="screen">
       <ScreenHeader title={screen.title} hint={screen.hint} picker={picker} />
@@ -85,8 +100,16 @@ export function SettingsScreen({ settings, update, picker, onSynced }: {
           </section>
           <section className="panel" aria-label="Data">
             <div className="panel-bar"><h2>Data</h2><span className="panel-meta">Race data from FastF1, OpenF1, Jolpica and TracingInsights.</span></div>
-            <Row title="Latest weekends" hint="Refresh fetches anything from the five most recent race weekends not on this device yet.">
-              <SyncButton onSynced={onSynced} />
+            {dataChoice && (
+              <Row title="What to download"
+                   hint={`${DATA_OPTIONS.find((o) => o.id === dataChoice)?.cost}. Sessions already here stay. A change begins when any download in progress ends, or next time Racecraft opens.`}>
+                <Segmented label="What to download" value={dataChoice} options={DATA_OPTIONS.map((o) => [o.id, o.label])}
+                           onChange={(next) => void chooseData(next)} />
+              </Row>
+            )}
+            <Row title="Refresh" hint="Fetches anything from your choice that is not on this device yet. It also runs by itself while Racecraft is open.">
+              {/* A new key on each choice, so it shows the download at once rather than at its next idle look. */}
+              <SyncButton key={dataChoice ?? ""} onSynced={onSynced} />
             </Row>
             <Row title="Sources" hint="Since October 2026 F1's archive needs an F1 TV login, so new sessions are built from free sources. Each session names its own beside the session picker.">
               <span className="settings-credits">

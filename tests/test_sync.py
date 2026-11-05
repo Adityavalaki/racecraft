@@ -52,16 +52,45 @@ def calendar(monkeypatch):
 
 def test_the_latest_weekends_count_the_one_in_progress(calendar):
     names, items = sync.plan(5, now=NOW)
-    assert names == [f"{NOW.year} GP {rnd}" for rnd in (4, 5, 6, 7)] + [f"{NOW.year} Azerbaijan Grand Prix"]
+    assert names == [f"{NOW.year} Azerbaijan Grand Prix"] + [f"{NOW.year} GP {rnd}" for rnd in (7, 6, 5, 4)]
     baku = [item.ident for item in items if item.round == 8]
     # The race has not been run, let alone published.
     assert "R" not in baku and "FP1" in baku
 
 
-def test_sessions_come_oldest_first_so_the_lake_fills_in_order(calendar):
+def test_the_newest_weekend_comes_first_and_each_weekend_runs_in_order(calendar):
     _, items = sync.plan(5, now=NOW)
     rounds = [item.round for item in items]
-    assert rounds == sorted(rounds)
+    assert rounds == sorted(rounds, reverse=True)
+    assert [item.ident for item in items if item.round == 7] == ["FP1", "FP2", "FP3", "Q", "R"]
+
+
+def _seasons(monkeypatch, *seasons):
+    """One weekend in each of `seasons`, and a note of which schedules were asked for."""
+    asked = []
+
+    def schedule(season, include_testing=False):
+        asked.append(season)
+        if season not in seasons:
+            return pd.DataFrame()
+        return pd.DataFrame([_event(1, f"GP {season}", NOW.replace(year=season) - timedelta(days=30))])
+
+    monkeypatch.setattr(sync.fastf1, "get_event_schedule", schedule)
+    return asked
+
+
+def test_the_season_choice_is_the_latest_season_with_anything_published(monkeypatch):
+    asked = _seasons(monkeypatch, 2024, 2025)
+    names, _ = sync.plan(sync.SEASON, now=NOW)
+    assert names == ["2025 GP 2025"]
+    assert asked == [2026, 2025], "older seasons need no asking"
+
+
+def test_everything_goes_back_to_the_first_season_and_no_further(monkeypatch):
+    asked = _seasons(monkeypatch, 2022, 2023, 2024, 2025, 2026)
+    names, _ = sync.plan(sync.EVERYTHING, now=NOW)
+    assert names == [f"{season} GP {season}" for season in (2026, 2025, 2024, 2023)]
+    assert min(asked) == 2023 == sync.FIRST_SEASON
 
 
 def test_a_season_with_too_few_weekends_looks_back_into_the_last(monkeypatch):
@@ -69,8 +98,8 @@ def test_a_season_with_too_few_weekends_looks_back_into_the_last(monkeypatch):
     last_year = [_event(rnd, f"Old {rnd}", NOW - timedelta(days=200 - rnd * 10)) for rnd in range(1, 6)]
     monkeypatch.setattr(sync.fastf1, "get_event_schedule", _schedules(this_year, last_year))
     names, _ = sync.plan(3, now=NOW)
-    assert names[-1] == f"{NOW.year} Opener"
-    assert names[:2] == [f"{NOW.year - 1} Old 4", f"{NOW.year - 1} Old 5"]
+    assert names[0] == f"{NOW.year} Opener"
+    assert names[1:] == [f"{NOW.year - 1} Old 5", f"{NOW.year - 1} Old 4"]
 
 
 # ------------------------------------------------------------- the job
@@ -177,15 +206,86 @@ def test_the_button_starts_a_sync_and_its_progress_can_be_read(monkeypatch):
 
     calls = []
     monkeypatch.setattr(sync_view, "start",
-                        lambda weekends=5, telemetry=True: calls.append((weekends, telemetry))
+                        lambda weekends=None, telemetry=True: calls.append((weekends, telemetry))
                         or {"state": "planning"})
     monkeypatch.setattr(sync_view, "status", lambda: {"state": "running", "counts": {}})
     client = TestClient(app, base_url="http://127.0.0.1")
 
     assert client.post("/api/sync").json()["state"] == "planning"
-    assert calls == [(5, True)]
+    assert calls == [(None, True)]
     assert client.get("/api/sync").json()["state"] == "running"
     assert client.post("/api/sync", params={"weekends": 50}).status_code == 422
+
+
+# ------------------------------------------------------------- how much to download
+
+@pytest.fixture
+def install(monkeypatch, tmp_path):
+    """Empty folders, and a note of what a sync was started with instead of starting one."""
+    from racecraft.api import sync_view
+
+    monkeypatch.setattr(sync_view.config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(sync_view.config, "LAKE_DIR", tmp_path / "lake")
+    started = []
+    monkeypatch.setattr(sync_view.syncer, "start", lambda what, telemetry=True: started.append(what) or {"state": "planning"})
+    return sync_view, tmp_path, started
+
+
+def test_a_new_install_downloads_nothing_until_it_has_chosen(install):
+    sync_view, _, started = install
+    assert sync_view.choice() == {"choice": None, "ask": True}
+    sync_view.start()                       # what the automatic sync calls ten seconds after launch
+    assert started == []
+
+
+def test_the_choice_is_kept_and_every_later_sync_follows_it(install):
+    sync_view, _, started = install
+    sync_view.choose("everything")
+    sync_view.start()
+    assert started == [sync.EVERYTHING, sync.EVERYTHING]
+    assert sync_view.choice() == {"choice": "everything", "ask": False}
+
+
+def test_someone_with_sessions_is_not_asked_and_keeps_five_weekends(install):
+    sync_view, tmp_path, started = install
+    session = tmp_path / "lake" / "sessions" / "year=2026" / "round=01" / "session=R"
+    session.mkdir(parents=True)
+    (session / "data.parquet").write_bytes(b"")
+    assert sync_view.choice() == {"choice": "last5", "ask": False}
+    sync_view.start()
+    assert started == [5]
+
+
+def test_a_season_of_official_results_alone_still_asks(install):
+    """The standings' rows are written before any session, and open nothing."""
+    sync_view, tmp_path, _ = install
+    results = tmp_path / "lake" / "official_results" / "year=2026" / "round=01" / "session=R"
+    results.mkdir(parents=True)
+    (results / "data.parquet").write_bytes(b"")
+    assert sync_view.choice()["ask"] is True
+
+
+def test_a_damaged_choice_only_asks_again(install):
+    sync_view, tmp_path, started = install
+    (tmp_path / "data_choice.txt").write_text("all of it please", encoding="utf-8")
+    assert sync_view.choice() == {"choice": None, "ask": True}
+    sync_view.start()
+    assert started == []
+
+
+def test_the_choice_over_http_takes_only_the_three_offered(install):
+    from fastapi.testclient import TestClient
+
+    from racecraft.api.app import app
+
+    _, tmp_path, started = install
+    client = TestClient(app, base_url="http://127.0.0.1")
+    assert client.get("/api/data-choice").json()["ask"] is True
+    assert client.post("/api/data-choice", params={"choice": "../../evil"}).status_code == 422
+    assert not (tmp_path / "data_choice.txt").exists()
+    assert client.post("/api/data-choice", params={"choice": "season"}).status_code == 200
+    assert started == [sync.SEASON]
+    assert client.get("/api/data-choice").json() == {"choice": "season", "ask": False}
 
 
 def test_new_sessions_change_the_key_every_model_cache_uses(tmp_path, monkeypatch):

@@ -215,6 +215,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .reset-layout:hover { color: var(--ink); border-color: var(--signal); }
 .reset-layout:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .grid.loading {
+  grid-template: 1fr / 1fr;             /* one cell: a message belongs in the middle, not in the first panel's slot */
   place-items: center;
   color: var(--ink-soft);
   font-family: "JetBrains Mono", monospace;
@@ -2405,6 +2406,19 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .search-button span { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .search-button:hover { border-color: #3A404A; color: var(--ink-soft); }
 .palette-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.55); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+/* The first-run question: nothing behind it matters yet, so it covers the app, and scrolls on a small window. */
+.chooser-backdrop { background: var(--ground); align-items: safe center; padding: 24px 16px; overflow-y: auto; }
+.chooser { width: min(880px, 100%); }
+.chooser h1 { margin: 0 0 8px; font-size: 30px; font-weight: 700; }
+.chooser-intro, .chooser-note { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-soft); max-width: 66ch; }
+.chooser-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 24px 0 20px; }
+.chooser-option { display: flex; flex-direction: column; gap: 8px; padding: 18px; text-align: left; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 6px; }
+.chooser-option:hover, .chooser-option:focus-visible { border-color: var(--signal); background: var(--panel-2); }
+.chooser-option:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.chooser-title { font-size: 18px; font-weight: 700; color: var(--ink); }
+.chooser-cost { font-size: 13px; color: var(--ink-mid); }
+.chooser-what { font-size: 13px; line-height: 1.45; color: var(--ink-soft); }
+.chooser-error { margin: 0 0 12px; font-size: 13px; color: var(--red); }
 .palette { width: min(640px, calc(100vw - 32px)); max-height: 70vh; display: flex; flex-direction: column; background: var(--panel);
   border: 1px solid var(--rule-strong); border-radius: 8px; box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.8); overflow: hidden; }
 .palette-search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--rule); color: var(--ink-faint); }

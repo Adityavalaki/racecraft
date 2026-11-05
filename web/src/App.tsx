@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LIVE_KEY } from "./api";
+import { api, LIVE_KEY } from "./api";
 import { useClock } from "./clock";
 import { openFeature, screenById, type FeatureId, type ScreenId } from "./features";
 import { usePositions } from "./positions";
 import { ClockBar, SPEEDS } from "./panels/ClockBar";
+import { DataChooser } from "./panels/DataChooser";
 import { clearAnswers, prefetchSeason } from "./api";
 import { MAX_FOLLOWED } from "./panels/DriverCards";
 import { ReplayScreen } from "./screens/ReplayScreen";
@@ -83,6 +84,12 @@ export default function App() {
     setSelected([]);
     setFollowing(true);
   }, [sessionKey]);
+
+  // A server that cannot say simply never asks.
+  const [askData, setAskData] = useState(false);
+  useEffect(() => {
+    api.dataChoice().then((answer) => setAskData(answer.ask === true)).catch(() => undefined);
+  }, []);
 
   const syncedData = useCallback(() => {
     clearAnswers();
@@ -284,7 +291,9 @@ export default function App() {
         )}
       </div>
       </div>
-      <StatusBar sessions={sessions.length} info={info} onSynced={syncedData} />
+      {/* A new key once chosen, so the refresh shows the download at once rather than at its next idle look. */}
+      <StatusBar key={String(askData)} sessions={sessions.length} info={info} onSynced={syncedData} />
+      {askData && <DataChooser onChosen={() => setAskData(false)} />}
     </div>
   );
 }
@@ -309,7 +318,7 @@ function Placeholder({ list, empty, waiting, error }: {
     return (
       <div className="placeholder">
         <p>No sessions yet.</p>
-        <p className="placeholder-hint">Refresh data, at the foot of the rail, downloads the latest race weekends.</p>
+        <p className="placeholder-hint">They appear here as they download; progress is at the foot of the window. Refresh data starts it again.</p>
       </div>
     );
   }

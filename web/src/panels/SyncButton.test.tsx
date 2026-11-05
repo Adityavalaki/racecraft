@@ -51,6 +51,23 @@ describe("SyncButton", () => {
     expect(button.disabled).toBe(true);
   });
 
+  it("shows sessions as each one lands, as a first download can take hours", async () => {
+    let answer = status({ state: "running", weekends: WEEKENDS, to_fetch: 3, counts: {}, current: "Practice 1" });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => answer }) as Response));
+    const onSynced = vi.fn();
+    render(<SyncButton onSynced={onSynced} pollMs={10} />);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/fetching 1 of 3/));
+    expect(onSynced).not.toHaveBeenCalled();
+
+    answer = { ...answer, counts: { written: 1 }, current: "Practice 2" };
+    await waitFor(() => expect(onSynced).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onSynced).toHaveBeenCalledTimes(1);      // once a session, not once a look
+
+    answer = { ...answer, counts: { written: 2 }, current: "Practice 3" };
+    await waitFor(() => expect(onSynced).toHaveBeenCalledTimes(2));
+  });
+
   it("reads the session list again when new sessions land, and only once", async () => {
     const fetchMock = serve([
       status(),

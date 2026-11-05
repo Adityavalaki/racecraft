@@ -37,6 +37,8 @@ LOCKED_DETAIL = f"not published yet: no free source has it, and {LOCKED}"
 log = logging.getLogger("racecraft.sync")
 
 DEFAULT_WEEKENDS = 5
+SEASON, EVERYTHING = "season", "everything"
+FIRST_SEASON = min(config.DEFAULT_SEASONS)     # OpenF1, the source new sessions read, begins here
 
 
 @dataclass
@@ -85,16 +87,19 @@ class Job:
         }
 
 
-def plan(weekends: int = DEFAULT_WEEKENDS, now: datetime | None = None) -> tuple[list[str], list[Item]]:
+def plan(what: int | str = DEFAULT_WEEKENDS, now: datetime | None = None) -> tuple[list[str], list[Item]]:
     """
-    The latest `weekends` race weekends with anything published, and every
-    published session in them, oldest first so the lake fills in order.
+    The weekends with anything published, and every published session in them.
 
-    Looks back into last season when this one has not had enough weekends yet.
+    `what` is a number of the latest weekends, SEASON for the latest season with
+    anything published, or EVERYTHING for every season back to FIRST_SEASON.
+
+    Newest weekend first, as a first download can take hours and the latest race is
+    what a new user opens first (D-032). Within a weekend, in running order.
     """
     now = now or datetime.now(timezone.utc)
     found: list[tuple[pd.Timestamp, int, int, str, list[Item]]] = []
-    for season in (now.year, now.year - 1):
+    for season in range(now.year, FIRST_SEASON - 1, -1):
         schedule = fastf1.get_event_schedule(season, include_testing=False)
         for _, event in schedule.iterrows():
             ready: list[Item] = []
@@ -113,11 +118,11 @@ def plan(weekends: int = DEFAULT_WEEKENDS, now: datetime | None = None) -> tuple
                 latest = published if latest is None else max(latest, published)
             if ready:
                 found.append((latest, season, int(event["RoundNumber"]), str(event["EventName"]), ready))
-        if len(found) >= weekends:
+        if (what == SEASON and found) or (isinstance(what, int) and len(found) >= what):
             break
 
     found.sort(key=lambda entry: entry[0], reverse=True)
-    chosen = sorted(found[:weekends], key=lambda entry: entry[0])
+    chosen = found[:what] if isinstance(what, int) else found
     names = [f"{season} {event}" for _, season, _, event, _ in chosen]
     items = [item for *_, ready in chosen for item in ready]
     return names, items
@@ -135,14 +140,14 @@ class Syncer:
         with self._lock:
             return self._job.as_dict()
 
-    def start(self, weekends: int = DEFAULT_WEEKENDS, telemetry: bool = True) -> dict:
+    def start(self, what: int | str = DEFAULT_WEEKENDS, telemetry: bool = True) -> dict:
         """Begin a sync, or report the one already running."""
         with self._lock:
             if self._job.state in ("planning", "running"):
                 return self._job.as_dict()
             self._job = Job(state="planning",
                             started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            self._thread = threading.Thread(target=self._run, args=(weekends, telemetry),
+            self._thread = threading.Thread(target=self._run, args=(what, telemetry),
                                             name="racecraft-sync", daemon=True)
             self._thread.start()
             return self._job.as_dict()
@@ -155,12 +160,12 @@ class Syncer:
 
     # ------------------------------------------------------------ the work
 
-    def _run(self, weekends: int, telemetry: bool) -> None:
+    def _run(self, what: int | str, telemetry: bool) -> None:
         wrote = 0
         try:
             config.FASTF1_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             fastf1.Cache.enable_cache(str(config.FASTF1_CACHE_DIR))
-            names, items = plan(weekends)
+            names, items = plan(what)
             for item in items:
                 if lake.is_ingested(item.season, item.round, item.ident):
                     item.state = "present"

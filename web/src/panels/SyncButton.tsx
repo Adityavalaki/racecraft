@@ -16,7 +16,7 @@ interface Props {
 const RUNNING = new Set(["planning", "running"]);
 
 /**
- * Bring the latest five race weekends into the lake.
+ * Bring what the person chose to keep (DataChooser) into the lake.
  *
  * The server does the work in the background — it checks which published
  * sessions are missing and ingests only those — and this button reports how
@@ -66,6 +66,15 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
     return () => clearInterval(timer);
   }, [running, read, pollMs, idlePollMs]);
 
+  // Sessions as they land: a first download can take hours, and they are worth having now (D-032).
+  const seenWritten = useRef(0);
+  useEffect(() => {
+    if (status?.state !== "running") return;
+    const written = status.counts.written ?? 0;
+    if (written > seenWritten.current) onSynced();
+    seenWritten.current = written;
+  }, [status, onSynced]);
+
   // A sync that finished since the last look and changed something: say so once.
   useEffect(() => {
     if (!status) return;
@@ -97,7 +106,7 @@ export function SyncButton({ onSynced, pollMs = 2000, idlePollMs = 30_000 }: Pro
   return (
     <div className="sync">
       <button type="button" className="sync-button" onClick={start} disabled={running}
-              title="Fetch any session from the latest five race weekends that is not in the lake yet">
+              title="Fetch any session you chose to keep that is not on this computer yet">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -150,7 +159,8 @@ function detailOf(status: SyncStatus | null, error: string | null): string {
   if (status.error) return status.error;
   const failed = status.items.filter((item) => item.state === "failed" || item.state === "busy");
   const locked = status.items.filter((item) => item.state === "locked");
-  const lines = [status.weekends.join(", ")];
+  // Everything since 2023 is about ninety weekends, too many to read in a tooltip.
+  const lines = [status.weekends.length > 8 ? `${status.weekends.length} weekends` : status.weekends.join(", ")];
   for (const item of failed) lines.push(`${item.event} ${item.name}: ${item.detail}`);
   if (locked.length) {
     lines.push(LOCKED_NOTE);

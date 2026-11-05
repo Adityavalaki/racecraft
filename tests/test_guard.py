@@ -63,7 +63,7 @@ def test_a_host_can_be_allowed_on_purpose(monkeypatch):
 
 
 def test_another_sites_page_cannot_change_anything(client):
-    for path in ("/api/sync", "/api/live/attach", "/api/live/detach"):
+    for path in ("/api/sync", "/api/data-choice?choice=everything", "/api/live/attach", "/api/live/detach"):
         response = client.post(path, headers={"Origin": "https://evil.example"})
         assert response.status_code == 403, path
 
