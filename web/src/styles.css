@@ -2816,3 +2816,18 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .pc-fig .cap { font-size: 9px; color: var(--ink-faint); }
 .pc-fig b { font-size: 13px; font-weight: 700; }
 .pc-pair { display: flex; gap: 10px; }
+
+/* Tyres: one chart per compound (D-033), side by side, each car placed at its tyre's age on its own curve. */
+.tyres-multiples { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 0; }
+.tyres-multiple { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--rule-soft); }
+.tyres-multiple:last-child { border-right: 0; }
+.tyres-multiple-head { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px 0; font-size: 12px; }
+.tyres-multiple .tyres-plot { flex: 1 1 auto; margin: 14px 14px 28px 34px; min-height: 160px; }
+.tyres-car { position: absolute; width: 0; height: 0; }
+.tyres-car > i { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid; background: #0B0D10; }
+/* A count beside a dot several cars share; the names are listed under the chart. */
+.tyres-car em { position: absolute; left: 8px; top: -14px; font-size: 9.5px; font-style: normal; font-weight: 700; color: var(--ink-soft); }
+.tyres-ages { flex: 0 0 28%; min-height: 0; overflow: auto; margin: 0; padding: 0 12px 10px; list-style: none; font-size: 10.5px; }
+.tyres-ages li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; padding: 3px 0; border-top: 1px solid var(--rule-soft); }
+.tyres-ages li span { width: 58px; flex: none; white-space: nowrap; }
+.tyres-ages b.is-followed { text-decoration: underline; }

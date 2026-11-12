@@ -119,7 +119,7 @@ export function TyresScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
             <section className="panel tyres-chart" aria-label="Tyre wear model">
               <div className="panel-bar">
                 <h2>Degradation</h2>
-                <span className="panel-meta">seconds lost against a new tyre, by tyre age in laps · lines: the model, fitted on {insight.fitted_on_count} earlier race{insight.fitted_on_count === 1 ? "" : "s"}{observed ? " · dots: this race, in hindsight" : ""}</span>
+                <span className="panel-meta">seconds lost to a new tyre by its age in laps · the model, fitted on {insight.fitted_on_count} earlier race{insight.fitted_on_count === 1 ? "" : "s"} · each car at its tyre's age{observed ? " · dots: this race, in hindsight" : ""}</span>
                 {!insight.observed_unavailable && (
                   <button type="button" className={`toggle${observed ? " is-on" : ""}`} aria-pressed={observed}
                           style={{ marginLeft: "auto" }} onClick={() => setObserved((on) => !on)}
@@ -128,33 +128,67 @@ export function TyresScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
                   </button>
                 )}
               </div>
-              <div className="tyres-plot-wrap">
-                <div className="tyres-plot">
-                  {Array.from({ length: maxLost + 1 }, (_, v) => (
-                    <span key={`y${v}`} className="tyres-gl" style={{ top: `${y(v)}%` }}><i className="num">+{v.toFixed(1)}</i></span>
-                  ))}
-                  {Array.from({ length: Math.floor(maxAge / 5) + 1 }, (_, k) => k * 5).map((age) => (
-                    <span key={`x${age}`} className="tyres-gv" style={{ left: `${x(age)}%` }}><i className="num">{age}</i></span>
-                  ))}
-                  {compounds.map((c) => {
-                    const mark = ageAtLost(curves.get(c));
-                    return mark == null ? null : (
-                      <span key={`m${c}`} className="tyres-mark" style={{ left: `${x(mark)}%`, borderColor: COMPOUND_COLORS[c] }}>
-                        <i className="num" style={{ color: COMPOUND_COLORS[c] }}>{c[0]} 1 s</i>
-                      </span>
-                    );
-                  })}
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Modelled lap time lost against tyre age for each compound">
-                    {compounds.map((c) => (
-                      <path key={c} d={curves.get(c)!.points.map((p, k) => `${k ? "L" : "M"}${x(p.age).toFixed(2)} ${y(p.model_s).toFixed(2)}`).join("")}
-                            fill="none" stroke={COMPOUND_COLORS[c]} strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
-                    ))}
-                  </svg>
-                  {observed && compounds.flatMap((c) => curves.get(c)!.points.filter((p) => p.observed_s != null).map((p) => (
-                    <span key={`${c}-${p.age}`} className="tyres-dot" title={`${c.toLowerCase()}, age ${p.age}: +${p.observed_s!.toFixed(2)} s over ${p.laps} laps`}
-                          style={{ left: `${x(p.age)}%`, top: `${y(p.observed_s!)}%`, background: COMPOUND_COLORS[c] }} />
-                  )))}
-                </div>
+              {/* One chart per compound (D-033): the three curves overlapped into one; apart, each shows its own cars. */}
+              <div className="tyres-multiples">
+                {compounds.map((c) => {
+                  const curve = curves.get(c)!;
+                  const mark = ageAtLost(curve);
+                  const on = drivers.filter((d) => d.status === "racing" && d.compound === c && d.tyre_life != null);
+                  // Cars on the same age stack their codes upward from the one dot.
+                  const byAge = new Map<number, typeof on>();
+                  for (const d of on) byAge.set(d.tyre_life!, [...(byAge.get(d.tyre_life!) ?? []), d]);
+                  return (
+                    <div key={c} className="tyres-multiple" aria-label={`${c.toLowerCase()}: ${on.length} cars`}>
+                      <div className="tyres-multiple-head">
+                        <span className="tyre-chip" style={{ background: COMPOUND_COLORS[c] }}>{c[0]}</span>
+                        <b>{c.charAt(0) + c.slice(1).toLowerCase()}</b>
+                        <span className="panel-meta">{on.length} {on.length === 1 ? "car" : "cars"}</span>
+                      </div>
+                      <div className="tyres-plot">
+                        {Array.from({ length: maxLost + 1 }, (_, v) => (
+                          <span key={`y${v}`} className="tyres-gl" style={{ top: `${y(v)}%` }}><i className="num">+{v}</i></span>
+                        ))}
+                        {Array.from({ length: Math.floor(maxAge / 10) + 1 }, (_, k) => k * 10).map((age) => (
+                          <span key={`x${age}`} className="tyres-gv" style={{ left: `${x(age)}%` }}><i className="num">{age}</i></span>
+                        ))}
+                        {mark != null && (
+                          <span className="tyres-mark" style={{ left: `${x(mark)}%`, borderColor: COMPOUND_COLORS[c] }}>
+                            <i className="num" style={{ color: COMPOUND_COLORS[c] }}>1 s · L{mark}</i>
+                          </span>
+                        )}
+                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Modelled lap time lost against tyre age, ${c.toLowerCase()}`}>
+                          <path d={curve.points.map((p, k) => `${k ? "L" : "M"}${x(p.age).toFixed(2)} ${y(p.model_s).toFixed(2)}`).join("")}
+                                fill="none" stroke={COMPOUND_COLORS[c]} strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+                        </svg>
+                        {observed && curve.points.filter((p) => p.observed_s != null).map((p) => (
+                          <span key={`o${p.age}`} className="tyres-dot" title={`age ${p.age}: +${p.observed_s!.toFixed(2)} s over ${p.laps} laps`}
+                                style={{ left: `${x(p.age)}%`, top: `${y(p.observed_s!)}%`, background: COMPOUND_COLORS[c] }} />
+                        ))}
+                        {[...byAge].map(([age, cars]) => {
+                          const lost = lostAt(curve, age) ?? 0;
+                          return (
+                            <span key={`c${age}`} className="tyres-car" style={{ left: `${x(Math.min(age, maxAge))}%`, top: `${y(lost)}%` }}
+                                  title={`${cars.map((d) => d.abbreviation).join(", ")}: ${age} laps old, +${lost.toFixed(2)} s`}>
+                              <i style={{ borderColor: COMPOUND_COLORS[c] }} />
+                              {cars.length > 1 && <em className="num">{cars.length}</em>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <ul className="tyres-ages" aria-label={`${c.toLowerCase()} cars by tyre age`}>
+                        {[...byAge].sort((a, b) => b[0] - a[0]).map(([age, cars]) => (
+                          <li key={age}>
+                            <span className="num muted">{age} laps</span>
+                            {cars.map((d) => (
+                              <b key={d.driver_number} className={`num${ctx.selected.includes(d.driver_number) ? " is-followed" : ""}`}
+                                 style={{ color: `#${d.team_color ?? "AEB4BD"}` }}>{d.abbreviation}</b>
+                            ))}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
               </div>
               {left && setsFor && (
                 <div className="tyres-alloc">
