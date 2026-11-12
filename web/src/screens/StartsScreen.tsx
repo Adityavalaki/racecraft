@@ -76,7 +76,7 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
           <>
             <KpiRow tiles={startsTiles(drivers, race)} />
             <div className="starts-grid">
-              <SlopeChart race={race} />
+              <ArrowChart race={race} />
               <section className="panel starts-season" aria-label="Lap 1 across the season">
                 <div className="panel-bar"><h2>Lap 1 across the season</h2>
                   <span className="panel-meta">{data.year}, {sessions} {sessions === 1 ? "start" : "starts"} · bar and rating: places against what that grid slot usually gains</span></div>
@@ -97,47 +97,61 @@ const shortName = (event: string) => event.replace(" Grand Prix", "");
 const gainText = (gain: number) => (gain > 0 ? `+${gain}` : gain < 0 ? `−${-gain}` : "=");
 const gainTone = (gain: number) => (gain > 0 ? " is-up" : gain < 0 ? " is-down" : "");
 
-/** Grid slot on the left, place after lap 1 on the right, a line between; a car out on lap 1 has no line or right label. */
-function SlopeChart({ race }: { race: StartRace | null }) {
+/**
+ * One row per car in grid order (D-033, replacing a slope chart whose lines
+ * crossed into a knot): on a scale of places, P1 at the left, an arrow from the
+ * grid slot to the place at the end of lap 1. Green points forward, red back, a
+ * dot alone kept its place; the count sits at the arrow's head. A car out on
+ * lap 1 ends at OUT, at the right.
+ */
+function ArrowChart({ race }: { race: StartRace | null }) {
   if (!race) {
     return (
-      <section className="panel starts-slope" aria-label="Grid to the end of lap 1">
+      <section className="panel starts-arrows" aria-label="Grid to the end of lap 1">
         <div className="panel-bar"><h2>Grid to end of lap 1</h2></div>
         <p className="panel-note">No starts to show yet.</p>
       </section>
     );
   }
-  const rows = Math.max(...race.cars.flatMap((c) => [c.grid, c.lap1 ?? 0]), 1);
-  const y = (place: number) => ((place - 0.5) / rows) * 100;
-  const out = race.cars.filter((c) => c.lap1 === null);
+  const field = Math.max(...race.cars.flatMap((c) => [c.grid, c.lap1 ?? 0]), 2);
+  // P1 at 0%, the last place at 90%; OUT at 100%.
+  const x = (place: number | null) => (place === null ? 100 : ((place - 1) / (field - 1)) * 90);
+  const cars = [...race.cars].sort((a, b) => a.grid - b.grid);
+  const ticks = [1, 5, 10, 15, 20].filter((p) => p <= field);
   return (
-    <section className="panel starts-slope" aria-label="Grid to the end of lap 1">
+    <section className="panel starts-arrows" aria-label="Grid to the end of lap 1">
       <div className="panel-bar"><h2>Grid to end of lap 1</h2>
-        <span className="panel-meta">{shortName(race.event_name)} · green gained places, red lost them{out.length ? ` · out on lap 1: ${out.map((c) => c.abbreviation).join(", ")}` : ""}</span></div>
-      <div className="slope-heads cap"><span>Grid</span><span>End of lap 1</span></div>
-      <div className="slope">
-        <span className="slope-axis" style={{ left: 0 }} />
-        <span className="slope-axis" style={{ right: 0 }} />
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          {race.cars.filter((c) => c.lap1 !== null).map((c) => {
-            const gain = c.grid - c.lap1!;
-            return (
-              <line key={c.abbreviation} x1="0" x2="100" y1={y(c.grid)} y2={y(c.lap1!)} vectorEffect="non-scaling-stroke"
-                    className={`slope-line${gainTone(gain)}`} strokeWidth={Math.abs(gain) >= 2 ? 2.4 : 1.4} />
-            );
-          })}
-        </svg>
-        {race.cars.map((c) => (
-          <span key={c.abbreviation} className="slope-label is-left num" style={{ top: `${y(c.grid)}%` }}>
-            <i>P{c.grid}</i>{c.abbreviation}<b style={{ background: `#${c.team_color ?? "555"}` }} />
-          </span>
-        ))}
-        {race.cars.filter((c) => c.lap1 !== null).map((c) => (
-          <span key={c.abbreviation} className="slope-label is-right num" style={{ top: `${y(c.lap1!)}%` }}>
-            <i>P{c.lap1}</i>{c.abbreviation}<em className={gainTone(c.grid - c.lap1!)}>{gainText(c.grid - c.lap1!)}</em>
-          </span>
-        ))}
+        <span className="panel-meta">{shortName(race.event_name)} · grid slot to place after lap 1 · green forward, red back</span></div>
+      <div className="arrows-head num" aria-hidden="true">
+        <span className="arrows-name cap">Grid</span>
+        <span className="arrows-scale">
+          {ticks.map((p) => <i key={p} style={{ left: `${x(p)}%` }}>P{p}</i>)}
+          <i style={{ left: "100%" }}>OUT</i>
+        </span>
       </div>
+      <ol className="arrows" aria-label={`Lap 1 at ${shortName(race.event_name)}`}>
+        {cars.map((c) => {
+          const gain = c.lap1 === null ? null : c.grid - c.lap1;
+          const from = x(c.grid), to = x(c.lap1);
+          const tone = gain === null ? " is-down" : gainTone(gain);
+          return (
+            <li key={c.abbreviation} className={`arrow-row${tone}`}
+                aria-label={`${c.abbreviation}: P${c.grid} to ${c.lap1 === null ? "out on lap 1" : `P${c.lap1}, ${gainText(gain!)}`}`}>
+              <span className="arrows-name num"><i>P{c.grid}</i><b style={{ background: `#${c.team_color ?? "555"}` }} />{c.abbreviation}</span>
+              <span className="arrows-track" aria-hidden="true">
+                {ticks.map((p) => <span key={p} className="arrows-tick" style={{ left: `${x(p)}%` }} />)}
+                {gain !== 0 && <span className="arrow-shaft" style={{ left: `${Math.min(from, to)}%`, width: `${Math.abs(to - from)}%` }} />}
+                <span className="arrow-from" style={{ left: `${from}%` }} />
+                <span className={`arrow-to${gain === null || gain === 0 ? "" : gain > 0 ? " points-left" : " points-right"}`} style={{ left: `${to}%` }} />
+                {/* Always right of the arrow: at the left it would run into the names. */}
+                <em className="arrow-count num" style={{ left: `${Math.max(from, to)}%` }}>
+                  {gain === null ? "out" : gain === 0 ? "=" : `${gainText(gain)} P${c.lap1}`}
+                </em>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }
