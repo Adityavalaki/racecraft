@@ -8,7 +8,7 @@ import { reviewTiles } from "./RaceReviewScreen";
 import { standingsTiles } from "./StandingsScreen";
 import { startsTiles } from "./StartsScreen";
 import { stewardsTiles } from "./StewardsScreen";
-import { spread, towerTiles } from "./TowerScreen";
+import { ringCars, spread, towerTiles } from "./TowerScreen";
 
 const shown = (tiles: (Kpi | null | false | undefined)[]) => tiles.filter((t): t is Kpi => Boolean(t && t.value));
 
@@ -98,5 +98,22 @@ describe("pit crews' box plot", () => {
   });
   it("is just the box with no stops listed", () => {
     expect(boxOf([], -0.1, 0.3)).toEqual({ low: -0.1, high: 0.3, outliers: [] });
+  });
+});
+
+describe("field ring", () => {
+  const d = (n: number, pos: number, gap: number | null, down = 0) =>
+    ({ driver_number: n, position: pos, status: "racing", laps_down: down, gap_to_leader_s: gap, last_lap_s: 80 }) as DriverTiming;
+  const crossings = { laps: [9, 10], t: [1000, 1080] };     // the leader finished lap 10 at t 1080, an 80 s lap
+
+  it("puts the leader its share of the lap round, and each car its gap behind at that pace", () => {
+    const { cars, lapSeconds } = ringCars([d(1, 1, null), d(2, 2, 20), d(3, 3, null, 1)], 1040, crossings, 0);
+    expect(lapSeconds).toBe(80);
+    expect(cars.map((c) => [c.driver.driver_number, c.angle])).toEqual([[1, 9.5 * 360], [2, 9.5 * 360 - 90]]);   // lapped car 3 not drawn
+  });
+
+  it("keeps turning forward past the last crossing, on the leader's last lap time", () => {
+    const { cars } = ringCars([d(1, 1, null)], 1120, crossings, 0);
+    expect(cars[0]!.angle).toBe(10.5 * 360);
   });
 });

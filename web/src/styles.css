@@ -2658,16 +2658,23 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .sb-row .right { text-align: right; }
 .sb-row.is-ideal { border-bottom: 0; }
 .field-spread { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; }
-.ladder-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
-.ladder { position: absolute; inset: 14px 20px 14px 56px; }
-.ladder ol { list-style: none; margin: 0; padding: 0; }
-.ladder-ax { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; border-radius: 1px; background: var(--rule); }
-.ladder-tick { position: absolute; right: calc(100% + 8px); transform: translateY(-50%); font-size: 9.5px; color: var(--ink-faint); }
-.ladder li { position: absolute; left: 0; width: 0; height: 0; }
-.ladder-dot { position: absolute; left: -5px; top: -6px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--panel); }
-.ladder-code { position: absolute; left: 14px; top: 0; transform: translateY(-50%); font-size: 10px; font-weight: 700; color: #AEB4BD; white-space: nowrap; }
-.ladder-code.is-far { left: 52px; }
-.ladder li.is-followed .ladder-code { color: #F2F3F5; }
+/* The field on a ring (D-033): centred in what is left of the column, as large as fits. */
+.ring-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px; }
+.ring { width: 100%; height: 100%; max-height: 100%; overflow: visible; }
+/* Turns about the ring's centre (the SVG origin); 250 ms, the figures' tick, so a dot glides along the circle. */
+.ring-turn { transform-box: view-box; transform-origin: 0 0; transition: transform 250ms linear; }
+.ring-track { fill: none; stroke: #1E232A; stroke-width: 14; }
+.ring-arc { fill: none; stroke: var(--signal, #E10600); stroke-opacity: 0.22; stroke-width: 14; transition: stroke-dasharray 250ms linear; }
+.ring-line { stroke: var(--ink); stroke-width: 2; }
+.ring-line-label { font: 600 8px var(--font-text); fill: var(--ink-faint); text-anchor: middle; letter-spacing: 0.08em; }
+.ring-dot { stroke: #07080A; stroke-width: 1.5; }
+.ring-dot.is-followed { stroke: #F2F3F5; stroke-width: 2; }
+.ring-code { font: 700 9.5px var(--font-mono); fill: #AEB4BD; text-anchor: middle; dominant-baseline: middle; }
+.ring-code.is-followed { fill: #F2F3F5; }
+.ring-centre-cap { font: 600 8.5px var(--font-text); fill: var(--ink-faint); text-anchor: middle; letter-spacing: 0.08em; }
+.ring-centre-value { font: 700 22px var(--font-mono); fill: var(--ink); text-anchor: middle; }
+.ring-centre-note { font: 500 9px var(--font-text); fill: var(--ink-faint); text-anchor: middle; }
+@media (prefers-reduced-motion: reduce) { .ring-turn, .ring-arc { transition: none; } }
 
 /* ---- Race trace as racecraft-ui.html draws it: the chart fills the window beside a 272 px driver list */
 .trace-layout { grid-template-columns: minmax(0, 1fr) 272px !important; align-items: stretch !important; flex: 1 1 auto; min-height: 0; overflow: hidden !important; }

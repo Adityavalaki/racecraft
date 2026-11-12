@@ -155,7 +155,7 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
         <div className="timing-side">
           <KpiRow tiles={towerTiles(drivers, ctx.state?.ideal_lap_s ?? null)} />
           <SectorBests ctx={ctx} />
-          <FieldSpread drivers={drivers} selected={ctx.selected} />
+          <FieldRing drivers={drivers} selected={ctx.selected} t={ctx.t} crossings={ctx.crossings} />
         </div>
         </div>
       </main>
@@ -220,47 +220,103 @@ export function spread(drivers: DriverTiming[]): { driver: DriverTiming; gap: nu
     .map((d) => ({ driver: d, gap: d.position === 1 ? 0 : d.gap_to_leader_s! }));
 }
 
+/** Where each car sits on the ring: degrees clockwise from the line, counted on so a lap more is 360 more. */
+export interface RingCar { driver: DriverTiming; gap: number; angle: number }
+
 /**
- * The field down one axis: every car on the lead lap placed by its gap to the
- * leader, so trains and gaps show at a glance. Codes go in two columns so
- * close cars do not overprint; a code with no room is left to its dot. Lapped
- * cars are counted, not drawn: their gap is a lap, not a distance here.
+ * The ring's geometry: the leader goes round once a lap, at its share of the
+ * current lap (between two of its crossings of the line); each car on the lead
+ * lap sits its gap behind, converted to degrees at the leader's pace for that
+ * lap. Angles keep counting past 360, so the ring only ever turns forward while
+ * the replay plays. Before the first crossing the leader is on lap 1 from the
+ * start; with no next crossing yet (live), the lap's length is the leader's last.
  */
-function FieldSpread({ drivers, selected }: { drivers: DriverTiming[]; selected: number[] }) {
+export function ringCars(drivers: DriverTiming[], t: number, crossings: { laps: number[]; t: number[] } | null, tStart: number): {
+  cars: RingCar[]; lapSeconds: number | null;
+} {
   const cars = spread(drivers);
+  const leader = cars.find((c) => c.gap === 0)?.driver;
+  const times = crossings?.t ?? [];
+  // The last crossing at or before t (crossings are in time order).
+  let i = -1;
+  while (i + 1 < times.length && times[i + 1]! <= t) i += 1;
+  const from = i >= 0 ? times[i]! : tStart;
+  const done = i >= 0 ? crossings!.laps[i]! : 0;
+  const next = times[i + 1];
+  const lapSeconds = next != null ? next - from : leader?.last_lap_s ?? null;
+  if (!lapSeconds || lapSeconds <= 0) return { cars: cars.map((c) => ({ ...c, angle: 0 })), lapSeconds: null };
+  const share = Math.min(Math.max((t - from) / lapSeconds, 0), 1);
+  const lead = (done + share) * 360;
+  return { cars: cars.map((c) => ({ ...c, angle: lead - (c.gap / lapSeconds) * 360 })), lapSeconds };
+}
+
+const RING_R = 104;
+/** Two codes closer than this many degrees would overprint: the second is left to its dot. */
+const LABEL_GAP_DEG = 11;
+
+/**
+ * The field on a ring (D-033, replacing a vertical ladder): one turn is one lap
+ * at the leader's pace, the line at the top. The cars go round with the
+ * replay, each its gap behind the leader, so a train is a cluster and a gap is
+ * open track; the arc behind the leader runs to the last car on the lead lap.
+ * Each dot turns with a 250 ms ease along the circle, matching how often the
+ * figures tick; a code stays upright by turning back the other way. Lapped
+ * cars are counted, not drawn: the timing gives them no gap.
+ */
+function FieldRing({ drivers, selected, t, crossings }: {
+  drivers: DriverTiming[]; selected: number[]; t: number; crossings: { laps: number[]; t: number[] } | null;
+}) {
+  const { cars, lapSeconds } = ringCars(drivers, t, crossings, crossings?.t[0] != null ? Math.min(t, crossings.t[0]) : t);
   const lapped = drivers.filter((d) => onTrack(d) && d.laps_down > 0).length;
-  const max = Math.max(10, Math.ceil(Math.max(0, ...cars.map((c) => c.gap)) / 10) * 10);
-  const lastY: [number, number] = [-99, -99];
-  const ladder = cars.map((c) => {
-    const y = (c.gap / max) * 100;
-    const col: -1 | 0 | 1 = y - lastY[0] > 4.4 ? 0 : y - lastY[1] > 4.4 ? 1 : -1;
-    if (col !== -1) lastY[col] = y;
-    return { ...c, y, col };
-  });
+  const last = cars[cars.length - 1];
+  const leadAngle = cars[0]?.angle ?? 0;
+  // Codes: the leader, the followed, then any with room, nearest the leader first.
+  const shown = new Set<number>();
+  const taken: number[] = [];
+  const room = (a: number) => taken.every((b) => Math.abs((((a - b) % 360) + 540) % 360 - 180) >= LABEL_GAP_DEG);
+  for (const c of [...cars].sort((a, b) => Number(selected.includes(b.driver.driver_number)) - Number(selected.includes(a.driver.driver_number)))) {
+    if (room(c.angle) || selected.includes(c.driver.driver_number)) { shown.add(c.driver.driver_number); taken.push(c.angle); }
+  }
+  const circumference = 2 * Math.PI * RING_R;
+  const arc = last && lapSeconds ? Math.min(leadAngle - last.angle, 359.9) : 0;
   return (
     <section className="panel field-spread" aria-label="Field spread">
       <div className="panel-bar">
         <h2>Field spread</h2>
-        <span className="panel-meta">gap to leader, s{lapped ? ` · ${lapped} lapped` : ""}</span>
+        <span className="panel-meta">one turn = one lap at the leader's pace{lapped ? ` · ${lapped} lapped` : ""}</span>
       </div>
-      {cars.length === 0 ? <p className="panel-note">No gaps yet.</p> : (
-        <div className="ladder-wrap">
-          <div className="ladder">
-            <span className="ladder-ax" aria-hidden="true" />
-            {[0, 1, 2, 3, 4, 5].map((k) => (
-              <span key={k} className="ladder-tick num" style={{ top: `${k * 20}%` }} aria-hidden="true">+{Math.round((max * k) / 5)}</span>
-            ))}
-            <ol aria-label="Gap to the leader">
-              {ladder.map((c) => (
-                <li key={c.driver.driver_number} style={{ top: `${c.y}%` }}
-                    className={selected.includes(c.driver.driver_number) ? "is-followed" : ""}
-                    aria-label={`${c.driver.abbreviation}, ${c.gap === 0 ? "leader" : `+${c.gap.toFixed(1)} s`}`}>
-                  <span className="ladder-dot" style={{ background: `#${c.driver.team_color ?? "8E959F"}` }} />
-                  {c.col >= 0 && <span className={`ladder-code num${c.col ? " is-far" : ""}`}>{c.driver.abbreviation}</span>}
-                </li>
-              ))}
-            </ol>
-          </div>
+      {cars.length === 0 || !lapSeconds ? <p className="panel-note">No gaps yet.</p> : (
+        <div className="ring-wrap">
+          <svg viewBox="-150 -150 300 300" className="ring" role="img"
+               aria-label={`The field on one lap: ${cars.map((c) => `${c.driver.abbreviation} ${c.gap === 0 ? "leading" : `+${c.gap.toFixed(1)} s`}`).join(", ")}`}>
+            <circle r={RING_R} className="ring-track" />
+            {/* The arc from the last car on the lead lap round to the leader: how spread the field is. */}
+            <g className="ring-turn" style={{ transform: `rotate(${last ? last.angle - 90 : 0}deg)` }}>
+              <circle r={RING_R} className="ring-arc" strokeDasharray={`${(arc / 360) * circumference} ${circumference}`} />
+            </g>
+            {/* The line inside the ring, clear of the codes outside it. */}
+            <line x1="0" x2="0" y1={-RING_R - 8} y2={-RING_R + 8} className="ring-line" />
+            <text y={-RING_R + 20} className="ring-line-label">LINE</text>
+            {[...cars].reverse().map((c) => {
+              const followed = selected.includes(c.driver.driver_number);
+              return (
+                <g key={c.driver.driver_number} className="ring-turn" style={{ transform: `rotate(${c.angle}deg)` }}>
+                  <circle cy={-RING_R} r={followed ? 7 : c.gap === 0 ? 6.5 : 5} fill={`#${c.driver.team_color ?? "8E959F"}`}
+                          className={followed ? "ring-dot is-followed" : "ring-dot"} />
+                  {shown.has(c.driver.driver_number) && (
+                    <g transform={`translate(0 ${-RING_R - 19})`}>
+                      <text className={`ring-code ring-turn${followed ? " is-followed" : ""}`} style={{ transform: `rotate(${-c.angle}deg)` }}>
+                        {c.driver.abbreviation}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+            <text y="-14" className="ring-centre-cap">LEADER TO LAST</text>
+            <text y="12" className="ring-centre-value">{last && last.gap > 0 ? `+${last.gap.toFixed(1)} s` : "—"}</text>
+            <text y="32" className="ring-centre-note">{cars.length} on the lead lap · lap {lapSeconds.toFixed(1)} s</text>
+          </svg>
         </div>
       )}
     </section>
