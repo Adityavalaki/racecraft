@@ -261,7 +261,7 @@ describe("pedals and speed", () => {
     expect(cells).toEqual(["T1", "120", "120", "±0.00", "500", "480"]);
     const rus = corners.getAllByRole("row")[1]!.querySelectorAll("td")[3]!;
     expect(rus.classList.contains("is-strong")).toBe(true);            // RUS braked 20 m later than VER: the braver entry
-    expect(screen.getByText("Δ −0.100 s")).toBeDefined();
+    expect(screen.getByText("RUS by 0.100")).toBeDefined();               // the gap, in the figures over the traces
   });
 
   it("moves the cursor through every trace, and swaps subject and reference", async () => {
@@ -270,7 +270,7 @@ describe("pedals and speed", () => {
     render(<ScreenView id="pedals" ctx={context()} />);
     const slider = await screen.findByRole("slider", { name: /cursor position/i });
     fireEvent.change(slider, { target: { value: "550" } });
-    expect(screen.getAllByText("ON")).toHaveLength(2);                   // both on the brake at 550 m
+    expect(screen.getAllByText("BRAKE")).toHaveLength(2);                // both on the brake at 550 m, one pedal row each
     fireEvent.click(screen.getByRole("button", { name: /swap subject and reference/i }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("driver=3&ref=63"))).toBe(true));
   });

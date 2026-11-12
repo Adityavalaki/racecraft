@@ -2809,3 +2809,10 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
   .quali-chart { min-height: 320px; }
   .quali-sources { min-height: 240px; }
 }
+
+/* Pedals' headline figures (D-033): the gap, then each figure as the two drivers' values side by side. */
+.pc-figures { display: flex; flex: none; gap: 0; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+.pc-fig { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; padding: 8px 14px; border-right: 1px solid var(--rule-soft); white-space: nowrap; }
+.pc-fig .cap { font-size: 9px; color: var(--ink-faint); }
+.pc-fig b { font-size: 13px; font-weight: 700; }
+.pc-pair { display: flex; gap: 10px; }

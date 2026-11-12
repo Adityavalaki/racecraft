@@ -182,13 +182,23 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
     const line = (trace: LapTrace, xs: (m: number) => number, value: (k: number) => number) =>
       trace.distance.map((d, k) => `${k ? "L" : "M"}${xs(d).toFixed(1)} ${value(k).toFixed(1)}`).join("");
     const speedY = (v: number) => 94 - ((Math.min(Math.max(v, 60), 345) - 60) / 285) * 88;
-    const throttleY = (v: number) => 56 - (Math.min(Math.max(v, 0), 100) / 100) * 52;
     const gearY = (g: number) => 54 - ((Math.min(Math.max(g, 1), 8) - 1) / 7) * 48;
-    const brakeY = (on: boolean) => (on ? 4 : 26);
-    const step = (trace: LapTrace, xs: (m: number) => number) => {
-      let d = `M0 ${brakeY(Boolean(trace.brake[0]))}`;
-      trace.distance.forEach((m, k) => { d += `H${xs(m).toFixed(1)}V${brakeY(Boolean(trace.brake[k]))}`; });
-      return d;
+    // One pedal row per driver (D-033): throttle fills up from the midline at 30, the brake hangs below it.
+    const pedalUp = (v: number) => 30 - (Math.min(Math.max(v, 0), 100) / 100) * 27;
+    const pedals = (trace: LapTrace, xs: (m: number) => number) => {
+      const top = trace.distance.map((m, k) => `${k ? "L" : "M"}${xs(m).toFixed(1)} ${pedalUp(trace.throttle[k] ?? 0).toFixed(1)}`).join("");
+      const end = trace.distance.length ? xs(trace.distance[trace.distance.length - 1]!).toFixed(1) : "0";
+      let brake = "";
+      let from: number | null = null;
+      trace.distance.forEach((m, k) => {
+        const on = Boolean(trace.brake[k]);
+        if (on && from == null) from = xs(m);
+        if ((!on || k === trace.distance.length - 1) && from != null) {
+          brake += `M${from.toFixed(1)} 31H${xs(m).toFixed(1)}V44H${from.toFixed(1)}Z`;
+          from = null;
+        }
+      });
+      return { throttle: `${top}L${end} 30L0 30Z`, brake };
     };
     const maxDelta = Math.max(0.1, ...delta.delta_s.map((v) => Math.abs(v)));
     // Ahead (negative) is up, behind is down.
@@ -198,8 +208,7 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
       delta: deltaLine,
       deltaFill: delta.distance.length ? `${deltaLine}L${x(delta.distance[delta.distance.length - 1]!).toFixed(1)} 30L0 30Z` : "",
       speed: [line(subject, x, (k) => speedY(subject.speed[k]!)), line(reference, refX, (k) => speedY(reference.speed[k]!))],
-      throttle: [line(subject, x, (k) => throttleY(subject.throttle[k]!)), line(reference, refX, (k) => throttleY(reference.throttle[k]!))],
-      brake: [step(subject, x), step(reference, refX)],
+      pedals: [pedals(subject, x), pedals(reference, refX)],
       gear: [line(subject, x, (k) => gearY(subject.gear[k]!)), line(reference, refX, (k) => gearY(reference.gear[k]!))],
     };
     // x and refX follow from the two lengths, which `answer` fixes.
@@ -219,8 +228,6 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
     const box = event.currentTarget.getBoundingClientRect();
     onCursor(((event.clientX - box.left) / box.width) * length);
   };
-  const final = delta.final_s;
-  const finalColour = final == null ? "var(--ink-mid)" : final <= 0 ? colourA : colourRef;
   const cursorLeft = `${(metres / length) * 100}%`;
   const corners = spacedCorners(subject.corners, length);
   const channel = (name: string, unit: string, values: ReactNode, flex: number, label: string, h: number, body: ReactNode) => (
@@ -233,6 +240,15 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
       </div>
     </div>
   );
+  // A driver's pedals in one row: throttle up in their colour, the brake down in red.
+  const pedalRow = (lap: LapTrace, shape: { throttle: string; brake: string }, colour: string, code: string, at: number) =>
+    channel(`Pedals ${code}`, "", <span style={{ color: colour }}>{lap.brake[at] ? "BRAKE" : `${Math.round(lap.throttle[at] ?? 0)}%`}</span>, 0.85,
+      `${code}: throttle up, brake down, against distance`, 45,
+      <>
+        <path d={shape.throttle} fill={colour} fillOpacity=".55" />
+        <path d="M0 30.5H1000" stroke="#FFFFFF" strokeOpacity=".15" vectorEffect="non-scaling-stroke" />
+        <path d={shape.brake} fill="#FF5A5F" />
+      </>);
   const two = (a: ReactNode, b: ReactNode) => <><span style={{ color: colourA }}>{a}</span><span style={{ color: colourRef }}>{b}</span></>;
   const pair = (ds: string[], width = 1.6) => (
     <>
@@ -247,25 +263,30 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
         <div className="panel-bar">
           <h2>Lap comparison</h2>
           <span className="panel-meta">by lap distance · click a channel to move the cursor</span>
-          <span className="pc-legend num" style={{ marginLeft: "auto" }}><i style={{ background: colourA }} /><b>{codeA}</b><span className="muted">{formatLapTime(subject.lap_time_s)}</span></span>
-          <span className="pc-legend num"><i style={{ background: colourRef }} /><b>{codeB}</b><span className="muted">{formatLapTime(reference.lap_time_s)}</span></span>
-          {final != null && <span className="pc-chip num" style={{ color: finalColour }}>Δ {sign(final, 3)} s</span>}
+          {/* The colour key; the times and the gap are in the figures below. */}
+          <span className="pc-legend num" style={{ marginLeft: "auto" }}><i style={{ background: colourA }} /><b>{codeA}</b><span className="muted">lap {subject.lap}</span></span>
+          <span className="pc-legend num"><i style={{ background: colourRef }} /><b>{codeB}</b><span className="muted">lap {reference.lap}</span></span>
         </div>
+        <LapFigures answer={answer} codeA={codeA} codeB={codeB} colourA={colourA} colourB={colourRef} />
         <div className="pc-body">
           <div className="pc-ruler num" aria-hidden="true">
             {corners.map((c) => <span key={`${c.number}${c.letter ?? ""}`} style={{ left: `${(c.distance / length) * 100}%` }}>{c.number}{c.letter ?? ""}</span>)}
           </div>
-          {channel("Speed", "km/h", two(Math.round(subject.speed[i] ?? 0), Math.round(reference.speed[j] ?? 0)), 2, "Speed against distance", 100, pair(paths.speed, 1.6))}
-          {channel("Delta", "s", <span style={{ color: gapNow <= 0 ? colourA : colourRef }}>{sign(gapNow, 3)} s</span>, 1.1,
+          {/* The delta first (D-033): above the line the subject is ahead, shaded in its colour; below, the reference's. */}
+          {channel("Delta", "s", <span style={{ color: gapNow <= 0 ? colourA : colourRef }}>{sign(gapNow, 3)} s</span>, 1.3,
             `Time between the laps: ${codeA} ${gapNow <= 0 ? "ahead" : "behind"} by ${Math.abs(gapNow).toFixed(3)} s here`, 60,
             <>
-              <path d="M0 30H1000" stroke="#FFFFFF" strokeOpacity=".2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-              <path d={paths.deltaFill} fill={colourA} fillOpacity=".12" />
+              <clipPath id="pc-ahead"><rect x="0" y="0" width="1000" height="30" /></clipPath>
+              <clipPath id="pc-behind"><rect x="0" y="30" width="1000" height="30" /></clipPath>
+              <path d={paths.deltaFill} fill={colourA} fillOpacity=".3" clipPath="url(#pc-ahead)" />
+              <path d={paths.deltaFill} fill={colourRef} fillOpacity=".3" clipPath="url(#pc-behind)" />
+              <path d="M0 30H1000" stroke="#FFFFFF" strokeOpacity=".25" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
               <path d={paths.delta} fill="none" stroke="#F2F3F5" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
             </>)}
-          {channel("Throttle", "%", two(Math.round(subject.throttle[i] ?? 0), Math.round(reference.throttle[j] ?? 0)), 1, "Throttle against distance", 60, pair(paths.throttle))}
-          {channel("Brake", "", two(subject.brake[i] ? "ON" : "OFF", reference.brake[j] ? "ON" : "OFF"), 0.55, "Brake on and off against distance", 30, pair(paths.brake))}
-          {channel("Gear", "", two(subject.gear[i] ?? "—", reference.gear[j] ?? "—"), 0.9, "Gear against distance", 60, pair(paths.gear))}
+          {channel("Speed", "km/h", two(Math.round(subject.speed[i] ?? 0), Math.round(reference.speed[j] ?? 0)), 2, "Speed against distance", 100, pair(paths.speed, 1.6))}
+          {pedalRow(subject, paths.pedals[0]!, colourA, codeA, i)}
+          {pedalRow(reference, paths.pedals[1]!, colourRef, codeB, j)}
+          {channel("Gear", "", two(subject.gear[i] ?? "—", reference.gear[j] ?? "—"), 0.8, "Gear against distance", 60, pair(paths.gear))}
           <div className="pc-axis num" aria-hidden="true">
             {Array.from({ length: Math.floor(length / 1000) + 1 }, (_, km) => (
               <span key={km} style={{ left: `${((km * 1000) / length) * 100}%` }}>{km} km</span>
@@ -284,6 +305,51 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
                  stats={[["Cursor", `${Math.round(metres)} m`, undefined], ["Δ here", `${sign(gapNow, 3)} s`, gapNow <= 0 ? colourA : colourRef],
                          ["Speed Δ", `${sign(Math.round(speedDiff), 0)} km/h`, undefined]]} />
         <Corners answer={answer} codeA={codeA} codeB={codeB} colourA={colourA} colourB={colourRef} onCursor={onCursor} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The two laps' headline figures, side by side (D-033): the gap, lap time, top
+ * and slowest speed, how much of the lap was flat out and how much on the
+ * brake, and the turn where each gained most, from the turn rows.
+ */
+function LapFigures({ answer, codeA, codeB, colourA, colourB }: {
+  answer: LapComparison; codeA: string; codeB: string; colourA: string; colourB: string;
+}) {
+  const { subject: a, reference: b, delta } = answer;
+  const rows = useMemo(() => cornerRows(answer), [answer]);
+  const gain = [...rows].sort((p, q) => p.time_s - q.time_s)[0];
+  const loss = [...rows].sort((p, q) => q.time_s - p.time_s)[0];
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const figures: [string, string, string][] = [
+    ["Lap", formatLapTime(a.lap_time_s), formatLapTime(b.lap_time_s)],
+    ["Top km/h", `${Math.round(a.summary.top_speed)}`, `${Math.round(b.summary.top_speed)}`],
+    ["Slowest", `${Math.round(a.summary.min_speed)}`, `${Math.round(b.summary.min_speed)}`],
+    ["Flat out", pct(a.summary.full_throttle_share), pct(b.summary.full_throttle_share)],
+    ["Braking", pct(a.summary.braking_share), pct(b.summary.braking_share)],
+  ];
+  const final = delta.final_s;
+  return (
+    <div className="pc-figures" role="list" aria-label="The two laps in figures">
+      <div className="pc-fig" role="listitem">
+        <span className="cap">Gap</span>
+        <b className="num" style={{ color: final == null ? undefined : final <= 0 ? colourA : colourB }}>
+          {final == null ? "—" : `${final <= 0 ? codeA : codeB} by ${Math.abs(final).toFixed(3)}`}</b>
+      </div>
+      {figures.map(([label, va, vb]) => (
+        <div key={label} className="pc-fig" role="listitem">
+          <span className="cap">{label}</span>
+          <span className="num pc-pair"><b style={{ color: colourA }}>{va}</b><b style={{ color: colourB }}>{vb}</b></span>
+        </div>
+      ))}
+      <div className="pc-fig" role="listitem">
+        <span className="cap">Most gained</span>
+        <span className="num pc-pair">
+          <b style={{ color: colourA }}>{gain && gain.time_s < -0.005 ? `${gain.turn} ${Math.abs(gain.time_s).toFixed(2)}` : "—"}</b>
+          <b style={{ color: colourB }}>{loss && loss.time_s > 0.005 ? `${loss.turn} ${loss.time_s.toFixed(2)}` : "—"}</b>
+        </span>
       </div>
     </div>
   );
