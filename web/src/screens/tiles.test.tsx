@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { CrewStanding, DriverStarts, DriverTiming, PitCrews, QualiDriver, RaceControlEvent, RaceReview, Standings } from "../api";
 import { KpiRow, type Kpi } from "../shell/KpiRow";
-import { crewTiles } from "./CrewsScreen";
+import { boxOf, crewTiles } from "./CrewsScreen";
 import { qualiTiles } from "./QualifyingScreen";
 import { reviewTiles } from "./RaceReviewScreen";
 import { standingsTiles } from "./StandingsScreen";
@@ -86,5 +86,17 @@ describe("headline tiles", () => {
       ({ abbreviation: code, position: pos, best_s: 94.035, left_s: left, season_left_s: season, season_sessions: 18 }) as QualiDriver;
     expect(shown(qualiTiles([q("ANT", 1, 0.13, 0.049), q("HAD", 3, 0, 0.074), q("BOR", 13, 0.214, 0.062)])).map((t) => t.value))
       .toEqual(["ANT · 1:34.035", "BOR · +0.214", "1", "ANT · +0.049"]);
+  });
+});
+
+describe("pit crews' box plot", () => {
+  it("whiskers to the furthest stops within 1.5 boxes, anything past them far off", () => {
+    // Middle half -0.2 to +0.2 s: whiskers may reach -0.8 to +0.8 s.
+    const box = boxOf([-0.5, -0.2, 0, 0.1, 0.2, 0.7, 2.4], -0.2, 0.2);
+    expect([box.low, box.high]).toEqual([-0.5, 0.7]);
+    expect(box.outliers).toEqual([2.4]);
+  });
+  it("is just the box with no stops listed", () => {
+    expect(boxOf([], -0.1, 0.3)).toEqual({ low: -0.1, high: 0.3, outliers: [] });
   });
 });
