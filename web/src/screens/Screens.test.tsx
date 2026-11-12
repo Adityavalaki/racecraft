@@ -256,11 +256,11 @@ describe("pedals and speed", () => {
                           delta: { distance: lap(63, "RUS", [0, 0]).distance, delta_s: Array(200).fill(-0.1), final_s: -0.1 } } });
     render(<ScreenView id="pedals" ctx={context()} />);
     const corners = within(await screen.findByRole("region", { name: "Corners" }));
-    const row = corners.getAllByRole("row")[1]!;
-    expect(row.textContent).toContain("T1");
-    expect(row.textContent).toContain("500 m");
-    expect(row.textContent).toContain("+20 m");                          // RUS braked 20 m later than VER
-    expect(row.querySelector(".is-better")).not.toBeNull();             // so RUS's later point is the better
+    const cells = [...corners.getAllByRole("row")[1]!.querySelectorAll("th, td")].map((c) => c.textContent);
+    // Turn, both slowest points, the time through it, where each began braking.
+    expect(cells).toEqual(["T1", "120", "120", "±0.00", "500", "480"]);
+    const rus = corners.getAllByRole("row")[1]!.querySelectorAll("td")[3]!;
+    expect(rus.classList.contains("is-strong")).toBe(true);            // RUS braked 20 m later than VER: the braver entry
     expect(screen.getByText("Δ −0.100 s")).toBeDefined();
   });
 

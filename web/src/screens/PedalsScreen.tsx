@@ -14,7 +14,7 @@ const REFERENCE = "#9A9AA6";
  * distance in the two drivers' colours: speed, the time between them, the
  * throttle, the brake (on or off, which is all the public feed says) and gear,
  * the corners marked along the top. Beside them the circuit coloured by who
- * gains where, and the corners: minimum speeds and where each began braking.
+ * gains where, and every turn: slowest points, the time through it, how each went in.
  */
 export function PedalsScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   const order = ctx.state?.drivers ?? [];
@@ -283,8 +283,7 @@ function Comparison({ answer, cursor, onCursor, colourA, colourB, codeA, codeB, 
         <TimeMap answer={answer} cursor={i} rotation={rotation} colourA={colourA} colourB={colourRef} codeA={codeA} codeB={codeB}
                  stats={[["Cursor", `${Math.round(metres)} m`, undefined], ["Δ here", `${sign(gapNow, 3)} s`, gapNow <= 0 ? colourA : colourRef],
                          ["Speed Δ", `${sign(Math.round(speedDiff), 0)} km/h`, undefined]]} />
-        <Corners subject={subject} reference={reference} stretch={stretch} codeA={codeA} codeB={codeB}
-                 colourA={colourA} colourB={colourRef} onCursor={onCursor} />
+        <Corners answer={answer} codeA={codeA} codeB={codeB} colourA={colourA} colourB={colourRef} onCursor={onCursor} />
       </div>
     </div>
   );
@@ -364,64 +363,126 @@ function TimeMap({ answer, cursor, rotation, colourA, colourB, codeA, codeB, sta
   );
 }
 
-/** The reference's zone matching one of the subject's: the one starting nearest, within 150 m. */
-function matchZone(start: number, zones: LapTrace["brake_zones"], stretch: number) {
-  let best: LapTrace["brake_zones"][number] | null = null;
-  let gap = 150;
-  for (const zone of zones) {
-    const d = Math.abs(zone.start_m * stretch - start);
-    if (d < gap) {
-      gap = d;
-      best = zone;
-    }
-  }
-  return best;
+/** How a driver went into a turn: braking from a point on the subject's lap, a lift, or flat out. */
+export type Entry = { brake_m: number } | "lift" | "flat";
+
+export interface CornerRow {
+  turn: string;
+  /** Where the subject's slowest point is, for the cursor. */
+  apex_m: number;
+  slowA: number | null;
+  slowB: number | null;
+  /** Seconds the subject lost through the turn: minus means it gained. */
+  time_s: number;
+  entryA: Entry;
+  entryB: Entry;
+}
+
+/** A lift is the throttle under this on the way in, with no brake. */
+const LIFT_THROTTLE = 90;
+
+/**
+ * Every turn of the circuit, one row each (BUG-018: it listed only where the
+ * subject braked, so lifts and flat-out turns were missing, and took the slowest
+ * point under braking, not of the turn).
+ *
+ * Each turn owns the track from half-way back to the turn before it to half-way
+ * on to the next, the first from the line and the last to it: the rows tile the
+ * lap, so their times add up to the lap's gap. In that stretch: each driver's
+ * slowest point, and what the time between them did. A brake zone belongs to the
+ * first turn at or after its start (40 m of slack for a marker placed early);
+ * a turn with none is a lift if the throttle fell under 90% on its way in (from
+ * half-way back to the turn before: not the last turn's exit), else flat. The reference is laid along the subject's
+ * distance by `stretch`, as the traces are.
+ */
+export function cornerRows({ subject, reference, delta }: LapComparison): CornerRow[] {
+  const length = subject.length_m;
+  const stretch = length / Math.max(reference.length_m, 1);
+  const corners = subject.corners.filter((c) => c.distance <= length);
+  const stepD = delta.distance.length > 1 ? delta.distance[1]! - delta.distance[0]! : 1;
+  const deltaAt = (m: number) => delta.delta_s[Math.min(delta.delta_s.length - 1, Math.max(0, Math.round(m / (stepD || 1))))] ?? 0;
+  const turnOf = (start: number) => corners.findIndex((c) => c.distance >= start - 40);
+  const slowest = (trace: LapTrace, scale: number, from: number, to: number) => {
+    let best: { speed: number; m: number } | null = null;
+    trace.distance.forEach((d, k) => {
+      const m = d * scale;
+      const v = trace.speed[k];
+      if (m >= from && m <= to && v != null && (best == null || v < best.speed)) best = { speed: v, m };
+    });
+    return best as { speed: number; m: number } | null;
+  };
+  const entry = (trace: LapTrace, scale: number, k: number, from: number, to: number): Entry => {
+    const zone = trace.brake_zones.find((z) => turnOf(z.start_m * scale) === k);
+    if (zone) return { brake_m: zone.start_m * scale };
+    const lifted = trace.distance.some((d, s) => d * scale >= from && d * scale <= to && (trace.throttle[s] ?? 100) < LIFT_THROTTLE);
+    return lifted ? "lift" : "flat";
+  };
+  return corners.map((c, k) => {
+    const from = k === 0 ? 0 : (corners[k - 1]!.distance + c.distance) / 2;
+    const to = k === corners.length - 1 ? length : (c.distance + corners[k + 1]!.distance) / 2;
+    const a = slowest(subject, 1, from, to);
+    const b = slowest(reference, stretch, from, to);
+    return {
+      turn: `T${c.number}${c.letter ?? ""}`,
+      apex_m: a?.m ?? c.distance,
+      slowA: a?.speed ?? null,
+      slowB: b?.speed ?? null,
+      time_s: deltaAt(to) - deltaAt(from),
+      entryA: entry(subject, 1, k, from, c.distance),
+      entryB: entry(reference, stretch, k, from, c.distance),
+    };
+  });
 }
 
 /**
- * Corner by corner, every time the subject was on the brake: both drivers'
- * minimum speed, the difference, and where each began braking. Braking later
- * and carrying more speed through are the better of the two. Brake is on or
- * off in the feed, so this says where, not how hard. Click a row to put the
- * cursor there.
+ * Every turn: both drivers' slowest point, the time the subject gained or lost
+ * through it, and how each went in: where they began braking, or a lift, or
+ * flat. Brake is on or off in the feed, so this says where, not how hard.
+ * Click a row to put the cursor at the subject's slowest point.
  */
-function Corners({ subject, reference, stretch, codeA, codeB, colourA, colourB, onCursor }: {
-  subject: LapTrace; reference: LapTrace; stretch: number; codeA: string; codeB: string; colourA: string; colourB: string;
+function Corners({ answer, codeA, codeB, colourA, colourB, onCursor }: {
+  answer: LapComparison; codeA: string; codeB: string; colourA: string; colourB: string;
   onCursor: (m: number) => void;
 }) {
+  const rows = useMemo(() => cornerRows(answer), [answer]);
+  const show = (e: Entry) => (typeof e === "string" ? e : String(Math.round(e.brake_m)));
+  // Braking later is the braver entry: the later of the two is marked when they differ by over 5 m.
+  const later = (mine: Entry, theirs: Entry) => typeof mine !== "string" && typeof theirs !== "string" && mine.brake_m - theirs.brake_m > 5;
   return (
     <section className="panel pc-corners" aria-label="Corners">
-      <div className="panel-bar"><h2>Corners</h2><span className="panel-meta">minimum speed · where braking starts</span></div>
+      <div className="panel-bar"><h2>Corners</h2><span className="panel-meta">slowest km/h · time through · brakes at, m</span></div>
       <div className="pc-corners-scroll">
-        <table className="pc-table">
-          <thead>
-            <tr>
-              <th scope="col">Turn</th><th scope="col" className="right">{codeA} min</th><th scope="col" className="right">{codeB} min</th>
-              <th scope="col" className="right">Δ km/h</th><th scope="col" className="right">Brakes at</th><th scope="col" className="right" title={`Plus: ${codeA} began braking later than ${codeB}`}>vs {codeB}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {subject.brake_zones.map((zone) => {
-              const turn = subject.corners.find((c) => c.distance >= zone.start_m - 40);
-              const ref = matchZone(zone.start_m, reference.brake_zones, stretch);
-              const refPoint = ref ? ref.start_m * stretch : null;
-              const later = refPoint == null ? null : zone.start_m - refPoint;
-              const d = ref ? zone.min_speed - ref.min_speed : null;
-              return (
-                <tr key={zone.start_m} onClick={() => onCursor(zone.start_m)}>
-                  <th scope="row" className="num">{turn ? `T${turn.number}${turn.letter ?? ""}` : "—"}</th>
-                  <td className="num right" style={{ color: colourA }}>{Math.round(zone.min_speed)}</td>
-                  <td className="num right" style={{ color: colourB }}>{ref ? Math.round(ref.min_speed) : "—"}</td>
-                  <td className="num right" style={{ color: d == null || Math.abs(d) < 2 ? undefined : d > 0 ? colourA : colourB }}>
-                    {d == null ? "—" : `${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(Math.round(d))}`}</td>
-                  <td className="num right muted">{Math.round(zone.start_m)} m</td>
-                  <td className={`num right${later == null || Math.abs(later) <= 5 ? "" : later > 0 ? " is-better" : " is-worse"}`}>
-                    {later == null ? "—" : Math.abs(later) <= 5 ? "same" : `${later > 0 ? "+" : "−"}${Math.abs(Math.round(later))} m`}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {rows.length === 0 ? <p className="panel-note">No turn markers for this circuit.</p> : (
+          <table className="pc-table">
+            <thead>
+              <tr>
+                <th scope="col">Turn</th>
+                <th scope="col" className="right" title={`${codeA}'s slowest point through the turn, km/h`}>{codeA}</th>
+                <th scope="col" className="right" title={`${codeB}'s slowest point through the turn, km/h`}>{codeB}</th>
+                <th scope="col" className="right" title={`Seconds through the turn: minus, ${codeA} gained; plus, ${codeB} did`}>Time</th>
+                <th scope="col" className="right" title={`Where ${codeA} began braking, metres along the lap; lift: off the throttle, no brake; flat: neither`}>{codeA} in</th>
+                <th scope="col" className="right" title={`Where ${codeB} began braking, metres along the lap; lift: off the throttle, no brake; flat: neither`}>{codeB} in</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const faster = row.slowA != null && row.slowB != null && Math.abs(row.slowA - row.slowB) >= 2 ? (row.slowA > row.slowB ? "a" : "b") : null;
+                const gain = Math.abs(row.time_s) < 0.005 ? null : row.time_s < 0 ? colourA : colourB;
+                return (
+                  <tr key={row.turn} onClick={() => onCursor(row.apex_m)}>
+                    <th scope="row" className="num">{row.turn}</th>
+                    <td className={`num right${faster === "a" ? " is-strong" : ""}`} style={{ color: colourA }}>{row.slowA == null ? "—" : Math.round(row.slowA)}</td>
+                    <td className={`num right${faster === "b" ? " is-strong" : ""}`} style={{ color: colourB }}>{row.slowB == null ? "—" : Math.round(row.slowB)}</td>
+                    <td className="num right" style={gain ? { color: gain } : undefined}>
+                      {gain == null ? "±0.00" : `${row.time_s < 0 ? "−" : "+"}${Math.abs(row.time_s).toFixed(2)}`}</td>
+                    <td className={`num right${later(row.entryA, row.entryB) ? " is-strong" : " muted"}`}>{show(row.entryA)}</td>
+                    <td className={`num right${later(row.entryB, row.entryA) ? " is-strong" : " muted"}`}>{show(row.entryB)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </section>
   );

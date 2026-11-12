@@ -1901,8 +1901,8 @@ button.prediction-row:hover { background: var(--panel-2); }
 .pc-table .right { text-align: right; }
 .pc-table tbody tr { cursor: pointer; }
 .pc-table tbody tr:hover { background: #13161A; }
-.pc-table .is-better { color: #4ADE80; }
-.pc-table .is-worse { color: #FBBF24; }
+/* The better of the two in a row: faster through, or braking later. Bold, in the cell's own colour. */
+.pc-table .is-strong { font-weight: 700; color: var(--ink); }
 @media (max-width: 1099px) {
   .screen-body.pedals { overflow: auto; }
   .pedal-traces { height: 560px; }
