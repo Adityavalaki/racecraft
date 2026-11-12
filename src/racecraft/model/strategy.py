@@ -178,11 +178,13 @@ class StopWindow:
     most_likely_lap: int
     next_compound: str
     no_stop: bool = False           # running to the flag is as cheap as any stop
+    # (stop lap, seconds more than the cheapest stop) for every lap it could stop on, in lap order (D-033).
+    costs: tuple[tuple[int, float], ...] = ()
 
     def as_dict(self) -> dict:
         return {"laps_until": self.laps_until, "window": [self.first_lap, self.last_lap],
                 "most_likely_lap": self.most_likely_lap, "next_compound": self.next_compound,
-                "no_stop": self.no_stop}
+                "no_stop": self.no_stop, "costs": [[lap, extra] for lap, extra in self.costs]}
 
 
 def _finish_cost(laps: int, degradation: dict[str, float], offsets: dict[str, float], pit_loss_s: float,
@@ -241,11 +243,14 @@ def stop_window(total_laps: int, lap: int, compound: str, age: int, degradation:
     cheapest = min(costs)
     # Running to the flag is an option only once the rules are met.
     if len(ran) >= 2 and keep(remaining) <= cheapest[0]:
+        best = keep(remaining)
         return StopWindow(laps_until=remaining, first_lap=total_laps, last_lap=total_laps,
-                          most_likely_lap=total_laps, next_compound=compound, no_stop=True)
+                          most_likely_lap=total_laps, next_compound=compound, no_stop=True,
+                          costs=tuple((lap + k, round(cost_s - best, 2)) for cost_s, k, _ in costs))
     near = [k for cost_s, k, _ in costs if cost_s <= cheapest[0] + tolerance_s]
     return StopWindow(laps_until=cheapest[1], first_lap=lap + min(near), last_lap=lap + max(near),
-                      most_likely_lap=lap + cheapest[1], next_compound=cheapest[2])
+                      most_likely_lap=lap + cheapest[1], next_compound=cheapest[2],
+                      costs=tuple((lap + k, round(cost_s - cheapest[0], 2)) for cost_s, k, _ in costs))
 
 
 def undercut_gain(target_compound: str, target_age: int, fresh_compound: str, degradation: dict[str, float],

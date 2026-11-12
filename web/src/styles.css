@@ -2831,3 +2831,20 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .tyres-ages li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; padding: 3px 0; border-top: 1px solid var(--rule-soft); }
 .tyres-ages li span { width: 58px; flex: none; white-space: nowrap; }
 .tyres-ages b.is-followed { text-decoration: underline; }
+
+/* Strategy (D-033): the rest of each car's race as a cost strip, and the rejoin as a line of gaps. */
+.strat-cost { position: absolute; top: 25%; bottom: 25%; background: #4ADE80; }
+.strat-best { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #F2F3F5; z-index: 1; }
+.strat-best .tyre-chip { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; font-size: 8px; font-style: normal; }
+.strat-flag { position: absolute; top: 50%; transform: translate(8px, -50%); font-size: 10px; white-space: nowrap; }
+.rejoin-line { position: relative; flex: none; height: 92px; margin: 4px 16px 10px; }
+.rejoin-axis { position: absolute; left: 4%; right: 4%; top: 50%; height: 1px; background: var(--rule-strong); }
+.rejoin-traffic { position: absolute; top: 22%; bottom: 22%; background: rgba(255, 162, 58, 0.12); border-radius: 3px; }
+.rejoin-tick { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 9.5px; color: var(--ink-faint); }
+.rejoin-car { position: absolute; top: 50%; width: 0; height: 0; }
+.rejoin-car i { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; }
+.rejoin-car b { position: absolute; left: 0; bottom: 9px; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: var(--ink-mid); white-space: nowrap; }
+.rejoin-car.is-low b { bottom: auto; top: 9px; }
+.rejoin-car.is-me i { left: -7px; top: -7px; width: 14px; height: 14px; border: 2px dashed #F2F3F5; background: transparent; }
+.rejoin-car.is-me b { color: var(--ink); bottom: 12px; }
+.rejoin-caption { position: absolute; left: 4%; right: 4%; top: 0; display: flex; justify-content: space-between; font-size: 9px; color: var(--ink-faint); }

@@ -202,7 +202,7 @@ export function StrategyScreen({ ctx, header }: { ctx: ScreenContext; header: (c
             <div className="strat-grid">
               <section className="panel strat-stints" aria-label="Stints">
                 <div className="panel-bar">
-                  <h2>Stints</h2><span className="panel-meta">solid: run so far · dashed: plan from the model · click a driver</span>
+                  <h2>Stints</h2><span className="panel-meta">bars: run so far · ahead, brighter green: a cheaper lap to stop · tick: the cheapest · click a driver</span>
                   <span className="strat-legend">
                     {(["SOFT", "MEDIUM", "HARD"] as const).map((c) => <span key={c} className="tyre-chip" style={{ background: COMPOUND_COLORS[c] }}>{c[0]}</span>)}
                     <i className="strat-win-key" />{selCode} window
@@ -220,7 +220,8 @@ export function StrategyScreen({ ctx, header }: { ctx: ScreenContext; header: (c
                   </div>
                   <div className="strat-rows">
                     {cars.map((car) => {
-                      const runs = stints.get(car.driver_number) ?? [];
+                      const runs = (stints.get(car.driver_number) ?? []).filter((r) => !r.plan);
+                      const strip = car.status === "racing" ? car.window : null;
                       const done = car.stops ?? Math.max(runs.filter((r) => !r.plan).length - 1, 0);
                       const planned = car.status === "racing" && car.window && !car.window.no_stop ? 1 : 0;
                       return (
@@ -232,12 +233,24 @@ export function StrategyScreen({ ctx, header }: { ctx: ScreenContext; header: (c
                           <span className="num strong">{codeOf(car.driver_number)}</span>
                           <span className="strat-lane">
                             {runs.map((r, k) => (
-                              <span key={k} className={`strat-stint${r.plan ? " is-plan" : ""}`}
-                                    title={`${r.plan ? "plan: " : ""}${r.compound.toLowerCase()}, laps ${r.from}–${r.to}`}
+                              <span key={k} className="strat-stint" title={`${r.compound.toLowerCase()}, laps ${r.from}–${r.to}`}
                                     style={{ left: pct(r.from - 1), width: pct(r.to - r.from + 1), ["--tyre" as string]: COMPOUND_COLORS[r.compound] ?? "#3A3A42" }}>
-                                {r.plan && runs[k - 1]?.compound === r.compound ? "" : r.compound[0]}
+                                {r.compound[0]}
                               </span>
                             ))}
+                            {/* The rest of the race (D-033): each lap shaded by what stopping on it costs, brightest
+                                where cheapest; the white tick is the cheapest lap, with the tyre it would go to. */}
+                            {strip?.costs?.map(([stopLap, extra]) => (
+                              <span key={stopLap} className="strat-cost" title={`stop on lap ${stopLap}: ${extra === 0 ? "the cheapest" : `+${extra.toFixed(1)} s`}`}
+                                    style={{ left: pct(stopLap - 1), width: pct(1), opacity: costShade(extra) }} />
+                            ))}
+                            {strip && !strip.no_stop && (
+                              <span className="strat-best" style={{ left: pct(strip.most_likely_lap - 0.5) }}
+                                    title={`cheapest stop: lap ${strip.most_likely_lap}, onto ${strip.next_compound.toLowerCase()}`}>
+                                <i className="tyre-chip" style={{ background: COMPOUND_COLORS[strip.next_compound] ?? "#888" }}>{strip.next_compound[0]}</i>
+                              </span>
+                            )}
+                            {strip?.no_stop && <span className="strat-flag panel-meta" style={{ left: pct(lap) }}>no stop needed</span>}
                           </span>
                           <span className="num right">{done}+{planned}</span>
                         </button>
@@ -257,6 +270,7 @@ export function StrategyScreen({ ctx, header }: { ctx: ScreenContext; header: (c
               <section className="panel strat-rejoin" aria-label="Rejoin if the selected driver pits now">
                 <div className="panel-bar"><h2>Pit now: rejoin</h2><span className="panel-meta num">{selCode} · +{loss.toFixed(1)} s</span></div>
                 <p className="strat-summary">{summary ?? `${selCode || "This car"} is not on the lead lap, so there is no gap to rejoin by.`}</p>
+                {pits && <RejoinLine pits={pits} codeOf={codeOf} />}
                 <div className="strat-rejoin-list">
                   {pits?.list.slice(Math.max(0, pits.to - 4), pits.to + 5).map((o) => {
                     const rel = o.gap - pits.gap;
@@ -285,3 +299,43 @@ export function StrategyScreen({ ctx, header }: { ctx: ScreenContext; header: (c
     </div>
   );
 }
+
+/** How bright a lap of the cost strip is: the cheapest full, fading to faint at 8 s or more. */
+export function costShade(extra: number): number {
+  return Math.max(0.08, 1 - Math.min(Math.max(extra, 0), 8) / 8);
+}
+
+/** Seconds either side of the rejoin point the gap line shows. */
+const REJOIN_SPAN_S = 12;
+
+/**
+ * Where the selected car comes out, as a line of gaps (D-033): the car after
+ * its stop is the ring at the centre, every other car on the lead lap a dot at
+ * its gap, ahead to the left. The band is traffic, within 1.5 s either way.
+ * Cars further away than the span are left to the list below.
+ */
+function RejoinLine({ pits, codeOf }: {
+  pits: NonNullable<ReturnType<typeof rejoin>>; codeOf: (n: number) => string;
+}) {
+  const x = (rel: number) => 50 + (Math.max(-REJOIN_SPAN_S, Math.min(REJOIN_SPAN_S, rel)) / REJOIN_SPAN_S) * 46;
+  const near = pits.list.filter((o) => !("me" in o) && Math.abs(o.gap - pits.gap) <= REJOIN_SPAN_S);
+  return (
+    <div className="rejoin-line" role="img"
+         aria-label={`Rejoining: ${near.map((o) => `${codeOf(o.n)} ${(o.gap - pits.gap).toFixed(1)} s`).join(", ")}`}>
+      <span className="rejoin-traffic" style={{ left: `${x(-TRAFFIC_S)}%`, width: `${x(TRAFFIC_S) - x(-TRAFFIC_S)}%` }} />
+      <span className="rejoin-axis" />
+      {[-10, -5, 5, 10].map((s) => (
+        <span key={s} className="rejoin-tick num" style={{ left: `${x(s)}%` }}>{s > 0 ? `+${s}` : `−${-s}`}</span>
+      ))}
+      {near.map((o, k) => (
+        <span key={o.n} className={`rejoin-car${k % 2 ? " is-low" : ""}`} style={{ left: `${x(o.gap - pits.gap)}%` }}>
+          <i style={{ background: `#${o.color ?? "777"}` }} />
+          <b className="num">{codeOf(o.n)}</b>
+        </span>
+      ))}
+      <span className="rejoin-car is-me" style={{ left: "50%" }}><i /><b className="num">{codeOf(pits.list.find((o) => "me" in o)!.n)}</b></span>
+      <span className="rejoin-caption cap"><span>ahead</span><span>behind</span></span>
+    </div>
+  );
+}
+

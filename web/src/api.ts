@@ -981,7 +981,9 @@ export interface PitWindows {
     laps_completed: number;
     stops: number | null;
     used: string[];
-    window: { laps_until: number; window: [number, number]; most_likely_lap: number; next_compound: string; no_stop: boolean } | null;
+    /** `costs`: [stop lap, seconds more than the cheapest stop] for every lap it could stop on (D-033). */
+    window: { laps_until: number; window: [number, number]; most_likely_lap: number; next_compound: string; no_stop: boolean;
+              costs?: [number, number][] } | null;
   }[];
   undercuts: { chaser: number; target: number; gap_s: number; gain_s: number; chance: number; fresh_compound: string }[];
   notes: string[];

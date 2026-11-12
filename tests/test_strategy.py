@@ -111,3 +111,18 @@ def test_the_undercut_needs_the_gain_to_beat_the_gap():
     assert strategy.undercut_chance(0.2, gain, 0.5) > 0.5 > strategy.undercut_chance(3.0, gain, 0.5)
     # A pit lane that scatters more makes it a coin toss either way.
     assert abs(strategy.undercut_chance(0.2, gain, 3.0) - 0.5) < abs(strategy.undercut_chance(0.2, gain, 0.2) - 0.5)
+
+
+def test_stop_window_costs_every_lap_against_the_cheapest():
+    """D-033: the cost strip. One entry per lap it could stop on, in order; the cheapest costs nothing,
+    the window is every lap within the tolerance, and nothing is cheaper than the best."""
+    window = strategy.stop_window(51, 16, "MEDIUM", 14, RACE_DEG, 21.0, RACE_OFFSETS, {"MEDIUM"})
+    laps = [lap for lap, _ in window.costs]
+    assert laps == sorted(laps) and laps[0] == 16
+    extra = dict(window.costs)
+    assert extra[window.most_likely_lap] == 0.0
+    assert min(extra.values()) == 0.0
+    inside = [lap for lap, s in window.costs if s <= strategy.WINDOW_TOLERANCE_S]
+    assert (min(inside), max(inside)) == tuple(window.as_dict()["window"])
+    assert window.as_dict()["costs"][0] == [16, extra[16]]
+

@@ -10,6 +10,7 @@ import { explain } from "./StewardsScreen";
 import { leftText, spacedCorners } from "./QualifyingScreen";
 import { placesText, stopSentence, stopText } from "./RaceReviewScreen";
 import { places, startText } from "./StartsScreen";
+import { costShade } from "./StrategyScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
 import { ageAtLost, lostAt } from "./TyresScreen";
@@ -203,7 +204,8 @@ describe("the strategy", () => {
     cars: [
       { driver_number: 63, abbreviation: "RUS", team_color: "00D7B6", position: 1, status: "racing", compound: "MEDIUM", age: 18,
         laps_completed: 16, stops: 0, used: ["MEDIUM"],
-        window: { laps_until: 10, window: [20, 31], most_likely_lap: 26, next_compound: "HARD", no_stop: false } },
+        window: { laps_until: 10, window: [20, 31], most_likely_lap: 26, next_compound: "HARD", no_stop: false,
+                  costs: [[16, 6.5], [20, 2.0], [26, 0], [31, 2.0], [40, 9.1]] } },
       { driver_number: 3, abbreviation: "VER", team_color: "4781D7", position: 2, status: "racing", compound: "SOFT", age: 16,
         laps_completed: 16, stops: 0, used: ["SOFT"], window: null },
     ],
@@ -225,10 +227,17 @@ describe("the strategy", () => {
     // The pit-loss choices are the model's figure and its spread either side.
     fireEvent.click(screen.getByRole("radio", { name: "20.0 s" }));
     expect(screen.getByText(/costs 20\.0 s, so RUS would rejoin P2, 16\.0 s behind VER/)).toBeDefined();
-    // RUS: mediums then hards so far, then the plan dashed: the hards to lap 26, hards again to the flag.
+    // RUS: mediums then hards so far as bars; the rest of the race as the cost strip (D-033), the cheapest lap ticked.
     const rus = screen.getByRole("button", { name: /RUS/, pressed: true });
     expect(Array.from(rus.querySelectorAll(".strat-stint")).map((s) => s.getAttribute("title"))).toEqual(
-      ["medium, laps 1–2", "hard, laps 3–4", "plan: hard, laps 5–26", "plan: hard, laps 27–51"]);
+      ["medium, laps 1–2", "hard, laps 3–4"]);
+    expect(Array.from(rus.querySelectorAll(".strat-cost")).map((s) => s.getAttribute("title"))).toEqual(
+      ["stop on lap 16: +6.5 s", "stop on lap 20: +2.0 s", "stop on lap 26: the cheapest", "stop on lap 31: +2.0 s", "stop on lap 40: +9.1 s"]);
+    expect(rus.querySelector(".strat-best")?.getAttribute("title")).toBe("cheapest stop: lap 26, onto hard");
+    // Brightest where cheapest, faint past 8 s.
+    expect(costShade(0)).toBe(1);
+    expect(costShade(4)).toBe(0.5);
+    expect(costShade(20)).toBe(0.08);
     // VER has no window from the model: picking it says so rather than inventing one.
     fireEvent.click(screen.getByRole("button", { name: /VER/ }));
     expect(screen.getByText("out, or no wear model for this tyre")).toBeDefined();
