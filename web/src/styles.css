@@ -2679,10 +2679,10 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 /* ---- Race trace as racecraft-ui.html draws it: the chart fills the window beside a 272 px driver list */
 .trace-layout { grid-template-columns: minmax(0, 1fr) 272px !important; align-items: stretch !important; flex: 1 1 auto; min-height: 0; overflow: hidden !important; }
 .trace-panel, .trace-drivers { display: flex; flex-direction: column; min-height: 0; }
-.trace-panel .trace-chart { flex: 1 1 auto; min-height: 260px; grid-template-columns: 52px minmax(0, 1fr) 62px; grid-template-rows: minmax(0, 1fr) 24px; padding: 18px 0 6px 0; }
+.trace-panel .trace-chart { flex: 1 1 auto; min-height: 260px; grid-template-columns: 66px minmax(0, 1fr) 62px; grid-template-rows: minmax(0, 1fr) 24px; padding: 18px 0 6px 0; }
 .trace-panel .trace-x { grid-column: 2; }
 .trace-y { display: block !important; }
-.trace-y span { position: absolute; right: 6px; transform: translateY(-50%); font-size: 9.5px; }
+.trace-y span { position: absolute; right: 6px; transform: translateY(-50%); font-size: 9.5px; white-space: nowrap; }
 .trace-x span { font-size: 9.5px; }
 .trace-end { transform: translate(0, -50%); left: calc(100% + 8px); font-size: 10px; font-weight: 700; text-shadow: none; }
 .trace-pit { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #07080A; border: 2px solid #C9CED6; }

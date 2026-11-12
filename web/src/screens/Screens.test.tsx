@@ -615,3 +615,17 @@ describe("Race review", () => {
     expect(placesText(3)).toBe("3 places");
   });
 });
+
+describe("the race trace's measures (D-033)", () => {
+  const s = { driver_number: 4, abbreviation: "NOR", team_color: "FF8000", laps: [1, 2, 3, 4, 5],
+    gap_to_leader_s: [1, 2, 25, 24, 3], position: [2, 2, 9, 7, 3], lap_time_s: [90, 90, 110, 95, 90],
+    compound: ["SOFT", "SOFT", "SOFT", "HARD", "HARD"], pit_in: [false, false, true, false, false] } as LapSeries;
+
+  it("positions: every lap, a stop included", () => {
+    expect([...seriesFor([s], "position").get(4)!]).toEqual([[1, 2], [2, 2], [3, 9], [4, 7], [5, 3]]);
+  });
+
+  it("gap: a stop's in and out laps left out, so the line breaks rather than dives", () => {
+    expect([...seriesFor([s], "gap").get(4)!.keys()]).toEqual([1, 2, 5]);
+  });
+});

@@ -3,13 +3,18 @@ import { formatLapTime, type LapSeries } from "../api";
 import { LapCounter } from "../shell/ScreenHeader";
 import type { ScreenContext } from "./ScreenView";
 
-type Measure = "gap" | "interval" | "lap";
+type Measure = "position" | "gap" | "interval" | "lap";
 
-const MEASURES: [Measure, string][] = [["gap", "Gap to leader"], ["interval", "Interval"], ["lap", "Lap time"]];
+const MEASURES: [Measure, string][] = [["position", "Positions"], ["gap", "Gap to leader"], ["interval", "Interval"], ["lap", "Lap time"]];
 const STATUS_BANDS = new Set(["4", "5", "6", "7"]);
 const HEIGHT = 440;
 
-/** Each driver's value per lap for a measure; null where there is none. */
+/**
+ * Each driver's value per lap for a measure; null where there is none.
+ * Position is the place at the end of the lap. Gap and lap time leave out a
+ * stop's in and out laps (D-033): drawn, a stop is a dive through every other
+ * line; left out, it is a break, and the line picks up at its new level.
+ */
 export function seriesFor(series: LapSeries[], measure: Measure): Map<number, Map<number, number>> {
   const out = new Map<number, Map<number, number>>();
   if (measure === "interval") {
@@ -36,10 +41,12 @@ export function seriesFor(series: LapSeries[], measure: Measure): Map<number, Ma
   }
   for (const s of series) {
     const values = new Map<number, number>();
+    // By lap number, not list index: a lap missing from the feed would otherwise shift the out lap.
+    const pitLaps = new Set(s.laps.filter((_, i) => s.pit_in[i]));
     s.laps.forEach((lap, i) => {
-      const v = measure === "gap" ? s.gap_to_leader_s[i] : s.lap_time_s[i];
-      // Pit laps are not race pace: on the lap-time chart they would flatten everyone else.
-      if (v != null && !(measure === "lap" && (s.pit_in[i] || s.pit_in[i - 1]))) values.set(lap, v);
+      const v = measure === "position" ? s.position[i] : measure === "gap" ? s.gap_to_leader_s[i] : s.lap_time_s[i];
+      const pitting = pitLaps.has(lap) || pitLaps.has(lap - 1);
+      if (v != null && !(measure !== "position" && pitting)) values.set(lap, v);
     });
     out.set(s.driver_number, values);
   }
@@ -56,7 +63,8 @@ type Preset = "top10" | "followed" | "all";
  * jump to a lap.
  */
 export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
-  const [measure, setMeasure] = useState<Measure>("gap");
+  // Positions first (D-033): who is where reads at a glance; the gap view stays for how far.
+  const [measure, setMeasure] = useState<Measure>("position");
   const [preset, setPreset] = useState<Preset>("top10");
   const [picked, setPicked] = useState<number[] | null>(null);
   const current = ctx.state?.leader_lap ?? 0;
@@ -74,6 +82,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     for (const [driver, laps] of values) if (keep.has(driver)) for (const [lap, v] of laps) if (lap <= current) all.push(v);
     if (!all.length) return null;
     all.sort((a, b) => a - b);
+    if (measure === "position") return { low: 1, high: Math.max(all[all.length - 1]!, 2) };
     if (measure === "lap") {
       // Lap times: the quickest at the top, and the slowest 5% let off the chart.
       const low = all[0]!;
@@ -119,7 +128,17 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     return out;
   }, [ctx.info, ctx.crossings, ctx.t, current]);
 
-  const yTicks = scale ? Array.from({ length: 6 }, (_, k) => scale.low + ((scale.high - scale.low) * k) / 5) : [];
+  const yTicks = !scale ? []
+    : measure === "position" ? Array.from({ length: scale.high }, (_, k) => k + 1)
+    : Array.from({ length: 6 }, (_, k) => scale.low + ((scale.high - scale.low) * k) / 5);
+  // Positions: each place on the axis names who held it at the end of lap 1, so the names sit at both ends.
+  const startCode = new Map<number, string>();
+  if (measure === "position") {
+    for (const driver of shown) {
+      const p = values.get(driver)?.get(1);
+      if (p != null) startCode.set(p, ctx.driverCodes[driver] ?? String(driver));
+    }
+  }
   const step = span > 30 ? 5 : span > 12 ? 2 : 1;
   const xTicks = Array.from({ length: Math.floor((current - 1) / step) + 1 }, (_, k) => 1 + k * step).filter((lap) => lap <= current);
   const toggle = (driver: number) =>
@@ -133,7 +152,8 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     if (lap >= 1 && lap <= current) ctx.onSelectLap(lap);
   };
   const label = (v: number) =>
-    measure === "lap" ? formatLapTime(v) : v === 0 ? "0" : `+${v.toFixed(v >= 10 ? 0 : 1)}`;
+    measure === "position" ? `P${v}${startCode.has(v) ? ` ${startCode.get(v)}` : ""}`
+      : measure === "lap" ? formatLapTime(v) : v === 0 ? "0" : `+${v.toFixed(v >= 10 ? 0 : 1)}`;
   const series = new Map(ctx.laps.map((s) => [s.driver_number, s]));
   const colour = (driver: number) => `#${series.get(driver)?.team_color ?? "777"}`;
   const lastAt = (driver: number) => {
@@ -152,7 +172,11 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     const s = series.get(driver);
     const laps = values.get(driver);
     if (!s || !laps) return [];
-    return s.laps.filter((lap, i) => s.pit_in[i] && lap <= current && laps.has(lap)).map((lap) => ({ driver, lap, v: laps.get(lap)! }));
+    // The ring sits where the line picks up after the stop: the in and out laps are not drawn on the gap chart.
+    return s.laps.filter((lap, i) => s.pit_in[i] && lap <= current).flatMap((lap) => {
+      const at = [lap, lap + 1, lap + 2].find((l) => l <= current && laps.has(l));
+      return at == null ? [] : [{ driver, lap, at, v: laps.get(at)! }];
+    });
   });
   const firstPit = (driver: number) => {
     const s = series.get(driver);
@@ -177,10 +201,12 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
       <main className="screen-body trace-layout">
         <section className="panel trace-panel" aria-label="Race trace chart">
           <div className="panel-bar">
-            <h2>{measure === "gap" ? "Gap to leader by lap" : measure === "interval" ? "Interval by lap" : "Lap time by lap"}</h2>
+            <h2>{measure === "position" ? "Positions by lap" : measure === "gap" ? "Gap to leader by lap" : measure === "interval" ? "Interval by lap" : "Lap time by lap"}</h2>
             <span className="panel-meta">
-              {measure === "lap" ? "higher is quicker · pit laps left out"
-                : `seconds behind ${measure === "gap" ? leader?.abbreviation ?? "the leader" : "the car ahead"} · lines drop at a pit stop`}
+              {measure === "position" ? "place at the end of each lap · names: lap 1 at the left, now at the right"
+                : measure === "lap" ? "higher is quicker · pit laps left out"
+                : measure === "gap" ? `seconds behind ${leader?.abbreviation ?? "the leader"} · a break in a line is a pit stop`
+                : "seconds behind the car ahead"}
             </span>
             <div className="segmented" role="radiogroup" aria-label="Measure" style={{ marginLeft: "auto" }}>
               {MEASURES.map(([key, text]) => (
@@ -217,7 +243,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
                 </svg>
                 {pits.map((p) => (
                   <span key={`${p.driver}-${p.lap}`} className="trace-pit" title={`${ctx.driverCodes[p.driver] ?? p.driver} pit stop, lap ${p.lap}`}
-                        style={{ left: `${x(p.lap) / 10}%`, top: `${(y(p.v) / HEIGHT) * 100}%`, borderColor: colour(p.driver) }} />
+                        style={{ left: `${x(p.at) / 10}%`, top: `${(y(p.v) / HEIGHT) * 100}%`, borderColor: colour(p.driver) }} />
                 ))}
                 {ends.map(({ driver, end }) => (
                   <span key={driver} className="trace-end num" style={{ top: `${(y(end.v) / HEIGHT) * 100}%`, color: colour(driver) }}>
