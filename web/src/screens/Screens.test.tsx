@@ -378,7 +378,6 @@ describe("the season screens' moment", () => {
     vi.stubGlobal("fetch", fetchMock);
     const urls = () => fetchMock.mock.calls.map((c) => c[0]);
     const racing = context();
-    const over = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 1, { status: "finished" }), driver(3, "VER", 2, { status: "out" })] } });
     // A classified car that has stopped, with the race still on: 2026_16_R's RUS, five laps from the end.
     const stopped = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 20, { status: "finished" }), driver(3, "VER", 1)] } });
     const { rerender } = render(<ScreenView id="standings" ctx={racing} />);
@@ -389,6 +388,13 @@ describe("the season screens' moment", () => {
     expect(screen.getByRole("radio", { name: "Going into this session" }).getAttribute("aria-checked")).toBe("true");
     expect(urls()).not.toContain("/api/sessions/2026_15_R/standings?moment=after");
 
+    // First and home, but short of the distance: a red flag's timing (2023_03_R's SAR, 57 of 58). Not yet.
+    const redFlag = context({ state: { ...racing.state!, drivers: [driver(2, "SAR", 1, { status: "finished", laps_completed: 50 }), driver(3, "VER", 2)] } });
+    rerender(<ScreenView id="standings" ctx={redFlag} />);
+    expect(screen.getByRole("radio", { name: "Going into this session" }).getAttribute("aria-checked")).toBe("true");
+
+    // The winner home with the full 51 laps, the rest still on their last lap: it counts at once (BUG-017).
+    const over = context({ state: { ...racing.state!, drivers: [driver(63, "RUS", 1, { status: "finished", laps_completed: 51 }), driver(3, "VER", 2)] } });
     rerender(<ScreenView id="standings" ctx={over} />);
     await waitFor(() => expect(urls()).toContain("/api/sessions/2026_15_R/standings?moment=after"));
     expect(urls()).toContain("/api/sessions/2026_15_R/title?moment=after");
