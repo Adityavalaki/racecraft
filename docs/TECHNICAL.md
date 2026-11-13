@@ -1539,8 +1539,14 @@ state: at Qatar 2025, the weekend stints were capped at 25 laps, half the field
 ran a third hard.
 
 The rules say how many sets go back, not which. A set run again later plainly
-was not one; otherwise the most worn go back. Where a car has no used set left
-to give, a new one goes and its compound is a guess, named as one.
+was not one; otherwise the most worn go back, with one exception. When
+qualifying is the last session before the race (every sprint weekend since
+2024), a team hands back what it will not race: the softs from qualifying go
+before a medium or hard, whatever their laps. Taking the most worn there sent
+back the medium from sprint qualifying, which cars then raced; the rule took
+those misses from 30 to 5. In 2023 qualifying came before the sprint sessions,
+which still needed softs, and wear decides as before. Where a car has no used
+set left to give, a new one goes and its compound is a guess, named as one.
 
 Rookies in first practice drive a race driver's car under their own number;
 their laps go on the car of the same team whose regular driver sat that session
@@ -1554,13 +1560,14 @@ before only — against every set it then ran:
 
 | | |
 |---|---|
-| Sets raced | 4,185 |
-| Right about | **96.7%** |
+| Sets raced | 4,494 |
+| Right about | **97.2%** |
 | Cars holding exactly what the rules leave | 95% |
 
-The misses are sets the tracker thought went back but were raced (45) and new
-sets opened beyond the count it had left (94). The panel draws the first kind
-dashed when it happens.
+The misses are sets the tracker thought went back but were raced (23, of which
+11 are 2023's sprint weekends) and new sets opened beyond the count it had left
+(101). The panel draws the first kind dashed when it happens. (90 races,
+2026-11-13; before the qualifying rule above: 96.7%, 48 and 101.)
 
 **What it is for.** The strategy model's plans assume new tyres. With the sets
 known, each car's plans are re-ranked on what it has: a used set costs the wear
@@ -1837,6 +1844,37 @@ Worth reading the bias column beside the error. At 1.5 the model under-stops by
 0.38 stops on average; at 2.0 that bias nearly vanishes, and the per-race error
 gets *worse*. One constant can correct the average or the individual races, not
 both, which is the clearest sign available that what is missing is not a number.
+
+### Five ways to sharpen the predictions that did not
+
+Tried on 2026-11-13, each chosen on 2023-2025 (every season predicted with the
+other two) and then checked on 2026, which the weights never saw. The pace
+estimate can be scored in seconds (rank correlation with the pace each driver
+then showed, and how honest its stated spread is); the finishing order needs
+the full replay, 500 runs a race, the same seed as the published one.
+
+| Idea | Pace level | Finishing level (2026, paired by race) | Verdict |
+|---|---|---|---|
+| Readings combined with their errors' correlations (GLS) instead of independently, then widened | level on 2023-2025, worse on 2026 (spread less honest) | not run | no |
+| The teammate's readings as extra readings | all three: worse; qualifying only: better order, worse error on 2023-2025 | not run | no |
+| Outlier limit 2.0 s instead of 2.5 s | better on every season | order 0.691 -> 0.686, win Brier 0.475 -> 0.465, winner named 70% -> 60%; nothing significant, 2023 and 2024 mixed | no |
+| Weights refitted before each 2026 race with the 2026 races already run | better stated spread in 14 of 20 races (p = 0.05) | worse on every score: order 0.710 -> 0.702, winner named 68% -> 47% | no |
+| 2026 races weighted 2x to 8x in that refit | no change | not run | no |
+
+The fourth is the instructive one. The pace estimate got more honest and the
+race prediction got worse, because finishing order is mostly the grid and
+chance: 2026's pace is already ranked at 0.91 against what drivers showed, and
+the order of the finish at 0.69. A tighter outlier limit keeps improving
+2023-2025 all the way down to 1.25 s and then fails on 2026, whose field is
+wider: the limit that looks best is a property of those seasons, not of the
+model. The weights stay as measured on 2023-2025.
+
+The title odds over 76 seasons were checked the same way. Their two
+uncertainties are measured from how results vary, not tuned for the title
+question, so the tuning was tried: a grid of both, the best pair chosen on
+seven decades and scored on the eighth. Out of sample the chosen pairs score
+1.0146 (log loss on the champion) against 1.0130 for the measured ones. The
+measured values stay.
 
 ### What the dead ends have in common
 
