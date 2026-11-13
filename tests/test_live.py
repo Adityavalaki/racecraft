@@ -110,6 +110,43 @@ def test_the_recording_format_parses(live_dir):
     assert status[1][0].total_seconds() == pytest.approx(20 * 60)
 
 
+def test_a_recording_is_parsed_with_the_cache_off_and_handed_to_the_lake_shapes(live_dir, monkeypatch):
+    """BUG-020: a stray early return, left by a merge, used a name before its import, so every live
+    read raised; and the load before it ran with FastF1's cache on, which serves a stale parse."""
+    import fastf1
+    import fastf1.livetiming.data
+    from racecraft.ingest import fastf1_source
+
+    live_dir.mkdir(parents=True)
+    path = live_dir / "baku.txt"
+    path.write_text("x", encoding="utf-8")
+    calls = []
+
+    class FakeSession:
+        def load(self, **kwargs):
+            calls.append("load")
+
+    class FakeLive:
+        def __init__(self, _path): pass
+        def load(self): pass
+
+    class Off:
+        def __enter__(self): calls.append("cache off")
+        def __exit__(self, *exc): calls.append("cache on")
+
+    monkeypatch.setattr(feed_module, "_use_project_cache", lambda: None)
+    monkeypatch.setattr(fastf1.livetiming.data, "LiveTimingData", FakeLive)
+    monkeypatch.setattr(fastf1, "get_session", lambda *a: FakeSession())
+    monkeypatch.setattr(fastf1.Cache, "disabled", staticmethod(lambda: Off()))
+    monkeypatch.setattr(feed_module, "live_t0", lambda *a: None)
+    monkeypatch.setattr(fastf1_source, "extract", lambda ses, key, **kw: {"laps": "parsed"})
+
+    tables = feed_module.tables_from_recording(path, feed_module.LiveSession(2026, 17, "Race"))
+
+    assert tables == {"laps": "parsed"}
+    assert calls == ["cache off", "load", "cache on"]   # loaded once, with the cache off
+
+
 def test_an_empty_recording_reads_as_not_ready_rather_than_crashing(live_dir):
     """The first minutes of every session look like this."""
     live_dir.mkdir(parents=True)
