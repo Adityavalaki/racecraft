@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, formatLapTime, type LapComparison, type QualiDriver, type QualiKind, type QualiLaps, type StandingsMoment } from "../api";
 import { KpiRow } from "../shell/KpiRow";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import type { ScreenContext } from "./ScreenView";
 
 const KINDS: [QualiKind, string][] = [["Q", "Qualifying"], ["SQ", "Sprint qualifying"]];
@@ -98,11 +99,6 @@ export function QualifyingScreen({ ctx, header }: { ctx: ScreenContext; header: 
         {!error && !data && <div className="panel-note">Adding up sectors…</div>}
         {data && (
           <>
-            <p className="standings-basis">
-              <b>{data.event_name ? `${data.event_name}, ${kind === "Q" ? "qualifying" : "sprint qualifying"}` : `${data.year} season`}</b>
-              {" · "}
-              {data.sessions ? `${data.sessions} ${data.sessions === 1 ? "session" : "sessions"} this season` : "nothing run yet"}
-            </p>
             <KpiRow tiles={qualiTiles(drivers)} />
             <div className="quali-grid">
               <section className="panel quali-panel" aria-label="Qualifying classification">
@@ -115,9 +111,13 @@ export function QualifyingScreen({ ctx, header }: { ctx: ScreenContext; header: 
                 <GapSources pole={pole} rival={rival} />
               </div>
             </div>
-            {data.notes.length > 0 && (
-              <ul className="prediction-notes quali-notes">{data.notes.map((note) => <li key={note}>{note}</li>)}</ul>
-            )}
+            <ScreenFoot notes={data.notes}>
+              <p className="standings-basis">
+                <b>{data.event_name ? `${data.event_name}, ${kind === "Q" ? "qualifying" : "sprint qualifying"}` : `${data.year} season`}</b>
+                {" · "}
+                {data.sessions ? `${data.sessions} ${data.sessions === 1 ? "session" : "sessions"} this season` : "nothing run yet"}
+              </p>
+            </ScreenFoot>
           </>
         )}
       </main>

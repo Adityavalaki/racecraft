@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { KpiRow } from "../shell/KpiRow";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import { WeatherForecast } from "./WeatherForecast";
 import {
   api, type Prediction, type PredictionDriver, type PredictionKind, type PredictionScore, type WeekendInfo,
@@ -128,17 +129,7 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
     ?? [...answer.drivers].sort((a, b) => b.win - a.win)[0];
   return (
     <div className="prediction">
-      <div className="prediction-top">
-        {switcher}
-        <p className="prediction-basis">
-          <b>{answer.before_race ? `Made before the ${event}` : `Rebuilt after the ${event}, from what was known before it`}</b>
-          {" · "}from {answer.basis.sessions.map((code) => SESSION_NAMES[code] ?? code).join(", ")}
-          {answer.basis.form_races.length > 0 && ` and ${answer.basis.form_races.length} earlier races`}
-          {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid"
-            : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
-        </p>
-        <span className="prediction-runs num">{answer.basis.runs.toLocaleString()} simulated {event}s</span>
-      </div>
+      {switcher && <div className="prediction-top">{switcher}</div>}
 
       <KpiRow tiles={predictionTiles(answer, sprint)} />
 
@@ -208,6 +199,18 @@ export function PredictionBoard({ sessionKey, selected, onSelect }: Props) {
           </div>
         </section>
       </div>
+      <ScreenFoot>
+        <div className="prediction-top">
+          <p className="prediction-basis">
+            <b>{answer.before_race ? `Made before the ${event}` : `Rebuilt after the ${event}, from what was known before it`}</b>
+            {" · "}from {answer.basis.sessions.map((code) => SESSION_NAMES[code] ?? code).join(", ")}
+            {answer.basis.form_races.length > 0 && ` and ${answer.basis.form_races.length} earlier races`}
+            {" · "}grid from {answer.basis.grid_source === "race" ? "the official starting grid"
+              : `${sprint ? "sprint qualifying" : "qualifying"}, penalties not applied`}
+          </p>
+          <span className="prediction-runs num">{answer.basis.runs.toLocaleString()} simulated {event}s</span>
+        </div>
+      </ScreenFoot>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
 } from "../api";
 import { percent } from "../panels/PredictionBoard";
 import { KpiRow } from "../shell/KpiRow";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
@@ -83,14 +84,6 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
         {!error && !table && <div className="panel-note">Adding up the season's points…</div>}
         {table && (
           <>
-            <p className="standings-basis">
-              <b>{table.year} season</b>
-              {" · "}
-              {table.last
-                ? `after ${table.races} ${table.races === 1 ? "Grand Prix" : "Grands Prix"} and ${table.sprints} ${table.sprints === 1 ? "sprint" : "sprints"}, the latest the ${table.last.event_name}${table.last.session === "sprint" ? " sprint" : ""}`
-                : "nothing run yet"}
-            </p>
-            <p className="standings-basis" role="status">{oddsLine(odds, oddsError)}</p>
             <KpiRow tiles={standingsTiles(table, odds)} />
             {table.drivers.length > 0 && (
               <div className="standings">
@@ -100,9 +93,16 @@ export function StandingsScreen({ ctx, header }: { ctx: ScreenContext; header: (
                 <PointsChart rounds={table.rounds ?? []} drivers={table.drivers} selected={ctx.selected} />
               </div>
             )}
-            {notes.length > 0 && (
-              <ul className="prediction-notes">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
-            )}
+            <ScreenFoot notes={notes}>
+              <p className="standings-basis">
+                <b>{table.year} season</b>
+                {" · "}
+                {table.last
+                  ? `after ${table.races} ${table.races === 1 ? "Grand Prix" : "Grands Prix"} and ${table.sprints} ${table.sprints === 1 ? "sprint" : "sprints"}, the latest the ${table.last.event_name}${table.last.session === "sprint" ? " sprint" : ""}`
+                  : "nothing run yet"}
+              </p>
+              <p className="standings-basis" role="status">{oddsLine(odds, oddsError)}</p>
+            </ScreenFoot>
           </>
         )}
       </main>

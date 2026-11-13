@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type StandingsMoment, type TeammateGap, type TeammatePair, type TeammateRound, type Teammates } from "../api";
 import { useSeasonMoment } from "./moment";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import type { ScreenContext } from "./ScreenView";
 
 type Metric = "quali" | "race" | "practice";
@@ -68,11 +69,6 @@ export function TeammatesScreen({ ctx, header }: { ctx: ScreenContext; header: (
         {!error && !data && <div className="panel-note">Comparing teammates…</div>}
         {data && (
           <>
-            <p className="standings-basis">
-              <b>{data.year} season</b>
-              {" · "}
-              {data.pairs.length ? `${data.rounds} ${data.rounds === 1 ? "round" : "rounds"} so far · every team head to head` : "nothing run yet"}
-            </p>
             <div className="teammates">
               {pairs.map((pair) => (
                 <PairCard key={`${pair.team}-${pair.drivers.map((d) => d.abbreviation).join("-")}`} pair={pair} metric={metric} />
@@ -88,6 +84,13 @@ export function TeammatesScreen({ ctx, header }: { ctx: ScreenContext; header: (
                 </div>
               </section>
             </div>
+            <ScreenFoot>
+              <p className="standings-basis">
+                <b>{data.year} season</b>
+                {" · "}
+                {data.pairs.length ? `${data.rounds} ${data.rounds === 1 ? "round" : "rounds"} so far · every team head to head` : "nothing run yet"}
+              </p>
+            </ScreenFoot>
           </>
         )}
       </main>

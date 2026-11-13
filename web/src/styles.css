@@ -2848,3 +2848,18 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .rejoin-car.is-me i { left: -7px; top: -7px; width: 14px; height: 14px; border: 2px dashed #F2F3F5; background: transparent; }
 .rejoin-car.is-me b { color: var(--ink); bottom: 12px; }
 .rejoin-caption { position: absolute; left: 4%; right: 4%; top: 0; display: flex; justify-content: space-between; font-size: 9px; color: var(--ink-faint); }
+
+/* The foot of a season screen (D-033): what the figures rest on, and the notes, in one slim panel under the rest. */
+.screen-foot { flex: none; max-height: 88px; overflow: auto; padding: 7px 14px; display: flex; flex-direction: column; gap: 2px; }
+.screen-foot .standings-basis { font-size: 11px; }
+.screen-foot .prediction-notes { margin: 0; padding-left: 1rem; font-size: 11px; color: var(--ink-soft); }
+
+/* Narrower windows (D-033, measured at 1280 x 800): the tables lose their long text before they scroll sideways. */
+@media (max-width: 1360px) {
+  .timing-grid .tower-table { min-width: 0; }
+  .tower-table .who-name { display: none; }
+  .tower-table th.who { align-items: center; }
+  .standings-table.is-drivers { --st-cols: 1.8rem 2rem 4px minmax(3rem, 1fr) 3rem 3rem 2.4rem 2.4rem 3rem 4.2rem 7rem; }
+  .standings-table.is-drivers .who small { display: none; }
+  .quali-row { gap: 4px; min-width: 0; grid-template-columns: 20px 3px 30px minmax(30px, 1fr) 54px 54px 54px 40px 42px 42px 42px 42px; }
+}

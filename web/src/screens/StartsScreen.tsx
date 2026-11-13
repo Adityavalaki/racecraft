@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type DriverStarts, type StandingsMoment, type StartKind, type StartRace, type StartRecord, type Starts } from "../api";
 import { KpiRow } from "../shell/KpiRow";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
@@ -83,9 +84,7 @@ export function StartsScreen({ ctx, header }: { ctx: ScreenContext; header: (chi
                 <StartsTable drivers={drivers} />
               </section>
             </div>
-            {data.notes.length > 0 && (
-              <ul className="prediction-notes starts-notes">{data.notes.map((note) => <li key={note}>{note}</li>)}</ul>
-            )}
+            <ScreenFoot notes={data.notes} />
           </>
         )}
       </main>

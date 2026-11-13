@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type CrewStanding, type PitCrews, type PitLaneTrip, type StandingsMoment } from "../api";
 import { percent } from "../panels/PredictionBoard";
 import { KpiRow } from "../shell/KpiRow";
+import { ScreenFoot } from "../shell/ScreenFoot";
 import { useSeasonMoment } from "./moment";
 import type { ScreenContext } from "./ScreenView";
 
@@ -63,27 +64,25 @@ export function CrewsScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
         {!error && !crews && <div className="panel-note">Timing every pit stop of the season…</div>}
         {crews && (
           <>
-            <p className="standings-basis">{basisLine(crews)}</p>
             <KpiRow tiles={crewTiles(crews)} />
             {/* As racecraft-ui.html lays it out (D-025): the season's crews beside this session's stops. */}
             <div className="crews-grid">
               <CrewTable teams={crews.teams} />
               <SessionStops trips={sofar} total={crews.session_stops.length} />
             </div>
-            <ul className="prediction-notes crews-notes">
-              <li>
-                Pit-lane time, entry line to exit line, against the same race's typical stop: the lane is the same for
-                everyone there, so the difference is the crew's work (and a car queued behind its team-mate). The feed
-                does not say how long a car stood still.
-              </li>
-              {crews.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
+            <ScreenFoot notes={[LANE_NOTE, ...crews.notes]}>
+              <p className="standings-basis">{basisLine(crews)}</p>
+            </ScreenFoot>
           </>
         )}
       </main>
     </div>
   );
 }
+
+const LANE_NOTE = "Pit-lane time, entry line to exit line, against the same race's typical stop: the lane is the same for "
+  + "everyone there, so the difference is the crew's work (and a car queued behind its team-mate). The feed does not say "
+  + "how long a car stood still.";
 
 function CrewTable({ teams }: { teams: CrewStanding[] }) {
   return (
