@@ -13,6 +13,7 @@ import { places, startText } from "./StartsScreen";
 import { costShade } from "./StrategyScreen";
 import { chartReach, gapText, niceCeiling } from "./TeammatesScreen";
 import { seriesFor } from "./TraceScreen";
+import { barRows, paceRows } from "./TraceViews";
 import { ageAtLost, lostAt } from "./TyresScreen";
 
 /**
@@ -634,7 +635,39 @@ describe("the race trace's measures (D-033)", () => {
     expect([...seriesFor([s], "position").get(4)!]).toEqual([[1, 2], [2, 2], [3, 9], [4, 7], [5, 3]]);
   });
 
-  it("gap: a stop's in and out laps left out, so the line breaks rather than dives", () => {
-    expect([...seriesFor([s], "gap").get(4)!.keys()]).toEqual([1, 2, 5]);
+});
+
+describe("the race trace's bars and pace boxes (D-035)", () => {
+  const car = (n: number, code: string, gaps: number[], positions: number[], times: number[], pits: number[] = []) => ({
+    driver_number: n, abbreviation: code, team_color: "FF8000", laps: gaps.map((_, i) => i + 1), gap_to_leader_s: gaps,
+    position: positions, lap_time_s: times, compound: gaps.map(() => "SOFT"), pit_in: gaps.map((_, i) => pits.includes(i + 1)),
+  }) as LapSeries;
+  const lead = car(1, "AAA", [0, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1], [95, 90, 90.2, 90.1, 90.4, 90.3]);
+  const next = car(2, "BBB", [1, 1.5, 1.2, 20.5, 19, 18.6], [2, 2, 2, 3, 2, 2], [96, 90.5, 89.7, 110, 92, 89.6], [3]);
+  const third = car(3, "CCC", [2, 3, 4, 5, 25, 26], [3, 3, 3, 2, 3, 3], [97, 91, 91, 91, 91, 91]);
+
+  it("gap bars: the lap's order, seconds behind the leader, the change on the lap, and the stop flagged", () => {
+    const rows = barRows([third, next, lead], "gap", 4, [1, 2, 3], seriesFor([third, next, lead], "interval"));
+    expect(rows.map((r) => [r.code, r.value, r.change, r.pit])).toEqual([
+      ["AAA", 0, null, false], ["CCC", 5, 1, false], ["BBB", 20.5, 19.3, true]]);   // BBB's out lap
+    expect(rows[2]!.change).toBeCloseTo(19.3);
+  });
+
+  it("interval bars: the gap to the car a place ahead, none for the leader, ten laps of history", () => {
+    const rows = barRows([lead, next, third], "interval", 6, [1, 2, 3], seriesFor([lead, next, third], "interval"));
+    expect(rows.map((r) => r.code)).toEqual(["AAA", "BBB", "CCC"]);
+    expect(rows[0]!.value).toBeNull();
+    expect(rows[1]!.value).toBeCloseTo(18.6);
+    expect(rows[2]!.value).toBeCloseTo(26 - 18.6);
+    expect(rows[1]!.spark).toHaveLength(10);
+    expect(rows[1]!.spark.slice(0, 4)).toEqual([null, null, null, null]);  // laps -3..0 do not exist
+  });
+
+  it("pace boxes: green-flag laps only, quickest typical first, too few laps left out", () => {
+    // Lap 1 out (standing start), BBB's stop laps 3 and 4 out, lap 5 a safety car for everyone.
+    const rows = paceRows([lead, next, third], 6, new Set([5]), [1, 2, 3]);
+    expect(rows.map((r) => [r.code, r.laps])).toEqual([["AAA", 4], ["CCC", 4]]);   // BBB has only laps 2 and 6: two
+    expect(rows[0]!.typical).toBeCloseTo((90.1 + 90.2) / 2);
+    expect(paceRows([lead], 3, new Set(), [1])).toEqual([]);                      // laps 2 and 3 only
   });
 });

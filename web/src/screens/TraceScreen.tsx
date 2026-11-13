@@ -1,7 +1,8 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
-import { formatLapTime, type LapSeries } from "../api";
+import { type LapSeries } from "../api";
 import { LapCounter } from "../shell/ScreenHeader";
 import type { ScreenContext } from "./ScreenView";
+import { barRows, LapBars, PaceBoxes, paceRows } from "./TraceViews";
 
 type Measure = "position" | "gap" | "interval" | "lap";
 
@@ -10,12 +11,11 @@ const STATUS_BANDS = new Set(["4", "5", "6", "7"]);
 const HEIGHT = 440;
 
 /**
- * Each driver's value per lap for a measure; null where there is none.
- * Position is the place at the end of the lap. Gap and lap time leave out a
- * stop's in and out laps (D-033): drawn, a stop is a dive through every other
- * line; left out, it is a break, and the line picks up at its new level.
+ * Each driver's value per lap: the place at the end of the lap (the positions
+ * chart), or the interval, the gap to whoever was a place ahead on that lap
+ * (the interval bars, D-035).
  */
-export function seriesFor(series: LapSeries[], measure: Measure): Map<number, Map<number, number>> {
+export function seriesFor(series: LapSeries[], measure: "position" | "interval"): Map<number, Map<number, number>> {
   const out = new Map<number, Map<number, number>>();
   if (measure === "interval") {
     // Interval: the gap to whoever was one place ahead on that lap.
@@ -41,12 +41,9 @@ export function seriesFor(series: LapSeries[], measure: Measure): Map<number, Ma
   }
   for (const s of series) {
     const values = new Map<number, number>();
-    // By lap number, not list index: a lap missing from the feed would otherwise shift the out lap.
-    const pitLaps = new Set(s.laps.filter((_, i) => s.pit_in[i]));
     s.laps.forEach((lap, i) => {
-      const v = measure === "position" ? s.position[i] : measure === "gap" ? s.gap_to_leader_s[i] : s.lap_time_s[i];
-      const pitting = pitLaps.has(lap) || pitLaps.has(lap - 1);
-      if (v != null && !(measure !== "position" && pitting)) values.set(lap, v);
+      const v = s.position[i];
+      if (v != null) values.set(lap, v);
     });
     out.set(s.driver_number, values);
   }
@@ -56,11 +53,13 @@ export function seriesFor(series: LapSeries[], measure: Measure): Map<number, Ma
 type Preset = "top10" | "followed" | "all";
 
 /**
- * How the gaps opened and closed, lap by lap, up to the lap the clock is on.
- * Nothing after it is drawn, so a replay is not spoiled. Safety-car and VSC
- * laps are shaded, which is where most gaps close; a ring marks each pit stop.
- * Pick who is drawn with the presets or the driver list; click the chart to
- * jump to a lap.
+ * The race lap by lap, up to the lap the clock is on; nothing after it is
+ * shown, so a replay is not spoiled. Positions is a line per driver, with
+ * safety-car and VSC laps shaded and a ring at each pit stop; click it to jump
+ * to a lap. Gap and interval are a bar per driver at one lap, picked with the
+ * lap slider (it follows the replay until dragged); lap time is a box of each
+ * driver's green-flag laps (D-035). Pick who is shown with the presets or the
+ * driver list.
  */
 export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (children?: ReactNode) => ReactNode }) {
   // Positions first (D-033): who is where reads at a glance; the gap view stays for how far.
@@ -72,7 +71,11 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
   const presetList = preset === "all" ? order.map((d) => d.driver_number)
     : preset === "followed" ? ctx.selected : order.slice(0, 10).map((d) => d.driver_number);
   const shown = picked ?? presetList;
-  const values = useMemo(() => seriesFor(ctx.laps, measure), [ctx.laps, measure]);
+  const values = useMemo(() => seriesFor(ctx.laps, "position"), [ctx.laps]);
+  const intervals = useMemo(() => seriesFor(ctx.laps, "interval"), [ctx.laps]);
+  // The lap the bars show: pinned by the slider, else the lap the clock is on.
+  const [pinned, setPinned] = useState<number | null>(null);
+  const lap = Math.max(Math.min(pinned ?? current, current), 1);
   const span = Math.max(current - 1, 1);
   const shownKey = shown.join(",");
 
@@ -81,17 +84,8 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     const all: number[] = [];
     for (const [driver, laps] of values) if (keep.has(driver)) for (const [lap, v] of laps) if (lap <= current) all.push(v);
     if (!all.length) return null;
-    all.sort((a, b) => a - b);
-    if (measure === "position") return { low: 1, high: Math.max(all[all.length - 1]!, 2) };
-    if (measure === "lap") {
-      // Lap times: the quickest at the top, and the slowest 5% let off the chart.
-      const low = all[0]!;
-      const high = all[Math.floor(all.length * 0.95)] ?? all[all.length - 1]!;
-      return { low, high: Math.max(high, low + 1) };
-    }
-    const high = all[Math.floor(all.length * 0.97)] ?? all[all.length - 1]!;
-    return { low: 0, high: Math.max(high, 1) };
-  }, [values, current, measure, shownKey]);
+    return { low: 1, high: Math.max(Math.max(...all), 2) };
+  }, [values, current, shownKey]);
 
   const x = (lap: number) => ((lap - 1) / span) * 1000;
   const y = (v: number) => (scale ? Math.min(Math.max((v - scale.low) / (scale.high - scale.low), 0), 1.04) * HEIGHT : 0);
@@ -128,16 +122,12 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     return out;
   }, [ctx.info, ctx.crossings, ctx.t, current]);
 
-  const yTicks = !scale ? []
-    : measure === "position" ? Array.from({ length: scale.high }, (_, k) => k + 1)
-    : Array.from({ length: 6 }, (_, k) => scale.low + ((scale.high - scale.low) * k) / 5);
-  // Positions: each place on the axis names who held it at the end of lap 1, so the names sit at both ends.
+  const yTicks = !scale ? [] : Array.from({ length: scale.high }, (_, k) => k + 1);
+  // Each place on the axis names who held it at the end of lap 1, so the names sit at both ends.
   const startCode = new Map<number, string>();
-  if (measure === "position") {
-    for (const driver of shown) {
-      const p = values.get(driver)?.get(1);
-      if (p != null) startCode.set(p, ctx.driverCodes[driver] ?? String(driver));
-    }
+  for (const driver of shown) {
+    const p = values.get(driver)?.get(1);
+    if (p != null) startCode.set(p, ctx.driverCodes[driver] ?? String(driver));
   }
   const step = span > 30 ? 5 : span > 12 ? 2 : 1;
   const xTicks = Array.from({ length: Math.floor((current - 1) / step) + 1 }, (_, k) => 1 + k * step).filter((lap) => lap <= current);
@@ -151,9 +141,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     const lap = Math.round(((event.clientX - box.left) / box.width) * span) + 1;
     if (lap >= 1 && lap <= current) ctx.onSelectLap(lap);
   };
-  const label = (v: number) =>
-    measure === "position" ? `P${v}${startCode.has(v) ? ` ${startCode.get(v)}` : ""}`
-      : measure === "lap" ? formatLapTime(v) : v === 0 ? "0" : `+${v.toFixed(v >= 10 ? 0 : 1)}`;
+  const label = (v: number) => `P${v}${startCode.has(v) ? ` ${startCode.get(v)}` : ""}`;
   const series = new Map(ctx.laps.map((s) => [s.driver_number, s]));
   const colour = (driver: number) => `#${series.get(driver)?.team_color ?? "777"}`;
   const lastAt = (driver: number) => {
@@ -172,7 +160,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     const s = series.get(driver);
     const laps = values.get(driver);
     if (!s || !laps) return [];
-    // The ring sits where the line picks up after the stop: the in and out laps are not drawn on the gap chart.
+    // The ring sits on the stop's lap, or the next drawn one if the feed missed a place for it.
     return s.laps.filter((lap, i) => s.pit_in[i] && lap <= current).flatMap((lap) => {
       const at = [lap, lap + 1, lap + 2].find((l) => l <= current && laps.has(l));
       return at == null ? [] : [{ driver, lap, at, v: laps.get(at)! }];
@@ -184,6 +172,8 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
     return s && k >= 0 ? `L${s.laps[k]}` : "—";
   };
   const leader = order.find((d) => d.position === 1);
+  // Safety car, VSC and red-flag laps: slow for reasons that are not pace, so left out of the boxes.
+  const neutral = new Set(bands.flatMap((b) => Array.from({ length: b.to - b.from + 1 }, (_, k) => b.from + k)));
 
   return (
     <div className="screen">
@@ -201,12 +191,13 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
       <main className="screen-body trace-layout">
         <section className="panel trace-panel" aria-label="Race trace chart">
           <div className="panel-bar">
-            <h2>{measure === "position" ? "Positions by lap" : measure === "gap" ? "Gap to leader by lap" : measure === "interval" ? "Interval by lap" : "Lap time by lap"}</h2>
+            <h2>{measure === "position" ? "Positions by lap" : measure === "gap" ? `Gap to leader, lap ${lap}`
+              : measure === "interval" ? `Interval, lap ${lap}` : `Race pace to lap ${current}`}</h2>
             <span className="panel-meta">
               {measure === "position" ? "place at the end of each lap · names: lap 1 at the left, now at the right"
-                : measure === "lap" ? "higher is quicker · pit laps left out"
-                : measure === "gap" ? `seconds behind ${leader?.abbreviation ?? "the leader"} · a break in a line is a pit stop`
-                : "seconds behind the car ahead"}
+                : measure === "lap" ? "green-flag laps: no lap 1, stops or safety cars; a wet or drying track still counts · box: middle half · white tick: typical"
+                : measure === "gap" ? `seconds behind ${leader?.abbreviation ?? "the leader"} · Lap Δ: green closing, red dropping back`
+                : "seconds behind the car ahead · line: 1 s, attacking range · Lap Δ: green closing"}
             </span>
             <div className="segmented" role="radiogroup" aria-label="Measure" style={{ marginLeft: "auto" }}>
               {MEASURES.map(([key, text]) => (
@@ -214,9 +205,22 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
                         className={measure === key ? "is-on" : ""} onClick={() => setMeasure(key)}>{text}</button>
               ))}
             </div>
-            <span className="trace-key"><i className="trace-pit" />Pit stop</span>
+            {measure === "position" && <span className="trace-key"><i className="trace-pit" />Pit stop</span>}
           </div>
-          {!scale || current < 1 ? (
+          {measure !== "position" && current >= 1 ? (
+            measure === "lap" ? <PaceBoxes rows={paceRows(ctx.laps, current, neutral, shown)} followed={ctx.selected} onFollow={ctx.onSelect} /> : (
+              <>
+                <LapBars measure={measure} rows={barRows(ctx.laps, measure, lap, shown, intervals)} followed={ctx.selected} onFollow={ctx.onSelect} />
+                <div className="lap-scrub">
+                  <span className="cap">Lap</span>
+                  <input type="range" min={1} max={Math.max(current, 1)} value={lap} aria-label="Lap shown"
+                         onChange={(e) => { const v = Number(e.target.value); setPinned(v >= current ? null : v); }} />
+                  <span className="num">{lap} of {current}</span>
+                  <button type="button" className="toggle" disabled={pinned == null || lap === current} onClick={() => setPinned(null)}>Now</button>
+                </div>
+              </>
+            )
+          ) : !scale || current < 1 ? (
             <p className="panel-note">{shown.length ? "No laps completed yet at this point of the session." : "Pick drivers to draw from the list."}</p>
           ) : (
             <div className="trace-chart">
@@ -229,7 +233,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
                           fill={b.red ? "rgba(255, 77, 94, 0.14)" : "rgba(255, 162, 58, 0.13)"} />
                   ))}
                   {yTicks.map((v, k) => (
-                    <line key={v} x1="0" x2="1000" y1={y(v)} y2={y(v)} stroke={k === 0 && measure !== "lap" ? "rgba(255,255,255,.18)" : "rgba(255,255,255,.05)"}
+                    <line key={v} x1="0" x2="1000" y1={y(v)} y2={y(v)} stroke={k === 0 ? "rgba(255,255,255,.18)" : "rgba(255,255,255,.05)"}
                           strokeWidth="1" vectorEffect="non-scaling-stroke" />
                   ))}
                   {xTicks.map((lap) => (
@@ -256,7 +260,7 @@ export function TraceScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
               </div>
             </div>
           )}
-          {bands.length > 0 && (
+          {measure === "position" && bands.length > 0 && (
             <div className="map-legend">
               <span><i style={{ background: "rgba(255, 162, 58, 0.6)" }} />Safety car or VSC</span>
             </div>
