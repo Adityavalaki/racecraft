@@ -194,7 +194,7 @@ def test_scrubbing_back_gives_the_same_answer_as_arriving_forward():
         (90.0, "FIA STEWARDS: PENALTY SERVED - 5 SECOND TIME PENALTY FOR CAR 44 (HAM) - TRACK LIMITS"),
     ])
     forward = penalties.state_at(rc, DRIVERS, 50.0)[44].as_dict()
-    _later = penalties.state_at(rc, DRIVERS, 200.0)
+    penalties.state_at(rc, DRIVERS, 200.0)
     back = penalties.state_at(rc, DRIVERS, 50.0)[44].as_dict()
     assert forward == back
 

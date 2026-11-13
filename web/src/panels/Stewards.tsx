@@ -32,8 +32,8 @@ const HIDDEN = new Set(["lap_deleted"]);
  * Its own panel beside the map rather than a tab, because it is watched rather
  * than consulted: a penalty is news, and news behind a tab is news nobody sees.
  *
- * Only the stewards: what happened to the track is its own panel, `TrackLog`,
- * below this one, because the two are read differently. This one is scanned for
+ * Only the stewards: what happened to the track is its own list (the track log
+ * on the Stewards screen), because the two are read differently. This one is scanned for
  * a car, so it follows the tower's selection, and it has no control of its own.
  *
  * What counts as the stewards' is decided server-side by whether the message
@@ -156,10 +156,4 @@ function weight(kind: string): "loud" | "mid" | "quiet" {
     return "mid";
   }
   return "quiet";
-}
-
-/** Who the stewards' panel is currently narrowed to, for its heading. */
-export function filterLabel(selected: number[], codes: Record<number, string>): string | null {
-  if (!selected.length) return null;
-  return `${selected.map((car) => codes[car] ?? car).join(" · ")} only`;
 }

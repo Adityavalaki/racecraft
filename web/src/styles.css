@@ -76,8 +76,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   background-position: 0 0, 3px 3px;
 }
 
-/* ---------- top bar ---------- */
-
 /* ---------- live ---------- */
 
 .live-flag {
@@ -200,20 +198,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .panel-bar h2 { border-bottom: 0; }
 
-
-.reset-layout {
-  background: none;
-  border: 1px solid var(--rule-strong);
-  color: var(--ink-mid);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.3rem 0.6rem;
-  border-radius: 2px;
-}
-.reset-layout:hover { color: var(--ink); border-color: var(--signal); }
-.reset-layout:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .grid.loading {
   grid-template: 1fr / 1fr;             /* one cell: a message belongs in the middle, not in the first panel's slot */
   place-items: center;
@@ -245,11 +229,9 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--rule);
 }
 .panel h2 small { text-transform: none; letter-spacing: 0.04em; color: var(--rule-strong); }
-.panel-tower { grid-column: 1; grid-row: 1 / 3; }
+
 .panel-map { grid-column: 2; grid-row: 1; }
-.panel-stewards { grid-column: 3; grid-row: 1; }
-.panel-trace { grid-column: 2; grid-row: 2; }
-.panel-track { grid-column: 3; grid-row: 2; }
+
 /*
   Below this there is not width for three, and squeezing them is worse than
   stacking: the map and the charts take the full right-hand width, and the two
@@ -262,11 +244,9 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
     grid-template-columns: minmax(430px, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr);
     grid-template-rows: minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.1fr);
   }
-  .panel-tower { grid-column: 1; grid-row: 1 / 4; }
+
   .panel-map { grid-column: 2 / 4; grid-row: 1; }
-  .panel-stewards { grid-column: 2; grid-row: 2; }
-  .panel-track { grid-column: 3; grid-row: 2; }
-  .panel-trace { grid-column: 2 / 4; grid-row: 3; }
+
 }
 
 /* ---------- timing tower ---------- */
@@ -284,62 +264,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   overflow: auto;
   scrollbar-gutter: stable;
 }
-/*
-  Every column carries a floor and a share. The floor is what the widest value
-  in that column actually needs, so nothing is ever crushed; the share is how
-  spare width is divided, so the table fills its panel evenly at any size.
-
-  Both halves of that had to be got wrong once to see why. With the flexible
-  track on GAP, all the slack landed between the driver code and its own gap
-  figure while the sectors bunched at the right edge. Moving it to the driver
-  code merely moved the void — the code sat left, the numbers sat right, and
-  the middle was empty. Spread across every column, the row reads as one table.
-*/
-.tower-head,
-.tower-row {
-  display: grid;
-  min-width: 42rem;                          /* the table at its column floors */
-  grid-template-columns:
-    minmax(1.7rem, 0.55fr)   /* position */
-    4px                      /* team colour */
-    minmax(2.7rem, 1fr)      /* driver code */
-    minmax(3.8rem, 1.1fr)    /* gap */
-    minmax(3.8rem, 1.1fr)    /* interval */
-    minmax(4.3rem, 1.2fr)    /* best lap: 1:32.608 */
-    minmax(4.3rem, 1.2fr)    /* last lap */
-    minmax(3.2rem, 0.95fr)   /* sector 1 */
-    minmax(3.2rem, 0.95fr)   /* sector 2 */
-    minmax(3.2rem, 0.95fr)   /* sector 3 */
-    minmax(3.3rem, 0.95fr)   /* tyre */
-    minmax(1.8rem, 0.6fr)    /* stops */
-    minmax(2.4rem, 0.7fr);   /* penalties: DSQ, +10s, STOP, a dot */
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0 0.4rem;
-}
-.tower-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--panel);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-  color: var(--ink-soft);
-  padding-block: 0.35rem;
-  border-bottom: 1px solid var(--rule);
-  white-space: nowrap;
-}
-/*
-  Every cell is centred in its own column, heading and figure alike, so each
-  heading sits over the middle of what it names. The figures stay on tabular
-  numerals, so digits keep the same width and a column of sector times still
-  lines up character for character as the values change.
-*/
-.tower-head span,
-.tower-row > * { text-align: center; }
-.tower-head span { overflow: hidden; }
-.tower-rows { min-height: 0; }
 
 /*
   The penalty column answers one question: does this car still owe something?
@@ -365,20 +289,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .sector.is-personal_best { color: var(--green); }
 .sector.is-none { color: var(--rule-strong); }
 
-.tower-row {
-  width: 100%;
-  background: none;
-  border: 0;
-  border-bottom: 1px solid #1b222a;
-  padding-block: 0.3rem;
-  text-align: left;
-  font-size: 0.95rem;
-}
-.tower-row:hover { background: var(--panel-2); }
-.tower-row.is-selected { background: #1f2a35; box-shadow: inset 2px 0 0 var(--signal); }
-.tower-row.is-out { opacity: 0.45; }
-.tower-row:focus-visible { outline: 1px solid var(--signal); outline-offset: -1px; }
-
 .pos { font-weight: 600; color: var(--ink-mid); }
 .team-bar { height: 1.1rem; border-radius: 1px; }
 .code { font-weight: 700; letter-spacing: 0.04em; }
@@ -390,8 +300,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .gap { color: var(--ink); }
 .int { color: var(--ink-soft); }
 .best { color: var(--ink-mid); }
-.best.is-session-best { color: var(--purple); }
-.last.is-personal-best { color: var(--green); }
+
 .stops { color: var(--ink-soft); }
 .tyre { display: flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .tyre-chip {
@@ -412,9 +321,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- canvases ---------- */
 
-.track-map,
-.race-trace { flex: 1; width: 100%; min-height: 0; display: block; }
-.race-trace { cursor: crosshair; }
+.track-map { flex: 1; width: 100%; min-height: 0; display: block; }
 
 /* ---------- clock bar ---------- */
 
@@ -447,7 +354,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   color: var(--ink-soft);
 }
 .panel-bar small { letter-spacing: 0.04em; color: var(--rule-strong); }
-.tabs { display: flex; flex-wrap: wrap; }
+
 .tab {
   background: none;
   border: 0;
@@ -463,7 +370,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .tab:hover { color: var(--ink-mid); background: var(--panel-2); }
 .tab.is-active { color: var(--signal); border-bottom-color: var(--signal); }
 .tab:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
-.tab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 .panel-note {
   padding: 1.2rem 0.9rem;
@@ -476,54 +382,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- tyre model ---------- */
 
-.tyre-model { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
-.tyre-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 1.1rem;
-  padding: 0.45rem 0.7rem 0.1rem;
-  font-size: 0.78rem;
-  color: var(--ink-mid);
-}
-/* The legend is the control: each entry picks the compound the chart shows. */
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  padding: 0.12rem 0.4rem;
-  color: var(--ink-soft);
-  font-family: inherit;
-  font-size: inherit;
-}
-.legend-item:hover { color: var(--ink-mid); background: var(--panel-2); }
-.legend-item.is-active { color: var(--ink); border-color: var(--rule-strong); background: var(--panel-2); }
-.legend-item:not(.is-active) b { color: var(--ink-soft); }
-.legend-item:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
-.legend-item b {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  font-weight: 500;
-}
-.legend-item small { color: var(--ink-soft); font-size: 0.68rem; }
 .swatch {
   width: 9px;
   height: 9px;
   border-radius: 50%;
   display: inline-block;
   flex: none;
-}
-.tyre-canvas { flex: 1; width: 100%; min-height: 120px; display: block; }
-.tyre-note {
-  margin: 0;
-  padding: 0.35rem 0.7rem 0.6rem;
-  font-size: 0.72rem;
-  line-height: 1.55;
-  color: var(--ink-soft);
-  border-top: 1px solid var(--rule);
 }
 
 /* ---------- strategy board ---------- */
@@ -806,8 +670,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* Too narrow for three columns side by side: the panels stack and the page scrolls. */
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
-  .panel-tower, .panel-map, .panel-trace, .panel-stewards, .panel-track { grid-column: 1; grid-row: auto; }
-  .panel-stewards, .panel-track { height: 280px; }
+  .panel-map { grid-column: 1; grid-row: auto; }
+
   body { overflow: auto; }
   .app { height: auto; min-height: 100vh; }
 }
@@ -921,13 +785,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   .sets-head, .sets-row { grid-template-columns: 52px 1.8fr 1fr 0.8fr 28px; gap: 0.3rem; padding-inline: 0.4rem; }
 }
 
-.compound-code {
-  font-style: normal;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.62rem;
-  color: var(--ink-soft);
-  margin-left: 0.3rem;
-}
 .sets-rules a { color: var(--ink-mid); text-decoration-color: var(--rule-strong); }
 .sets-rules a:hover { color: var(--signal); }
 
@@ -968,18 +825,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   `-0:14:48`, eight characters. The column was sized for `L12` and the clock ran
   into the message beside it. Both panels share the width so their rows line up.
 */
-.panel-stewards, .panel-track { --when-width: 3.7rem; }
-.stw-when, .log-when { white-space: nowrap; }
 
-/* An empty panel says so on the same grid as a row would, not against the border. */
-.panel-stewards .empty,
-.panel-track .empty {
-  margin: 0;
-  padding: 0.55rem 0.7rem;
-  font-size: 0.74rem;
-  line-height: 1.35;
-  color: var(--ink-soft);
-}
+.stw-when { white-space: nowrap; }
 
 .stw-when {
   font-family: "JetBrains Mono", monospace;
@@ -1012,24 +859,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .stw-row.is-mid .stw-verdict { color: #f2c53d; }
 
 /* ---------- track log ---------- */
-
-/* The feed's own sentence, one per line, and nothing to click. */
-.log-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; }
-.log-row {
-  display: grid;
-  grid-template-columns: var(--when-width) minmax(0, 1fr);
-  gap: 0.5rem;
-  padding: 0.4rem 0.7rem;
-  border-bottom: 1px solid #1b222a;
-  align-items: baseline;
-}
-.log-when {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.66rem;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-.log-text { font-size: 0.74rem; line-height: 1.35; color: var(--ink-mid); }
 
 /* A driver code in a message, clickable like a tower row. */
 .rc-car {
@@ -1114,14 +943,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* ---------- the replay window's columns ---------- */
 
-/* Left: the session at a glance. */
-
 /* Left: a card per picked driver. */
-
-.drs.is-open { color: var(--green); }
-.drs.is-eligible { color: #f2c53d; }
-.drs.is-off, .drs.is-none { color: var(--ink-soft); }
-/* Throttle and brake: two thick bars standing beside the figures, filling upward. */
 
 .tyre-chip.small { width: 1rem; height: 1rem; font-size: 0.58rem; display: inline-grid; vertical-align: -0.15rem; }
 
@@ -1131,10 +953,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .shortcuts div { display: grid; grid-template-columns: 3.4rem 1fr; gap: 0.5rem; font-size: 0.74rem; }
 .shortcuts dt { font-family: "JetBrains Mono", monospace; font-size: 0.66rem; color: var(--ink-mid); }
 .shortcuts dd { margin: 0; color: var(--ink-soft); }
-
-/* Centre: the map's toggles. */
-
-/* Right: the compact leaderboard. */
 
 /* Bottom: the timeline, coloured by what happened when. */
 .timeline { position: relative; flex: 1; height: 30px; min-width: 8rem; }
@@ -1314,11 +1132,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 .panel-bar .pop-out:hover { color: var(--ink); border-color: var(--signal); }
 .panel-bar .pop-out:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
 
-/* The session strip, under the map: event, lap and clock, then the weather. */
-
-/* The left column: sync at the top, as the first thing to reach for. */
-
-
 /* ================================================================ the redesign: pedal-first pit wall */
 
 /*
@@ -1328,7 +1141,7 @@ button.prediction-row:hover { background: var(--panel-2); }
   driver codes are in the italic display face; every figure is mono.
 */
 .display { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.02em; }
-.num, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .visually-hidden {
   position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -1483,7 +1296,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .lap-label { font-size: 12px; color: var(--ink-soft); }
 .lap-now { font-size: 44px; line-height: 1; }
 .lap-total { font-size: 22px; font-weight: 600; color: var(--ink-faint); }
-.session-clock { font-size: 20px; }
+
 .session-warn { font-size: 12px; color: var(--worse); }
 .session-sources { font-size: 12px; color: var(--ink-faint); cursor: help; }
 .settings-credits { font-size: 12px; color: var(--ink-faint); line-height: 1.5; }
@@ -1505,18 +1318,7 @@ button.prediction-row:hover { background: var(--panel-2); }
   color: var(--ink-soft);
 }
 .pop-out:hover { color: var(--ink); background: #1A1E24; }
-.reset-layout {
-  height: 24px;
-  padding: 0 8px;
-  background: #13161A;
-  border: 1px solid var(--rule-strong);
-  border-radius: 5px;
-  color: var(--ink-soft);
-  font-family: var(--font-text);
-  font-size: 11px;
-  letter-spacing: 0;
-  text-transform: none;
-}
+
 .error { margin: 0; color: var(--red); font-size: 12px; }
 
 /* ---- panels */
@@ -1576,18 +1378,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .toggle.is-on { background: #14223A; border-color: #2D5A96; color: #CFE2FF; }
 .toggle.is-aid.is-on { background: rgba(56, 189, 248, 0.12); border-color: #38BDF8; color: #7DD3FC; }
 .toggle:disabled { opacity: 0.4; cursor: not-allowed; }
-.button-secondary {
-  height: 26px;
-  width: 100%;
-  background: #13161A;
-  border: 1px solid var(--rule-strong);
-  border-radius: 5px;
-  color: var(--ink-mid);
-  font-family: var(--font-text);
-  font-weight: 500;
-  font-size: 11px;
-}
-.button-secondary:hover { border-color: #3A404A; color: var(--ink); }
+
 .icon-button {
   width: 36px;
   height: 36px;
@@ -1600,8 +1391,8 @@ button.prediction-row:hover { background: var(--panel-2); }
 }
 
 .map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 14px 10px; font-size: 12px; color: #D0D0D6; }
-.map-legend span, .legend { display: inline-flex; align-items: center; gap: 6px; }
-.map-legend i, .legend i { display: inline-block; width: 16px; height: 5px; border-radius: 3px; }
+.map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend i { display: inline-block; width: 16px; height: 5px; border-radius: 3px; }
 .is-throttle { background: var(--throttle); }
 .is-brake { background: var(--brake); }
 .is-speed { background: var(--speed); }
@@ -1678,12 +1469,7 @@ button.prediction-row:hover { background: var(--panel-2); }
   line-height: 1.3;
 }
 .rc-when { font-size: 11px; color: var(--ink-soft); }
-/* Team radio under race control (D-014): the same rows, a play button for the dot. */
-.radio-play {
-  width: 22px; height: 22px; padding: 0; border: 1px solid var(--ink-faint); border-radius: 50%;
-  background: transparent; color: var(--ink); font-size: 9px; line-height: 1; cursor: pointer;
-}
-.radio-play:hover, .radio-play:focus-visible { border-color: var(--ink); }
+
 /* The weekend forecast above the prediction (D-015). */
 .forecast { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding: 10px 14px;
             border-bottom: 1px solid #1C1C21; font-size: 12.5px; color: var(--ink-soft); }
@@ -1752,7 +1538,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 .card-gaps > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-gaps .aid { grid-column: 1 / -1; font-weight: 600; color: var(--ink-soft); }
 .card-gaps .aid.is-eligible, .card-gaps .aid.is-open { color: #38BDF8; }
-.driver-card .pedal-trace { margin: 0 0 0 52px; min-height: 64px; }
 
 /* The telemetry strip: the followed drivers' last full laps, channel by channel. */
 .telemetry-strip { display: flex; flex-direction: column; }
@@ -1777,14 +1562,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 .tel-graph svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .tel-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.05); }
 .tel-cursor { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; }
-.pedal-trace { flex: 1 1 auto; min-height: 70px; position: relative; margin: 8px 14px 10px 62px; }
-.pedal-trace svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.pedal-trace.is-empty { margin-left: 14px; display: grid; place-items: center; font-size: 12px; color: var(--ink-faint); }
-.trace-label { position: absolute; left: -52px; font-family: var(--font-mono); font-size: 10px; }
-.trace-label.is-speed { top: 0; color: var(--speed); background: none; }
-.trace-label.is-throttle { top: 52%; color: var(--throttle); background: none; }
-.trace-label.is-brake { bottom: 0; color: #FF7A70; background: none; }
-.trace-span { position: absolute; right: 2px; top: -1px; font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); }
 
 /* ---- the playback bar */
 .clockbar {
@@ -1868,8 +1645,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .pc-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; white-space: nowrap; color: var(--ink-soft); }
 .pc-legend i { width: 14px; height: 2px; }
 .pc-legend b { color: var(--ink); }
-.pc-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 3px; background: #15181D;
-  box-shadow: inset 0 0 0 1px var(--rule-strong); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+
 .pc-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 6px 10px 4px 0; }
 .pc-ruler { position: relative; height: 16px; margin-left: 118px; flex: none; }
 .pc-ruler span { position: absolute; transform: translateX(-50%); font-size: 9.5px; font-weight: 700; color: #C9CED6; }
@@ -1958,8 +1734,6 @@ button.prediction-row:hover { background: var(--panel-2); }
 
 /* ================================================================ the screens */
 
-.screen-caveat { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
-.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; border: 1px solid #62626E; font-family: var(--font-mono); font-size: 11px; color: #E8E8EC; }
 .team-bar.tall { display: inline-block; width: 6px; height: 20px; border-radius: 2px; }
 .tyre-cell { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-mid); white-space: nowrap; }
 .tyre-chip { display: inline-grid; place-items: center; border-radius: 50%; font-weight: 700; }
@@ -1970,7 +1744,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .is-purple { color: var(--purple) !important; }
 .is-green { color: var(--green) !important; }
 .is-yellow { color: var(--worse) !important; }
-.card-label { font-size: 12px; color: var(--ink-soft); }
+
 .card-note { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
 
 /* ---- timing tower */
@@ -1987,12 +1761,9 @@ button.prediction-row:hover { background: var(--panel-2); }
 .tower-table tbody tr.is-out { opacity: 0.5; }
 .tower-table .team { color: var(--ink-mid); font-size: 13.5px; }
 .tower-table .is-overtake { color: var(--overtake-ink); }
-.overtake-cell { color: var(--overtake); font-weight: 600; font-size: 12.5px; }
+
 .row-pick { background: none; border: 0; padding: 0; color: var(--ink); font-size: 22px; }
 .density-compact .tower-table th, .density-compact .tower-table td { height: 30px; }
-.tower-legend { border-top: 1px solid var(--rule); padding: 12px 16px; }
-.tower-legend i { border-radius: 3px; }
-.tower-legend i.is-ring { width: 12px; height: 12px; border-radius: 3px; box-shadow: none; border: 2px solid var(--overtake); box-sizing: border-box; }
 
 /* ---- race trace */
 .trace-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; }
@@ -2001,7 +1772,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .trace-canvas { position: relative; }
 .trace-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 .trace-end { position: absolute; transform: translate(6px, -50%); font-size: 15px; pointer-events: none; text-shadow: 0 0 4px #0A0A0C; }
-.trace-note { position: absolute; top: 6px; margin-left: 8px; font-size: 10.5px; color: var(--ink-faint); }
+
 .trace-x { position: relative; font-size: 10.5px; color: var(--ink-faint); }
 .trace-x span { position: absolute; top: 4px; transform: translateX(-50%); }
 .trace-driver-list { display: flex; flex-direction: column; max-height: 560px; overflow-y: auto; padding: 4px 0; }
@@ -2023,7 +1794,7 @@ button.prediction-row:hover { background: var(--panel-2); }
 .tyres-kpi { flex-direction: row !important; align-items: center; gap: 12px !important; }
 .tyres-kpi > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tyres-chart, .tyres-now { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
-.tyres-plot-wrap { flex: 1 1 auto; min-height: 0; display: flex; padding: 14px 18px 30px 46px; }
+
 .tyres-plot { position: relative; flex: 1 1 auto; }
 .tyres-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .tyres-gl { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid #1A1E25; }
@@ -2150,7 +1921,6 @@ button.prediction-row:hover { background: var(--panel-2); }
   .strat-stints { height: 560px; }
 }
 
-/* ---- prediction */
 /* ---- Race prediction as racecraft-ui.html draws it: four tiles over the chances table beside a 360 px inspector */
 .prediction-body { overflow: hidden; }
 .prediction { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
@@ -2209,12 +1979,10 @@ button.prediction-row:hover { background: var(--panel-2); }
 .session-bar .session-meta { font-size: 12px; color: var(--ink-soft); }
 
 /* Bars that change value ease to it rather than jump; the trace and the map move every frame instead. */
-.cursor-bars .bar i,
 .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: width 0.25s ease, background-color 0.15s ease, color 0.15s ease; }
-.trace-cursor { will-change: left; }
+
 .track-map { will-change: contents; }
 @media (prefers-reduced-motion: reduce) {
-  .cursor-bars .bar i,
   .chance i, .rail-item, .leaderboard-row, .toggle, .segmented button { transition: none; }
 }
 
@@ -2364,7 +2132,7 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .crews-grid .standings-table.is-trips { --st-cols: 2rem 4px minmax(0, 1fr) 3.6rem 3.8rem; }
 .crews-grid .is-trips .trip-note { grid-column: 3 / -1; font-size: 10px; color: var(--ink-faint); }
 .crews-grid .is-trips .trip-note:empty { display: none; }
-.crews-notes { flex: none; margin: 0 !important; }
+
 @media (max-width: 1099px) {
   .crews-body { overflow: auto; }
   .crews-body > .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2519,14 +2287,6 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
   .review-grid { grid-template-columns: minmax(0, 1fr); }
   .review-chart { height: 600px; }
 }
-
-/* ---- the tower's field spread, beside the best sectors */
-.tower-lower { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 6px; align-items: start; }
-@media (max-width: 1099px) { .tower-lower { grid-template-columns: minmax(0, 1fr); } }
-.spread-plot { width: 100%; height: auto; display: block; padding: 4px 0; }
-.spread-axis { stroke: var(--rule-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.spread-tick { font: 10px var(--font-mono); fill: var(--ink-faint); }
-.spread-code { font: 700 10.5px var(--font-mono); fill: var(--ink-mid); }
 
 /* ---- settings: the models and about */
 .model-list { list-style: none; margin: 0; padding: 0; }
@@ -2714,7 +2474,7 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .starts-body { overflow: hidden; }
 .starts-grid { flex: 1 1 auto !important; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .starts-arrows, .starts-season { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.starts-notes { flex: none; margin: 0 !important; }
+
 /* Each row: the car, then a track of places with P1 at the left; rows share the panel's height. */
 .arrows-head, .arrow-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; padding: 0 44px 0 12px; }
 .arrows-head { flex: none; height: 26px; font-size: 9px; color: var(--ink-faint); border-bottom: 1px solid var(--rule); }
@@ -2774,7 +2534,7 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .quali-side { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
 .quali-chart { flex: 1.4 1 0; }
 .quali-sources { flex: 1 1 0; }
-.quali-notes { flex: none; margin: 0 !important; }
+
 .quali-vs { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
 .quali-vs b { color: var(--ink); }
 .quali-table { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }

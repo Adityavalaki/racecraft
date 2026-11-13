@@ -25,12 +25,10 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from racecraft import config
 from racecraft.model import circuit as circuit_model
-from racecraft.model.circuit import passes_per_race
 from racecraft.model import pace as pace_model
 from racecraft.store.db import connect
 
@@ -79,7 +77,7 @@ def cmd_pace(args) -> int:
               "  ".join(f"{c:>16}" for c in cells))
 
         if args.season:
-            print(f"\n  per race (single races are noisy; the pooled figure above is the one to use):")
+            print("\n  per race (single races are noisy; the pooled figure above is the one to use):")
             print(f"  {'race':<28} {'laps':>5} {'fuel':>7}   " +
                   "  ".join(f"{c:>8}" for c in pace_model.DRY_COMPOUNDS))
             for key, laps in clean.items():
@@ -166,8 +164,8 @@ def cmd_strategy(args) -> int:
                              .groupby("session_key")["lap_number"].max().median())
     print(f"{name}, {total} laps — {args.season} tyre behaviour, pit loss {loss.seconds:.1f}s"
           + (f", degradation scaled x{args.scale}" if args.scale != 1.0 else ""))
-    print(f"  degradation s/lap: " + ", ".join(f"{c.lower()} {v:.4f}" for c, v in degradation.items()))
-    print(f"  pace at equal age: " + ", ".join(f"{c.lower()} {v:+.2f}s" for c, v in offsets.items()))
+    print("  degradation s/lap: " + ", ".join(f"{c.lower()} {v:.4f}" for c, v in degradation.items()))
+    print("  pace at equal age: " + ", ".join(f"{c.lower()} {v:+.2f}s" for c, v in offsets.items()))
     print()
 
     if args.safety_car:

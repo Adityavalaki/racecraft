@@ -244,7 +244,6 @@ def build_laps(laps: pd.DataFrame, key: str) -> pd.DataFrame:
 
 
 MAX_GEAR = 8
-THROTTLE_MISSING = 104.0
 
 
 def clean_gear(gear: pd.Series) -> pd.Series:

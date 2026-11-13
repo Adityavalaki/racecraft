@@ -1,6 +1,5 @@
 """What a weekend says about each driver before the race: practice long runs and qualifying."""
 
-import numpy as np
 import pandas as pd
 import pytest
 

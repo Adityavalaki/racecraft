@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Stewards, filterLabel, verdictLabel } from "./Stewards";
+import { Stewards, verdictLabel } from "./Stewards";
 import type { RaceControlEvent } from "../api";
 
 const CODES = { 44: "HAM", 16: "LEC", 27: "HUL", 55: "SAI" };
@@ -157,21 +157,6 @@ describe("Stewards", () => {
     const { container } = show({ events: [verdict()] });
     const buttons = [...container.querySelectorAll("button")];
     expect(buttons.every((b) => b.className.includes("rc-car"))).toBe(true);
-  });
-});
-
-describe("filterLabel", () => {
-  it("is absent when nothing is selected", () => {
-    expect(filterLabel([], CODES)).toBeNull();
-  });
-
-  it("names the selected cars", () => {
-    expect(filterLabel([44], CODES)).toBe("HAM only");
-    expect(filterLabel([44, 16], CODES)).toBe("HAM · LEC only");
-  });
-
-  it("falls back to the number for a car with no code", () => {
-    expect(filterLabel([99], CODES)).toBe("99 only");
   });
 });
 

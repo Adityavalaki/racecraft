@@ -14,7 +14,6 @@ Three of those states matter and none of them is an error:
 * a session with no completed laps, because the lights have not gone out.
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient

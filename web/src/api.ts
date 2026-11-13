@@ -1083,7 +1083,6 @@ export const api = {
         (topic === undefined ? "" : `&topic=${topic}`),
       signal,
     ),
-  liveStatus: (signal?: AbortSignal) => get<LiveStatus>("/api/live", signal),
   /** Slow the first time for a race and grid slot — a few thousand races — then cached. */
   places: (key: string, grid: number, tyres: "car" | "new" = "car", signal?: AbortSignal) =>
     get<PlacesAnswer>(`/api/sessions/${key}/places?grid=${grid}&tyres=${tyres}`, signal),

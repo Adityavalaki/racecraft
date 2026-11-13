@@ -446,10 +446,6 @@ def race_keys(con, years: list[int] | None = None, kind: str = "race") -> list[s
     return df["session_key"].tolist()
 
 
-def sprint_keys(con, years: list[int] | None = None) -> list[str]:
-    return race_keys(con, years, kind="sprint")
-
-
 def _evidence_for(kind: str):
     return weekend.sprint_evidence if kind == "sprint" else weekend.evidence
 

@@ -7,7 +7,6 @@ turned on one decision — which laps to count — and got it wrong by a factor 
 two the obvious way. These tests pin that decision.
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 

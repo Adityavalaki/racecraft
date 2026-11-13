@@ -44,7 +44,6 @@ log = logging.getLogger(__name__)
 # Bin edges, matching the lookup in race.py: a gap under the first edge takes the
 # first penalty, and so on. Over the last edge the car is in clear air.
 EDGES = (0.5, 1.0, 1.5, 2.5, 4.0)
-CLEAR_AIR_S = 4.0
 # The closest bin has the fewest laps and the largest effect, so it decides
 # whether a season has enough to measure at all.
 MIN_CLOSE_LAPS = 100

@@ -19,7 +19,6 @@ from pathlib import Path
 import pandas as pd
 
 TABLE = Path(__file__).resolve().parent / "pirelli_compounds.csv"
-LABELS = ("HARD", "MEDIUM", "SOFT")
 
 
 @lru_cache(maxsize=1)
