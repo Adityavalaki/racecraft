@@ -2661,20 +2661,22 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 /* The field on a ring (D-033): centred in what is left of the column, as large as fits. */
 .ring-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px; }
 .ring { width: 100%; height: 100%; max-height: 100%; overflow: visible; }
-/* Turns about the ring's centre (the SVG origin); 250 ms, the figures' tick, so a dot glides along the circle. */
-.ring-turn { transform-box: view-box; transform-origin: 0 0; transition: transform 250ms linear; }
+/* No transitions (BUG-019): the clock already moves the ring every frame; an ease restarted each frame made it trail. */
 .ring-track { fill: none; stroke: #1E232A; stroke-width: 14; }
-.ring-arc { fill: none; stroke: var(--signal, #E10600); stroke-opacity: 0.22; stroke-width: 14; transition: stroke-dasharray 250ms linear; }
-.ring-line { stroke: var(--ink); stroke-width: 2; }
-.ring-line-label { font: 600 8px var(--font-text); fill: var(--ink-faint); text-anchor: middle; letter-spacing: 0.08em; }
-.ring-dot { stroke: #07080A; stroke-width: 1.5; }
-.ring-dot.is-followed { stroke: #F2F3F5; stroke-width: 2; }
-.ring-code { font: 700 9.5px var(--font-mono); fill: #AEB4BD; text-anchor: middle; dominant-baseline: middle; }
+.ring-arc { fill: none; stroke: var(--signal, #E10600); stroke-opacity: 0.22; stroke-width: 14; }
+.ring-line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 2; }
+/* A tick per car: team colour on a dark edge, so two cars a tenth apart are two ticks, not one bar. */
+.ring-tick-edge { stroke: #07080A; stroke-width: 5; stroke-linecap: round; }
+.ring-tick { stroke-width: 2.6; stroke-linecap: round; }
+.ring-car.is-followed .ring-tick-edge { stroke: #F2F3F5; stroke-width: 6.5; }
+.ring-leader { stroke-width: 1; stroke-opacity: 0.6; }
+/* A halo of the panel's colour, so a line passing behind a code never cuts through it. */
+.ring-code { font: 700 9.5px var(--font-mono); fill: #AEB4BD; text-anchor: middle; dominant-baseline: middle;
+             paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; }
 .ring-code.is-followed { fill: #F2F3F5; }
 .ring-centre-cap { font: 600 8.5px var(--font-text); fill: var(--ink-faint); text-anchor: middle; letter-spacing: 0.08em; }
 .ring-centre-value { font: 700 22px var(--font-mono); fill: var(--ink); text-anchor: middle; }
 .ring-centre-note { font: 500 9px var(--font-text); fill: var(--ink-faint); text-anchor: middle; }
-@media (prefers-reduced-motion: reduce) { .ring-turn, .ring-arc { transition: none; } }
 
 /* ---- Race trace as racecraft-ui.html draws it: the chart fills the window beside a 272 px driver list */
 .trace-layout { grid-template-columns: minmax(0, 1fr) 272px !important; align-items: stretch !important; flex: 1 1 auto; min-height: 0; overflow: hidden !important; }

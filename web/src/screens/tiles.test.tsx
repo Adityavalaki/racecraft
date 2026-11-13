@@ -8,7 +8,7 @@ import { reviewTiles } from "./RaceReviewScreen";
 import { standingsTiles } from "./StandingsScreen";
 import { startsTiles } from "./StartsScreen";
 import { stewardsTiles } from "./StewardsScreen";
-import { ringCars, spread, towerTiles } from "./TowerScreen";
+import { ringCars, ringLabels, spread, towerTiles } from "./TowerScreen";
 
 const shown = (tiles: (Kpi | null | false | undefined)[]) => tiles.filter((t): t is Kpi => Boolean(t && t.value));
 
@@ -115,5 +115,18 @@ describe("field ring", () => {
   it("keeps turning forward past the last crossing, on the leader's last lap time", () => {
     const { cars } = ringCars([d(1, 1, null)], 1120, crossings, 0);
     expect(cars[0]!.angle).toBe(10.5 * 360);
+  });
+
+  it("names a train on three rings of labels, then leaves ticks unnamed, but always names the followed", () => {
+    // Five cars within two degrees: three codes fit (outside, further out, inside), two do not.
+    const car = (n: number, gap: number) => ({ driver: d(n, n, gap), gap, angle: 90 - gap });
+    const train = [car(1, 0), car(2, 0.5), car(3, 1), car(4, 1.5), car(5, 2)];
+    expect([...ringLabels(train, []).entries()]).toEqual([[1, 0], [2, 1], [3, 2], [4, null], [5, null]]);
+    // Following car 5 puts it first: it takes the near ring, and the leader moves out.
+    expect(ringLabels(train, [5]).get(5)).toBe(0);
+    expect(ringLabels(train, [5]).get(1)).toBe(1);
+    // Spread round the ring, every car gets the near ring.
+    const spread = [car(1, 0), car(2, 90), car(3, 180)];
+    expect([...ringLabels(spread, []).values()]).toEqual([0, 0, 0]);
   });
 });
