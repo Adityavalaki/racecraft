@@ -110,6 +110,11 @@ export default function App() {
   }, [sessionKey, sessionReady]);
 
   const clock = useClock(info?.t_start ?? 0, info?.t_end ?? 1);
+  // The clock's time for views that animate themselves (D-036): a ref read through a stable function, so
+  // handing it to the screens re-renders nothing. This component renders every frame, so it is always current.
+  const liveT = useRef(clock.t);
+  liveT.current = clock.t;
+  const now = useCallback(() => liveT.current, []);
   const positions = usePositions(sessionKey, clock.t, Boolean(info?.has_position_data), clock.speed);
   const state = useStateAt(sessionKey, info, clock.t);
   // Race control is shown on the replay and the stewards' screen only; elsewhere it is not asked for.
@@ -231,10 +236,10 @@ export default function App() {
   // the full timing tower is not redrawn sixty times a second.
   const coarseT = state?.t ?? info?.t_start ?? 0;
   const screenContext = useMemo(() => (info && sessionKey ? {
-    session: sessionKey, t: coarseT, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
+    session: sessionKey, t: coarseT, now, info, state, laps, crossings, selected, onSelect: toggleDriver, onSelectLap: seekToLap,
     insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes, picker: null,
     onPopOut: undefined, extra: liveFlag,
-  } : null), [sessionKey, coarseT, info, state, laps, crossings, selected, toggleDriver, seekToLap, insight, insightError,
+  } : null), [sessionKey, coarseT, now, info, state, laps, crossings, selected, toggleDriver, seekToLap, insight, insightError,
               actualStops, sessionBest, stewards, trackLog, driverCodes, liveFlag]);
 
   const body = () => {

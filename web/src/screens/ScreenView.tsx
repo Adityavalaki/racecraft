@@ -19,7 +19,13 @@ import { TyresScreen } from "./TyresScreen";
 /** Everything a screen may read: the session, the clock's moment, and what to do on a click. */
 export interface ScreenContext {
   session: string;
+  /** The timing's time: moves when the running order is fetched (about every 0.4 s), so screens redraw that often. */
   t: number;
+  /**
+   * The replay clock this frame, read without re-rendering (a ref behind a stable function), for a view that
+   * animates itself between timing updates: the field ring (D-036). Absent in tests; fall back to `t`.
+   */
+  now?: () => number;
   info: SessionInfo;
   state: SessionState | null;
   laps: LapSeries[];

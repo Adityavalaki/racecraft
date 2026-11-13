@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { formatClock } from "./api";
 import type { FeatureId, Screen } from "./features";
 import { NEEDS_INSIGHT, ScreenView } from "./screens/ScreenView";
@@ -26,6 +26,10 @@ export function FeatureWindow({ feature, initialSession }: { feature: Screen & {
   const { info, laps, crossings, error, waiting, insight, insightError } =
     useSession(session, NEEDS_INSIGHT.has(feature.id));
   const t = follow.state?.t ?? info?.t_start ?? 0;
+  // As in the main window (D-036): the followed clock for the field ring, read without re-rendering the screen.
+  const liveT = useRef(t);
+  liveT.current = t;
+  const now = useCallback(() => liveT.current, []);
   const state = useStateAt(session, info, t);
   // Race control is polled only by the screen that shows it.
   const { stewards, trackLog } = useMessagesAt(session, info, t, feature.id === "stewards");
@@ -72,10 +76,10 @@ export function FeatureWindow({ feature, initialSession }: { feature: Screen & {
   // As in the main window: the screen moves with the timing, not with every frame.
   const coarseT = state?.t ?? info?.t_start ?? 0;
   const ctx = useMemo(() => (info ? {
-    session, t: coarseT, info, state, laps, crossings, selected, onSelect: follow.select, onSelectLap: seekToLap,
+    session, t: coarseT, now, info, state, laps, crossings, selected, onSelect: follow.select, onSelectLap: seekToLap,
     insight, insightError, actualStops, sessionBest, stewards, trackLog, driverCodes,
     picker: sessionName, extra: followChip,
-  } : null), [session, coarseT, info, state, laps, crossings, selected, follow.select, seekToLap, insight, insightError,
+  } : null), [session, coarseT, now, info, state, laps, crossings, selected, follow.select, seekToLap, insight, insightError,
               actualStops, sessionBest, stewards, trackLog, driverCodes, sessionName, followChip]);
 
   return (

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { COMPOUND_COLORS, formatLapTime, formatSector, type DriverTiming, type SectorTime } from "../api";
 import { KpiRow } from "../shell/KpiRow";
 import { LapCounter } from "../shell/ScreenHeader";
@@ -155,7 +155,7 @@ export function TowerScreen({ ctx, header }: { ctx: ScreenContext; header: (chil
         <div className="timing-side">
           <KpiRow tiles={towerTiles(drivers, ctx.state?.ideal_lap_s ?? null)} />
           <SectorBests ctx={ctx} />
-          <FieldRing drivers={drivers} selected={ctx.selected} t={ctx.t} crossings={ctx.crossings} />
+          <FieldRing drivers={drivers} selected={ctx.selected} t={ctx.t} now={ctx.now} crossings={ctx.crossings} />
         </div>
         </div>
       </main>
@@ -250,9 +250,8 @@ export function ringCars(drivers: DriverTiming[], t: number, crossings: { laps: 
   return { cars: cars.map((c) => ({ ...c, angle: lead - (c.gap / lapSeconds) * 360 })), lapSeconds };
 }
 
+/** The ring's radius in its -150..150 space. styles.css repeats the geometry (.ring-tick spans 86..106, the leaders) in px of that space. */
 const RING_R = 96;
-/** Half the ring's band: a tick spans the band, a few units proud of it each side. */
-const TICK_HALF = 10;
 /** Where codes sit, the order they are tried in: just outside the ring, further out, inside. */
 export const LABEL_RADII = [118, 141, 70] as const;
 /** A code's box in view units (three mono capitals at 9.5 are 17 wide, plus a margin): two boxes closer than this overprint. */
@@ -292,26 +291,132 @@ export function ringLabels(cars: RingCar[], selected: number[]): Map<number, num
   return out;
 }
 
+/** How fast a changed gap glides to its new place: about this many ms to cover two thirds of the way. */
+const GAP_EASE_MS = 120;
+
 /**
  * The field on a ring (D-033, ticks D-034): one turn is one lap at the
  * leader's pace, the line at the top. The cars go round with the replay, each
  * its gap behind the leader, so a train is a comb of ticks and a gap is open
  * track; the arc behind the leader runs to the last car on the lead lap. Each
- * car is a tick across the ring, at right angles to it, and a named car's tick
- * runs on to its code. Positions follow the clock every frame with no CSS
- * easing: an ease restarted each frame left every car trailing (BUG-019).
- * Lapped cars are counted, not drawn: the timing gives them no gap.
+ * car is a tick across the ring, at right angles to it, its code on the first
+ * label ring with room.
+ *
+ * Motion (D-036): React draws which cars there are, at the timing's pace
+ * (about every 0.4 s). A requestAnimationFrame loop places them every frame
+ * from the replay clock (`now`), so the leader moves smoothly round, and a gap
+ * that changes at a crossing of the line glides rather than jumps. The loop
+ * writes CSS transforms straight onto the moving elements (HTML over an SVG of
+ * the parts that stay still), which the compositor moves without layout or
+ * repaint: moving SVG elements cost a layout and paint of the ring every
+ * frame. Re-rendering the tower sixty times a second is what the coarse time
+ * exists to avoid. Lapped cars are counted, not drawn: the timing gives them
+ * no gap.
  */
-function FieldRing({ drivers, selected, t, crossings }: {
-  drivers: DriverTiming[]; selected: number[]; t: number; crossings: { laps: number[]; t: number[] } | null;
+function FieldRing({ drivers, selected, t, now, crossings }: {
+  drivers: DriverTiming[]; selected: number[]; t: number; now?: () => number; crossings: { laps: number[]; t: number[] } | null;
 }) {
+  const latest = useRef({ drivers, selected, crossings, t, now });
+  latest.current = { drivers, selected, crossings, t, now };
+  // The loop's memory: each car's gap as drawn, and what was drawn last, to skip frames where nothing moved.
+  const loop = useRef({ eased: new Map<number, number>(), time: Number.NaN, inputs: null as unknown, settled: false, stamp: 0 });
+
+  // The elements the loop moves, found once per render rather than searched for every frame, and the last
+  // value written to each: writing an unchanged value still costs the browser a restyle.
+  const wrap = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const arcLayer = useRef<SVGSVGElement>(null);
+  const arcRef = useRef<SVGCircleElement>(null);
+  const parts = useRef(new Map<string, HTMLElement>());
+  const written = useRef(new WeakMap<Element, Record<string, string>>());
+  const write = (el: Element | null | undefined, key: string, value: string, apply: () => void) => {
+    if (!el) return;
+    const seen = written.current.get(el) ?? {};
+    if (seen[key] === value) return;
+    seen[key] = value;
+    written.current.set(el, seen);
+    apply();
+  };
+  const turn = (el: HTMLElement | SVGElement | null | undefined, value: string) => write(el, "transform", value, () => { el!.style.transform = value; });
+  const attr = (el: Element | null | undefined, name: string, value: string) => write(el, name, value, () => el!.setAttribute(name, value));
+
+  const draw = (stamp: number) => {
+    const inputs = latest.current;
+    const state = loop.current;
+    const time = inputs.now ? inputs.now() : inputs.t;
+    if (!stage.current || (time === state.time && inputs === state.inputs && state.settled)) return;
+    const { cars, lapSeconds } = ringCars(inputs.drivers, time, inputs.crossings,
+      inputs.crossings?.t[0] != null ? Math.min(time, inputs.crossings.t[0]) : time);
+    if (!lapSeconds || !cars.length) return;
+    // Called from a render (stamp 0) nothing eases: new cars appear in place, the rest keep their drawn gap.
+    const k = state.stamp && stamp ? 1 - Math.exp(-(stamp - state.stamp) / GAP_EASE_MS) : 0;
+    let settled = true;
+    const lead = cars.find((c) => c.gap === 0)?.angle ?? cars[0]!.angle;
+    const placed = cars.map((c) => {
+      const shown = state.eased.get(c.driver.driver_number);
+      let gap = shown == null ? c.gap : shown + (c.gap - shown) * k;
+      if (Math.abs(c.gap - gap) < 0.001) gap = c.gap; else settled = false;
+      state.eased.set(c.driver.driver_number, gap);
+      return { ...c, gap, angle: lead - (gap / lapSeconds) * 360 };
+    });
+    const labels = ringLabels(placed, inputs.selected);
+    for (const c of placed) {
+      const n = c.driver.driver_number;
+      const level = labels.get(n) ?? null;
+      const a = c.angle.toFixed(2);
+      // Transforms only: the compositor moves these without laying out or repainting the page (D-036).
+      turn(parts.current.get(`tick${n}`), `rotate(${a}deg)`);
+      const leader = parts.current.get(`leader${n}`);
+      attr(leader, "data-level", String(level));
+      if (level === 1 || level === 2) turn(leader, `rotate(${a}deg)`);
+      const code = parts.current.get(`code${n}`);
+      attr(code, "data-level", String(level));
+      if (level != null) {
+        // Out along the car's angle to its label ring, then turned back upright and centred on that point.
+        turn(code, `rotate(${a}deg) translateY(${-LABEL_RADII[level]!}px) rotate(${-c.angle}deg) translate(-50%, -50%)`);
+      }
+    }
+    const last = placed[placed.length - 1]!;
+    const circumference = 2 * Math.PI * RING_R;
+    turn(arcLayer.current, `rotate(${(last.angle - 90).toFixed(2)}deg)`);
+    attr(arcRef.current, "stroke-dasharray", `${((Math.min(lead - last.angle, 359.9) / 360) * circumference).toFixed(1)} ${circumference}`);
+    Object.assign(state, { time, inputs, settled, stamp: stamp || state.stamp });
+  };
+
+  // Every render collects the elements and places the cars before the paint (new cars, a seek);
+  // the loop then keeps them moving.
+  useLayoutEffect(() => {
+    parts.current.clear();
+    stage.current?.querySelectorAll<HTMLElement>("[data-part]").forEach((el) => parts.current.set(el.dataset.part!, el));
+    draw(0);
+  });
+  // The ring is drawn in a fixed 300 px space and scaled once to fit, on resize: sizes in container units
+  // made the browser lay the ring out again on every frame's transform (D-036).
+  useLayoutEffect(() => {
+    const box = wrap.current;
+    if (!box || typeof ResizeObserver !== "function") return;
+    const fit = () => {
+      // 316: the 300 px space plus room for the outer codes (radius 141, half a code wide) and a few px of margin.
+      if (stage.current) stage.current.style.transform = `scale(${Math.min(box.clientWidth, box.clientHeight) / 316})`;
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(box);
+    return () => watch.disconnect();
+  });
+  useLayoutEffect(() => {
+    if (typeof requestAnimationFrame !== "function") return;
+    let frame = 0;
+    const step = (stamp: number) => { draw(stamp); frame = requestAnimationFrame(step); };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+    // draw reads everything through refs, so the loop starts once.
+  }, []);
+
+  // The figures and who is on the ring move at the timing's pace.
   const { cars, lapSeconds } = ringCars(drivers, t, crossings, crossings?.t[0] != null ? Math.min(t, crossings.t[0]) : t);
   const lapped = drivers.filter((d) => onTrack(d) && d.laps_down > 0).length;
   const last = cars[cars.length - 1];
-  const leadAngle = cars[0]?.angle ?? 0;
-  const labels = ringLabels(cars, selected);
-  const circumference = 2 * Math.PI * RING_R;
-  const arc = last && lapSeconds ? Math.min(leadAngle - last.angle, 359.9) : 0;
   return (
     <section className="panel field-spread" aria-label="Field spread">
       <div className="panel-bar">
@@ -319,54 +424,42 @@ function FieldRing({ drivers, selected, t, crossings }: {
         <span className="panel-meta">one turn = one lap at the leader's pace · dashed: the line{lapped ? ` · ${lapped} lapped` : ""}</span>
       </div>
       {cars.length === 0 || !lapSeconds ? <p className="panel-note">No gaps yet.</p> : (
-        <div className="ring-wrap">
-          <svg viewBox="-150 -150 300 300" className="ring" role="img"
+        <div ref={wrap} className="ring-wrap">
+          {/* The ring's -150..150 space as 300 px, centred and scaled to fit (above); 1 px is one unit. */}
+          <div ref={stage} className="ring-stage" role="img"
                aria-label={`The field on one lap: ${cars.map((c) => `${c.driver.abbreviation} ${c.gap === 0 ? "leading" : `+${c.gap.toFixed(1)} s`}`).join(", ")}`}>
-            <circle r={RING_R} className="ring-track" />
-            {/* The arc from the last car on the lead lap round to the leader: how spread the field is. */}
-            <circle r={RING_R} className="ring-arc" transform={`rotate(${last ? last.angle - 90 : 0})`}
-                    strokeDasharray={`${(arc / 360) * circumference} ${circumference}`} />
-            {/* The line: a white dashed mark across the top of the ring, named in the panel bar (a word here would sit on the codes). */}
-            <line x1="0" x2="0" y1={-RING_R - TICK_HALF - 4} y2={-RING_R + TICK_HALF + 4} className="ring-line" />
-
-            {/* Three passes, so nothing of one car covers another's name: thin leader lines out to
-                the codes, then the bold ticks across the band (back to front, the leader on top),
-                then the codes, each on a halo of the panel's colour. */}
-            {cars.map((c) => {
-              const level = labels.get(c.driver.driver_number) ?? null;
-              if (level == null || level === 0) return null;   // the near ring sits against the tick
-              const r = LABEL_RADII[level]!;
-              const a = polar(r < RING_R ? RING_R - TICK_HALF : RING_R + TICK_HALF, c.angle);
-              const b = polar(r < RING_R ? r + 7 : r - 7, c.angle);
-              return <line key={c.driver.driver_number} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="ring-leader"
-                           stroke={`#${c.driver.team_color ?? "8E959F"}`} />;
-            })}
-            {[...cars].reverse().map((c) => {
-              const a = polar(RING_R - TICK_HALF, c.angle);
-              const b = polar(RING_R + TICK_HALF, c.angle);
-              return (
-                <g key={c.driver.driver_number} className={selected.includes(c.driver.driver_number) ? "ring-car is-followed" : "ring-car"}>
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="ring-tick-edge" />
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="ring-tick" stroke={`#${c.driver.team_color ?? "8E959F"}`} />
-                </g>
-              );
-            })}
-            {cars.map((c) => {
-              const level = labels.get(c.driver.driver_number) ?? null;
-              if (level == null) return null;
-              const at = polar(LABEL_RADII[level]!, c.angle);
-              return (
-                <text key={c.driver.driver_number} x={at.x} y={at.y}
-                      className={selected.includes(c.driver.driver_number) ? "ring-code is-followed" : "ring-code"}>
-                  {c.driver.abbreviation}
-                </text>
-              );
-            })}
-            <text y="-14" className="ring-centre-cap">LEADER TO LAST</text>
-            <text y="12" className="ring-centre-value">{last && last.gap > 0 ? `+${last.gap.toFixed(1)} s` : "—"}</text>
-            <text y="30" className="ring-centre-note">{cars.length} on the lead lap</text>
-            <text y="43" className="ring-centre-note">lap {lapSeconds.toFixed(1)} s</text>
-          </svg>
+            <svg viewBox="-150 -150 300 300" className="ring" aria-hidden="true">
+              <circle r={RING_R} className="ring-track" />
+              <text y="-14" className="ring-centre-cap">LEADER TO LAST</text>
+              <text y="12" className="ring-centre-value">{last && last.gap > 0 ? `+${last.gap.toFixed(1)} s` : "—"}</text>
+              <text y="30" className="ring-centre-note">{cars.length} on the lead lap</text>
+              <text y="43" className="ring-centre-note">lap {lapSeconds.toFixed(1)} s</text>
+            </svg>
+            {/* The arc from the last car on the lead lap round to the leader, on a layer of its own that turns. */}
+            <svg ref={arcLayer} viewBox="-150 -150 300 300" className="ring ring-arc-layer" aria-hidden="true">
+              <circle ref={arcRef} r={RING_R} className="ring-arc" />
+            </svg>
+            {/* The line: a dashed mark across the top of the ring, named in the panel bar (a word here would sit on the codes). */}
+            <i className="ring-mark" aria-hidden="true" />
+            {/* Three layers, so nothing of one car covers another's name: thin leader lines out to the codes,
+                the bold ticks across the band (back to front, the leader on top), then the codes on a halo.
+                Placed by the loop above. */}
+            {cars.map((c) => (
+              <i key={c.driver.driver_number} data-part={`leader${c.driver.driver_number}`} className="ring-leader" aria-hidden="true"
+                 style={{ background: `#${c.driver.team_color ?? "8E959F"}` }} />
+            ))}
+            {[...cars].reverse().map((c) => (
+              <i key={c.driver.driver_number} data-part={`tick${c.driver.driver_number}`} aria-hidden="true"
+                 className={selected.includes(c.driver.driver_number) ? "ring-tick is-followed" : "ring-tick"}
+                 style={{ background: `#${c.driver.team_color ?? "8E959F"}` }} />
+            ))}
+            {cars.map((c) => (
+              <b key={c.driver.driver_number} data-part={`code${c.driver.driver_number}`} aria-hidden="true"
+                 className={selected.includes(c.driver.driver_number) ? "ring-code is-followed" : "ring-code"}>
+                {c.driver.abbreviation}
+              </b>
+            ))}
+          </div>
         </div>
       )}
     </section>

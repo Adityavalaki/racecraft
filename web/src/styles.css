@@ -2659,21 +2659,30 @@ button.standings-row:hover, .standings-row:not(.is-head):hover { background: #13
 .sb-row.is-ideal { border-bottom: 0; }
 .field-spread { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; }
 /* The field on a ring (D-033): centred in what is left of the column, as large as fits. */
-.ring-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px; }
-.ring { width: 100%; height: 100%; max-height: 100%; overflow: visible; }
-/* No transitions (BUG-019): the clock already moves the ring every frame; an ease restarted each frame made it trail. */
+.ring-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: clip; }
+/* The ring's -150..150 space as a fixed 300 px square, centred; TowerScreen scales it to fit on resize.
+   Fixed px rather than container units, so turning a part each frame never makes the browser lay the ring out (D-036). */
+.ring-stage { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; transform-origin: 50% 50%; }
+.ring { position: absolute; inset: 0; width: 300px; height: 300px; overflow: visible; }
+.ring-arc-layer { transform-origin: 50% 50%; will-change: transform; }
 .ring-track { fill: none; stroke: #1E232A; stroke-width: 14; }
 .ring-arc { fill: none; stroke: var(--signal, #E10600); stroke-opacity: 0.22; stroke-width: 14; }
-.ring-line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 2; }
-/* A tick per car: team colour on a dark edge, so two cars a tenth apart are two ticks, not one bar. */
-.ring-tick-edge { stroke: #07080A; stroke-width: 5; stroke-linecap: round; }
-.ring-tick { stroke-width: 2.6; stroke-linecap: round; }
-.ring-car.is-followed .ring-tick-edge { stroke: #F2F3F5; stroke-width: 6.5; }
-.ring-leader { stroke-width: 1; stroke-opacity: 0.6; }
+/* Every moving part hangs from the ring's centre and is only ever turned or moved by a transform. */
+.ring-mark, .ring-leader, .ring-tick, .ring-code { position: absolute; left: 150px; top: 150px; }
+.ring-leader, .ring-tick, .ring-code { will-change: transform; }
+.ring-mark { width: 0; height: 28px; margin-top: -110px; border-left: 1.5px dashed var(--ink); }
+/* A tick across the band (radius 86 to 106), team colour on a dark edge so two cars a tenth apart stay two ticks. */
+.ring-tick { width: 2.6px; height: 20px; margin: -106px 0 0 -1.3px; transform-origin: 1.3px 106px; border-radius: 1.3px; box-shadow: 0 0 0 1.2px #07080A; }
+.ring-tick.is-followed { box-shadow: 0 0 0 2px #F2F3F5; }
+/* A thin line from the band out to a code on the far ring (to radius 134) or in to the inner one (to 77). */
+.ring-leader { display: none; width: 1px; margin-left: -0.5px; opacity: 0.6; }
+.ring-leader[data-level="1"] { display: block; height: 28px; margin-top: -134px; transform-origin: 0.5px 134px; }
+.ring-leader[data-level="2"] { display: block; height: 9px; margin-top: -86px; transform-origin: 0.5px 86px; }
 /* A halo of the panel's colour, so a line passing behind a code never cuts through it. */
-.ring-code { font: 700 9.5px var(--font-mono); fill: #AEB4BD; text-anchor: middle; dominant-baseline: middle;
-             paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; }
-.ring-code.is-followed { fill: #F2F3F5; }
+.ring-code { display: none; transform-origin: 0 0; font: 700 9.5px var(--font-mono); line-height: 1; color: #AEB4BD; white-space: nowrap;
+  text-shadow: 0 0 2px var(--panel), 0 0 2px var(--panel), 0 0 3px var(--panel); }
+.ring-code[data-level="0"], .ring-code[data-level="1"], .ring-code[data-level="2"] { display: block; }
+.ring-code.is-followed { color: #F2F3F5; }
 .ring-centre-cap { font: 600 8.5px var(--font-text); fill: var(--ink-faint); text-anchor: middle; letter-spacing: 0.08em; }
 .ring-centre-value { font: 700 22px var(--font-mono); fill: var(--ink); text-anchor: middle; }
 .ring-centre-note { font: 500 9px var(--font-text); fill: var(--ink-faint); text-anchor: middle; }
