@@ -151,6 +151,23 @@ def test_after_a_sprint_the_set_with_most_sprint_laps_goes_back():
     assert after_sprint[0].set.runs[-1].session == "S" and after_sprint[0].laps == 22
 
 
+def test_after_the_last_qualifying_softs_go_back_before_a_medium_a_car_can_race():
+    """Three go back after qualifying on a sprint weekend. The six-lap medium from sprint
+    qualifying is the most worn, but it is a race tyre: the three qualifying softs go."""
+    runs = [("FP1", "HARD", 1, 10), ("SQ", "MEDIUM", 1, 6), ("SQ", "SOFT", 1, 3), ("S", "MEDIUM", 1, 19),
+            ("Q", "SOFT", 1, 3), ("Q", "SOFT", 1, 3), ("Q", "SOFT", 1, 3)]
+    held = _weekend(*runs, order=SPRINT, sprint=True).holding(1, "R")
+    assert sorted(r.set.compound for r in held.returned if r.after == "Q") == ["SOFT", "SOFT", "SOFT"]
+    assert ("MEDIUM", 6) in [(s.compound, laps) for s, laps in held.used]
+
+
+def test_in_2023_qualifying_came_before_the_sprint_sessions_and_the_most_worn_still_go():
+    """Friday qualifying, then the shootout and sprint: softs were still needed, so wear decides."""
+    runs = [("FP1", "MEDIUM", 1, 12), ("Q", "SOFT", 1, 3), ("Q", "SOFT", 1, 3), ("Q", "SOFT", 1, 4)]
+    held = _weekend(*runs, order=["FP1", "Q", "SQ", "S", "R"], sprint=True, year=2023).holding(1, "SQ")
+    assert "MEDIUM" in {r.set.compound for r in held.returned}
+
+
 # ------------------------------------------------------------- whose car
 
 def test_a_rookie_in_first_practice_uses_the_car_they_stood_in_for():

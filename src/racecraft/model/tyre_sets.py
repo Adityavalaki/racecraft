@@ -27,7 +27,8 @@ article as data. A normal weekend allocates 13 dry sets (8 soft, 3 medium, 2
 hard) and takes two back after each practice session, leaving seven for
 qualifying and the race; a driver who reaches Q3 hands one more soft back after
 it. A sprint weekend allocates 12 (6, 4, 2) and takes one back after practice,
-the sprint's most-used set after the sprint, and three after qualifying. A
+the sprint's most-used set after the sprint, and three after qualifying
+(softs first when the race is next: a team keeps what it can race). A
 weekend with Pirelli's test tyres in second practice allocates one soft fewer.
 The two 2023 trials of the Alternative Tyre Allocation ran 11 (4, 4, 3). Throughout,
 one soft cannot be touched before Q3 and one hard and one medium cannot be
@@ -273,7 +274,11 @@ class Weekend:
                 in_sprint = [s for s in pool if any(run.session == "S" for run in s.runs)]
                 if in_sprint:
                     pool = [max(in_sprint, key=lambda s: sum(r.laps for r in s.runs if r.session == "S"))]
-            pool.sort(key=lambda s: -(s.laps_before(following, order) or 0))
+            # Most worn first. But when qualifying is the last session before the race, a team hands back
+            # what it will not race: a soft from qualifying goes before a medium or hard, whatever their
+            # laps (2024 on; in 2023 qualifying came before the sprint sessions, which still needed softs).
+            keeps_race_tyres = code == "Q" and following == "R"
+            pool.sort(key=lambda s: (keeps_race_tyres and s.compound != "SOFT", -(s.laps_before(following, order) or 0)))
             for tyre in pool:
                 if count == 0:
                     break
