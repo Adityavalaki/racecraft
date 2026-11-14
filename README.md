@@ -1,91 +1,90 @@
 # Racecraft
 
-**An F1 race replay and strategy workbench, built on public timing data.**
+**Understand why a Formula 1 race went the way it did, and see how it is likely to go next.**
 
-Racecraft replays any Formula 1 session since 2023 on a live track map, with every
-car's telemetry, the timing tower and race control. It also works out what the
-public feed does not show: tyre wear, what a pit stop costs, when each car is best
-off stopping, how the race is likely to finish, and how each driver measured up
-against their teammate, at the start, in qualifying and in the race.
+Racecraft is a free Windows app for F1 fans. It replays every session since 2023 with
+the cars on a live track map, and works out what the broadcast and the timing screens
+don't show you: what each pit stop really cost, how fast each tyre wears, which driver
+is quicker through which corner, and who is most likely to win on Sunday. Every
+prediction it makes is scored against what then happened, and the scores are below.
 
-It runs as a Windows desktop app, or as a local web app in any browser.
+**[Download for Windows](https://github.com/Adityavalaki/racecraft/releases/latest)** ·
+[How accurate is it?](#how-accurate-is-it) · [Install in three steps](#install) ·
+[Questions](#questions)
 
-![The replay: pedal map, followed drivers, timing tower and race control](docs/screenshots/replay.png)
+![The replay: the timing tower, the track map, two followed drivers' dashboards and race control during the 2026 São Paulo Grand Prix](docs/screenshots/replay.png)
 
 > Racecraft is an independent, non-commercial project. It is **not affiliated with
-> Formula 1**. See [Data, credits and trademarks](#data-credits-and-trademarks).
+> Formula 1**, the FIA or any team. Predictions are estimates, not advice.
 
 ---
 
 ## Contents
 
-- [What it does](#what-it-does)
+- [Who it is for](#who-it-is-for)
+- [What you can find out](#what-you-can-find-out)
 - [The screens](#the-screens)
-- [How it works](#how-it-works)
-- [How accurate it is](#how-accurate-it-is)
-- [Getting started](#getting-started)
-- [Using the app](#using-the-app)
-- [Command line](#command-line)
-- [Live timing](#live-timing)
-- [Building the Windows installer](#building-the-windows-installer)
-- [Configuration](#configuration)
-- [Project layout](#project-layout)
-- [Development](#development)
-- [Security](#security)
-- [Limits: what the data cannot tell you](#limits-what-the-data-cannot-tell-you)
+- [How accurate is it?](#how-accurate-is-it)
+- [Install](#install)
+- [Questions](#questions)
+- [What it cannot tell you](#what-it-cannot-tell-you)
+- [Privacy and security](#privacy-and-security)
+- [For developers](#for-developers)
 - [Data, credits and trademarks](#data-credits-and-trademarks)
 - [Copyright and licence](#copyright-and-licence)
 
 ---
 
-## What it does
+## Who it is for
 
-- **Replays any session** from 2023 to now (practice, qualifying, sprint and race)
-  with the cars moving on a map drawn from their own GPS positions, at 1x to 30x.
-- **Shows what each car is doing**: speed, gear, throttle, brake, DRS (from 2026,
-  overtake mode), and the last 30 seconds of it as a trace.
-- **Compares two drivers' laps metre by metre**: where each brakes, how much speed
-  they carry, where the time is gained.
-- **Works out strategy**: what tyre wear and the pit lane cost at each circuit, the
-  cheapest plans with and without safety cars, and when each car should stop.
-- **Predicts the race and the sprint** from practice, qualifying and recent form,
-  as each driver's chance to win, reach the podium and score.
-- **Keeps the championships** as they stood at any session of the season, with
-  each driver's and team's chance of the title.
-- **Reviews the season**: teammate head-to-heads, lap-1 starts, how close each
-  driver came to a perfect qualifying lap, and pit-crew speed.
-- **Reviews each race**: who passed whom on track, and what every pit stop cost in
-  places, so a lucky safety car shows.
-- **Explains race control**: every steward's verdict and track message in plain
-  words.
-- **Follows a session live** from F1's own timing feed, with no subscription.
-- **Keeps itself current**: the desktop app fetches the latest race weekends while
-  it is open.
+- **Fans who want the "why".** A driver lost three places in the pit stops, or gained
+  five on lap 1: Racecraft shows where, and in plain words.
+- **Strategy followers.** See when each car is best off stopping, what tyres it has
+  left, and how a safety car changes the picture, lap by lap.
+- **Anyone who likes a prediction they can check.** The race and title chances come
+  from simulating the race thousands of times, and the app keeps score against the
+  real results.
+- **People who rewatch races.** Replay any session at up to 30x, pause anywhere, and
+  nothing shows you a result from later than the moment you are watching.
 
-Nothing gives away the result: every season screen can be set to *going into this
-session* or *after it*, and every model of a past race is fitted only on races
-before it.
+You don't need to code, sign up or pay. You need a Windows 10 or 11 PC and an
+internet connection for the first download of race data.
+
+---
+
+## What you can find out
+
+| You want to know | Open | What it shows |
+|---|---|---|
+| What happened at any moment of a race | **Replay** | Every car on the map, the timing tower, race control, and two drivers' speed, throttle and brake |
+| Who gained and lost places, and why | **Race review** | Every pass on track, and the places each pit stop won or cost, with safety-car luck marked |
+| When a car should pit, and what it would cost | **Strategy** | The rest of each car's race shaded by what a stop on each lap costs, and where it would rejoin |
+| How fast each tyre wears | **Tyres** | A wear chart per compound with every car on it, and every car's tyre sets through the weekend |
+| Where one driver is faster than another | **Pedals and speed** | Two laps compared metre by metre, corner by corner: braking points, minimum speeds, time gained |
+| Who will win on Sunday | **Race prediction** | Each driver's chance to win, reach the podium and score, made from Friday and Saturday only |
+| Who will win the championship | **Standings** | Both tables at any point of the season, with each driver's and team's chance of the title |
+| How the gaps opened and closed | **Race trace** | Positions lap by lap, the gaps at any lap, and each driver's race pace |
+| Which teammate is really quicker | **Teammates** | Qualifying, race pace and results head to head, round by round |
+| Who makes the best starts | **Starts** | Places gained on lap 1, against what is usual from that grid slot |
+| Which crews are quickest | **Pit crews** | Every team's stops across the season |
+| What the stewards decided | **Stewards** | Every penalty and investigation, explained, at the moment it happened |
+
+Season screens can be set to **going into this session** or **after it**, so you can
+catch up on a race without seeing the result first.
 
 ---
 
 ## The screens
 
-A session bar runs across the top: the session, the lap, the race time, the track
-status, the weather and a search (Ctrl K) that jumps to any screen, driver or
-session. A slim icon rail runs down the left, and the playback bar and a status
-bar along the bottom. Every screen except the replay and settings can pop out into
-a window of its own (the ↗ button) that follows the main window's clock, so the
-timing tower can sit on a second monitor.
-
 ### Race
 
 | | |
 |---|---|
-| **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), and a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side); race control; and the followed drivers' last laps, channel by channel against lap distance. | ![Replay](docs/screenshots/replay.png) |
+| **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side), race control, and the followed drivers' last laps, channel by channel. | ![Replay](docs/screenshots/replay.png) |
 | **Timing tower**: every car's gap, interval, last and best lap, sectors in timing colours, tyre and age, stops and penalties; beside it the field on a ring, one turn a lap, each car a tick that moves with the replay. | ![Timing tower](docs/screenshots/timing-tower.png) |
-| **Race trace**: positions lap by lap, with safety-car laps shaded and every pit stop marked; the gap to the leader and the interval as a bar per driver at any lap, with a lap slider; and each driver's race pace as a box of their green-flag laps. Nothing after the lap on the clock is shown. | ![Race trace](docs/screenshots/race-trace.png) |
-| **Pedals and speed**: one driver's lap against another's by distance: the headline figures, the time between them shaded by who is ahead, speed, a pedal row per driver, and every corner with each driver's slowest point, the time gained or lost there, and where they braked or lifted. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
-| **Race review**: per driver, overtakes made and lost on track, and each pit stop's lap and the places it cost, marked when made under a safety car, VSC or red flag. Click a driver to see their stops along the race, each in a sentence. | ![Race review](docs/screenshots/race-review.png) |
+| **Race trace**: positions lap by lap, with safety-car laps shaded and every pit stop marked; the gap to the leader and the interval as a bar per driver at any lap, with a lap slider; and each driver's race pace as a box of their green-flag laps. | ![Race trace](docs/screenshots/race-trace.png) |
+| **Pedals and speed**: one driver's lap against another's: the headline figures, the time between them shaded by who is ahead, speed, a pedal row per driver, and every corner with each driver's slowest point, the time gained or lost there, and where they braked or lifted. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
+| **Race review**: per driver, overtakes made and lost on track, and each pit stop's lap and the places it cost, marked when made under a safety car, VSC or red flag. Click a driver to read their stops as sentences. | ![Race review](docs/screenshots/race-review.png) |
 
 ### Plan
 
@@ -111,11 +110,160 @@ timing tower can sit on a second monitor.
 | **Starts**: an arrow per driver from grid slot to place after lap 1, judged against what drivers starting from the same grid slots usually gain. | ![Starts](docs/screenshots/starts.png) |
 | **Qualifying laps**: each driver's best lap against their own perfect lap (their three best sectors added together): the time left on the table, and where. | ![Qualifying laps](docs/screenshots/qualifying-laps.png) |
 
-**Settings** holds units, row density, the map's labels and refreshing the data.
+A session bar runs across the top (session, lap, race time, track status, weather,
+and a search with Ctrl K). Every screen except the replay and settings can pop out
+into its own window that follows the main clock, so the timing tower can sit on a
+second monitor.
 
 ---
 
-## How it works
+## How accurate is it?
+
+Every number Racecraft shows either comes straight from the timing data or was
+checked against real races before it was kept. Ideas that did not hold up were left
+out, and the [full record](docs/TECHNICAL.md) includes the ones that failed.
+
+**How the predictions are tested.** Each past race is predicted again using only what
+was known before it started, then scored against what happened. Each season from 2023
+to 2025 is predicted with settings measured on the other two seasons, and **2026 was
+never used to tune anything**: it is the honest test. Every score is compared with a
+simple rule that is hard to beat, *everyone finishes where they started*.
+
+### Race prediction
+
+| Measured on | Finishing order | Winner named | Podium places named | Win chances, honesty |
+|---|---|---|---|---|
+| 2023 to 2025, 69 races | **0.69** (grid 0.66) | **62%** (pole 58%) | **2.09 of 3** (grid 2.06) | **0.54** (grid 0.63) |
+| 2026, 20 races, never tuned on | **0.69** (grid 0.64) | **70%** (pole 70%) | **1.85 of 3** (grid 1.80) | **0.48** (grid 0.50) |
+
+How to read it:
+
+- **Finishing order** is a rank correlation: 1 would be the exact order, 0 a random
+  guess. 0.69 means the predicted order gets most drivers close to where they finish.
+- **Win chances, honesty** is the Brier score, lower is better. It checks that when the
+  app says 30%, that driver wins about 30% of the time. Over 2023 to 2025 the app's
+  chances are clearly better than the grid's, and the gain is statistically real
+  (Wilcoxon signed-rank, p < 0.001 over 69 races).
+- **What it means for you**: the prediction is a small, real edge over "the grid
+  decides", not a crystal ball. Saturday's grid already holds most of what can be
+  known; the app adds race pace, tyre wear, pit stops, overtaking and safety cars.
+  On naming the winner it ties pole position.
+
+### Everything else
+
+| Model | Result | Compared with |
+|---|---|---|
+| **Sprint prediction**, 2023 to 2025 | Win chances 0.53 (lower is better); order 0.76 | Grid 0.59; 0.75 |
+| **Title odds**, every round of 2023 to 2025 | The eventual champion's average chance: **66%** | 49% from the points table alone |
+| **Title odds**, the same test on 76 seasons since 1950 | **55%** for the eventual champion | 49% from the points alone |
+| **Title odds**, first quarter of the 2023 to 2025 seasons | **55%** for the eventual champion | 10% from the points alone |
+| **Race simulator**, 35 races of 2025 and 2026 | Each car's finish within **3.2 places** on average | 3.7 places from the grid |
+| **Tyre sets left before the race**, 90 races | **97.2%** of 4,494 sets raced were tracked correctly | |
+| **Pit crews** | A team's first half-season predicts its second half closely (0.80 to 0.91) | |
+| **Timing data**, every race and sprint | 104 of 107 race times match the official time within 0.33 s | |
+
+### Where it is weak, measured the same way
+
+- **Strategy suggests stopping later than teams do**: its cheapest first stop is on
+  average about 5 laps later than the field's real first stop (36 dry races). Use
+  the cost strip, which shows how little a few laps either way usually cost, rather
+  than one "best" lap.
+- **Late in a season, title odds are no better than the points table**: in the last
+  quarter of the 2023 to 2025 seasons the points alone gave the eventual champion 87%,
+  the app 86%.
+- **The first race at a new circuit** has no history to learn from: tyre wear and pit
+  loss borrow typical values, and the app says so.
+
+---
+
+## Install
+
+1. **Download** `Racecraft-windows-x64.zip` from the
+   [latest release](https://github.com/Adityavalaki/racecraft/releases/latest)
+   (about 141 MB).
+2. **Unzip it**: right-click the file, then **Extract All**, to any folder.
+3. **Open `Racecraft.exe`** in that folder.
+
+Windows will probably say *"Windows protected your PC"*, because the app is not yet
+signed with a paid certificate. Choose **More info**, then **Run anyway**. The source
+is public if you would rather check it first.
+
+**First run.** The app holds no race data until you open it. It asks how much you
+want and fetches it from free public sources, newest race first, so you can start
+watching while the rest arrives:
+
+| Your choice | Time | Disk space |
+|---|---|---|
+| The last 5 races | about 1.5 hours | 100 MB |
+| The latest whole season | up to 6.5 hours | 450 MB |
+| Everything since 2023 | about 24 hours | 1.6 GB |
+
+It only downloads while Racecraft is open and carries on where it stopped. After that
+it fetches each new race weekend by itself. You can change your choice in Settings.
+
+**Needs**: Windows 10 or 11, 64-bit; an internet connection for the data.
+
+---
+
+## Questions
+
+**Is it free?** Yes. No sign-up, no ads, no paid tier.
+
+**Does it work on Mac or Linux?** Not as an app. It can run in a browser on any
+system from the source code: see [For developers](#for-developers).
+
+**Where is my data kept, and how do I remove it?** Race data, caches and logs are in
+`%LOCALAPPDATA%\Racecraft`. To uninstall, delete the folder you unzipped and that one.
+
+**Why do the predictions sometimes miss badly?** First-lap crashes, rain and team
+orders are not predictable from Friday and Saturday, and the app does not pretend
+they are. Its percentages already include that chance.
+
+**Can I watch a session live?** Not from the download yet. Following a session live
+needs the live recorder, which runs from the source code (see
+[For developers](#for-developers)). Every session appears in the app once it has been
+fetched, usually within a few hours of it ending.
+
+**I found a wrong number.** Please
+[open an issue](https://github.com/Adityavalaki/racecraft/issues) with the session and
+the screen. Data errors are usually easy to check.
+
+---
+
+## What it cannot tell you
+
+- **The brake is on or off.** The public feed has no brake pressure, tyre
+  temperatures, fuel or engine modes, so nothing here pretends to show them.
+- **Positions are about four samples a second**, smoothed between samples. The
+  safety car has no position in the feed; it is drawn ahead of the leader and
+  labelled as simulated.
+- **Practice fuel loads are unknown**, so practice long runs are the weakest
+  prediction signal and are weighted accordingly.
+- **What chance decides is left to chance**: first-lap incidents, rain and team
+  orders are not modelled, and the percentages include them as uncertainty.
+
+---
+
+## Privacy and security
+
+Racecraft has **no accounts, passwords or API keys**, and stores **no personal
+data**: everything it keeps is public timing data, on your own disk. It sends
+nothing about you anywhere.
+
+The app runs a small server that only your own computer can reach. It listens on
+127.0.0.1 only, answers only to this computer's own names, refuses changes sent from
+any other website, and serves strict security headers: the page loads nothing from
+other sites.
+
+**Found a vulnerability?** Please report it privately, as described in
+[SECURITY.md](SECURITY.md), rather than in a public issue.
+
+---
+
+## For developers
+
+<details>
+<summary><b>How it works</b></summary>
 
 ```
  F1 timing feed ──► ingest ──► Parquet lake ──► DuckDB ──► models ──► FastAPI ──► React app
@@ -126,188 +274,64 @@ timing tower can sit on a second monitor.
 - **Ingest** (`racecraft-ingest`) pulls each session through
   [FastF1](https://github.com/theOehrly/Fast-F1): laps, results, telemetry, GPS
   positions, weather, race control and track status. It checks the data and stores
-  it as Parquet, one file per table per session, in `data/lake/` (about 1.5 GB for
-  2023 to 2026). Sessions F1's archive will not serve without a login are built from
-  free sources instead (see [credits](#data-credits-and-trademarks)), into the same
-  tables, and the app names the sources beside each session.
-- **DuckDB** reads the lake in place: no database server, nothing to keep in sync.
-- **The models** (Python, numpy, pandas, scipy) fit tyre wear, pace and pit loss
-  from earlier races, simulate races car by car, and predict results.
+  it as Parquet, one file per table per session, in `data/lake/`. Sessions F1's
+  archive will not serve without a login are built from free sources instead, into
+  the same tables, and the app names the sources beside each session.
+- **DuckDB** reads the lake in place: no database server.
+- **The models** (Python, numpy, pandas, scipy) fit tyre wear, pace and pit loss from
+  earlier races, simulate races car by car, and predict results. A model never sees
+  the race it is asked about.
 - **The API** (FastAPI) serves any instant of a session and every model's answer.
-- **The interface** (React and TypeScript, built with Vite) draws it, buffering the
-  map and telemetry ahead of the clock so playback stays smooth.
-- **The desktop app** wraps the same thing in its own window (pywebview on Windows'
-  WebView2), with no terminal and no port to remember.
+- **The interface** (React and TypeScript, built with Vite) draws it.
+- **The desktop app** wraps it in its own window (pywebview on WebView2).
 
 The full working record, with the measurements behind every number, is in
 [docs/TECHNICAL.md](docs/TECHNICAL.md).
 
----
+</details>
 
-## How accurate it is
+<details>
+<summary><b>Run from source</b> (Windows, macOS or Linux)</summary>
 
-Every figure the app shows either comes straight from the timing data or was
-checked against real races before it was kept. A measure that did not hold up was
-left out, and the app says when something is an estimate.
-
-**Race prediction**, replayed over every race since 2023, each predicted only from
-what was known before it. Each 2023 to 2025 season is predicted with weights fitted
-on the other two; 2026, a new rulebook, was never trained on.
-
-| | Finishing order (rank correlation) | Win chances (Brier, lower is better) |
-|---|---|---|
-| 2023 to 2025, 69 races | **0.69** model, 0.66 grid | **0.54** model, 0.63 grid |
-| 2026, 20 races | **0.69** model, 0.64 grid | **0.48** model, 0.50 grid |
-
-It beats "everyone finishes where they started" every season, by a small margin:
-the grid already holds most of what is knowable on Saturday night. Over 2023 to 2025
-the gain is statistically real (Wilcoxon signed-rank, p < 0.001); 20 races of 2026
-are too few to prove it either way.
-
-**Sprint prediction** ties the grid on order (a sprint is short and nobody stops)
-but gives more honest chances: Brier 0.53 against 0.59 over 2023 to 2025.
-
-**Title odds**, replayed from every round of 2023 to 2025, gave the eventual champion
-a 66% chance on average, against 49% from the points alone.
-
-**Pit crews**: a team's figure in one half of a season predicts the other half
-closely (split-half correlation 0.80 to 0.91), so the order is the crews', not chance.
-
-**Race review**: a green-flag stop costs a median 3 places, one under a safety car
-0 (69% of them lose none), so the places column shows safety-car luck reliably.
-Checked and **left out** because they did not hold up: lap-time consistency (it
-changes more from race to race than between drivers), safety-car savings in seconds
-(too noisy), and "pitted on the wrong lap" (an opinion with nothing to check it
-against).
-
-**Qualifying laps**: across 2026, the median driver leaves 0.04 s on the table; laps
-deleted for track limits do not count.
-
----
-
-## Getting started
-
-### What you need
-
-| | Version | Check with |
-|---|---|---|
-| Windows 10 or 11 | for the desktop app; the browser mode also runs on macOS and Linux | |
-| Python | 3.11 or newer | `python --version` |
-| Node.js | 20.19+ or 22.12+ | `node --version` |
-| Git | any | `git --version` |
-| Disk | about 3 GB for 2023 to 2026, less for fewer seasons | |
-
-### 1. Get the code
+You need Python 3.11+, Node.js 20.19+ or 22.12+, and Git.
 
 ```powershell
 git clone https://github.com/Adityavalaki/racecraft.git
 cd racecraft
-```
-
-### 2. Install the Python side
-
-```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -e ".[dev,app]"
+.venv\Scripts\python -m pip install -e ".[dev,app]"     # macOS/Linux: .venv/bin/python -m pip install -e ".[dev]"
+cd web; npm install; npm run build; cd ..
 ```
 
-On macOS or Linux, leave out `app` (the desktop window is Windows-only):
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
-```
-
-### 3. Build the interface
-
-```powershell
-cd web
-npm install
-npm run build
-cd ..
-```
-
-### 4. Get some race data
-
-The data folder starts empty. Either let the app ask how much you want and fetch it
-(step 5), or fetch what you want:
-
-```powershell
-.venv\Scripts\racecraft-ingest --season 2025 --rounds 4 --sessions FP2 Q R   # one weekend, quickly
-.venv\Scripts\racecraft-ingest --season 2025 --prune-cache                   # a whole season
-.venv\Scripts\racecraft-ingest --prune-cache                                 # everything since 2023
-```
-
-A full backfill takes hours. That is expected: F1's servers allow a limited number
-of requests an hour, and the command waits for its budget rather than risk being
-blocked. Run it again and it resumes. On Windows, `scripts\backfill.ps1` runs it
-while keeping the machine awake. Always pass `--prune-cache`, or the download cache
-grows by several gigabytes.
-
-### 5. Run it
-
-**As a desktop app (Windows):**
+Then either open the desktop app (Windows) or serve it to a browser (any system):
 
 ```powershell
 .venv\Scripts\racecraft --install-shortcuts     # adds Racecraft to the Desktop and Start menu
+.venv\Scripts\racecraft-serve                   # or open http://127.0.0.1:8000
 ```
 
-Then open **Racecraft**. On an empty install it asks first: the last 5 races (about 1.5
-hours), the latest whole season (up to 6.5 hours) or everything since 2023 (about 24
-hours). Newest race first, and each session appears as it lands. It looks for anything
-new every fifteen minutes while open, stops completely when closed, and carries on where
-it stopped when reopened. Change the choice in Settings.
-
-**In a browser (any system):**
+Fetch data from the app's first-run choice, or by hand:
 
 ```powershell
-.venv\Scripts\racecraft-serve          # then open http://127.0.0.1:8000
+.venv\Scripts\racecraft-ingest --season 2025 --rounds 4 --sessions FP2 Q R   # one weekend
+.venv\Scripts\racecraft-ingest --season 2025 --prune-cache                   # a whole season
 ```
 
-### 6. Check it works
-
-```powershell
-.venv\Scripts\python -m pytest -m "not network"     # Python tests, offline
-cd web; npm test; cd ..                             # interface tests
-```
-
-Tests marked `realdata` use your downloaded data and skip themselves when a session
-they need is missing.
-
-### Troubleshooting
+A full backfill takes hours: F1's servers allow a limited number of requests an hour,
+and ingest waits for its budget rather than risk being blocked. Run it again and it
+resumes. Always pass `--prune-cache`, or the download cache grows by gigabytes.
 
 | Problem | Fix |
 |---|---|
-| The session list is empty | No data yet: choose how much to download when asked, press **Refresh data**, or run `racecraft-ingest`. |
-| `racecraft` is not recognised | Use the full path, `.venv\Scripts\racecraft`, or activate the environment first. |
-| The window is blank | Build the interface (step 3); check `data/logs/`. |
+| The session list is empty | No data yet: choose how much to download when asked, or run `racecraft-ingest`. |
+| `racecraft` is not recognised | Use the full path, `.venv\Scripts\racecraft`. |
+| The window is blank | Build the interface (`npm run build` in `web`); check `data/logs/`. |
 | Ingest is "waiting" for a long time | It is respecting F1's rate limit. Leave it running. |
-| A session shows no track map | Some sessions have no position data in the feed; the app says so. |
 
----
+</details>
 
-## Using the app
-
-- **Pick a session** at the top, **play** with Space, and **scrub** on the timeline,
-  which is coloured by flags and safety cars.
-- **Search** with Ctrl K: type part of a screen, a driver or a session, then Enter.
-- **Follow a driver** by clicking them in the timing tower (up to two).
-- **Pop out** any screen with ↗; it stays in step with the main window.
-- On season screens, choose **Going into this session** (no spoilers) or **After it**.
-
-| Key | Does |
-|---|---|
-| Space | Play or pause |
-| ← → | Back or forward 5 s (with Shift, 30 s) |
-| ↑ ↓ | Faster or slower |
-| Home | Back to the start |
-| L | Driver names on the map |
-| D | DRS zones on the map (2026: overtake rings) |
-| Ctrl K | Search screens, drivers and sessions |
-
----
-
-## Command line
+<details>
+<summary><b>Command line</b></summary>
 
 | Command | What it does |
 |---|---|
@@ -319,64 +343,43 @@ they need is missing.
 | `racecraft-analyse strategy Baku` | The cheapest plans, in seconds. |
 | `racecraft-analyse race Baku --grid 8` | Plans for one car, raced against the field, in places. |
 | `racecraft-analyse predict 2025_04_Q` | The weekend's race, predicted from before it started. |
-| `racecraft-analyse predict-backtest` | Every race since 2023 predicted and scored against the grid. |
-| `racecraft-analyse title 2026` | Each driver's and team's chance of the championship. |
+| `racecraft-analyse predict-backtest` | Every race since 2023 predicted and scored against the grid: the table above. |
+| `racecraft-analyse title-backtest` | The title odds replayed from every round. |
 | `racecraft-live record` / `status` / `read` | Record F1's live timing feed, and read it back. |
 
 Session keys look like `2025_04_R`: season, round, session (`FP1`, `FP2`, `FP3`,
 `SQ`, `S`, `Q`, `R`).
 
----
+Live: start `racecraft-live record --name my-race` before the session and leave it
+running, then pick LIVE in the session list.
 
-## Live timing
+</details>
+
+<details>
+<summary><b>Tests, building the app, configuration and layout</b></summary>
 
 ```powershell
-.venv\Scripts\racecraft-live record --name my-race    # start before the session, leave running
-.venv\Scripts\racecraft-serve                         # then pick LIVE in the session list
+.venv\Scripts\python -m pytest -m "not network"     # Python tests, offline
+cd web; npm test; cd ..                             # interface tests
 ```
 
-Racecraft records F1's own timing stream and reads it into the same screens as a
-past session. No F1 TV subscription is needed. Live covers the timing side (tower,
-trace, tyres, strategy); there is no track map until the session is fetched
-afterwards.
-
----
-
-## Building the Windows installer
+Build the standalone app and the release zip:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_app.ps1     # dist\Racecraft\Racecraft.exe
-powershell -ExecutionPolicy Bypass -File packaging\build_msix.ps1    # dist\Racecraft.msix, signed
-```
-
-The frozen app runs on any Windows 10 or 11 machine without Python. Signing needs
-a certificate you make once with `packaging\make_cert.ps1`; see
-[packaging/README.md](packaging/README.md). Installed, the app keeps its data in
-`%LOCALAPPDATA%\Racecraft`.
-
-The download page is in [site/](site/): plain HTML and CSS, nothing to build. Its button
-points at `Racecraft-windows-x64.zip` on the latest GitHub release. Make that zip with:
-
-```powershell
 Compress-Archive -Path dist\Racecraft -DestinationPath dist\release\Racecraft-windows-x64.zip
 ```
 
----
-
-## Configuration
-
-All optional, as environment variables:
+An MSIX installer can be made too (`packaging\build_msix.ps1`); it needs a signing
+certificate, see [packaging/README.md](packaging/README.md). The download page is in
+[site/](site/): plain HTML and CSS, nothing to build.
 
 | Variable | Default | What it sets |
 |---|---|---|
 | `RACECRAFT_DATA_DIR` | `data/` in a checkout, `%LOCALAPPDATA%\Racecraft` when installed | Everything Racecraft writes |
 | `RACECRAFT_LAKE_DIR` | `<data dir>/lake` | The race data |
 | `RACECRAFT_FASTF1_CACHE` | `<data dir>/fastf1_cache` | FastF1's download cache |
-| `RACECRAFT_ALLOWED_HOSTS` | none | Extra addresses the server answers to; see [Security](#security) |
-
----
-
-## Project layout
+| `RACECRAFT_ALLOWED_HOSTS` | none | Extra addresses the server answers to (there is no login: trusted networks only) |
 
 ```
 racecraft/
@@ -390,91 +393,30 @@ racecraft/
 │   └── app/         the desktop app: window, single instance, auto-sync, shortcuts
 ├── web/src/         the React interface: screens, panels, styles
 ├── tests/           Python tests (offline; `realdata` ones use your data)
-├── packaging/       building the desktop app and the MSIX installer
-├── scripts/         backfill helper and the icon generator
+├── packaging/       building the desktop app and the installer
+├── site/            the download page
 ├── docs/            TECHNICAL.md and the screenshots
 └── data/            (not in git) your race data, logs and caches
-```
-
----
-
-## Development
-
-```powershell
-.venv\Scripts\racecraft-serve --reload    # the API, restarting on change, on :8000
-cd web; npm run dev                       # the interface with hot reload, on :5173
-```
-
-Before committing:
-
-```powershell
-.venv\Scripts\python -m pytest -m "not network"
-cd web; npm test; npm run build; npm audit
 ```
 
 House rules: a model never sees the race it is asked about; every number shown can
 be traced to the data or a check; anything estimated says so on screen.
 
----
-
-## Security
-
-Racecraft has **no accounts, passwords or API keys**, and stores **no personal
-data**: everything it keeps is public timing data. The server is meant for your own
-computer and is built to stay that way:
-
-- **It listens on 127.0.0.1 only**, so other devices cannot reach it.
-- **It answers only to this computer's names** (`127.0.0.1`, `localhost`), so a
-  website pointing its own domain at your machine (DNS rebinding) is refused.
-- **Only its own pages can change anything**: a data refresh or live attach sent from
-  another website is refused.
-- **Strict security headers** on every response: a content security policy allowing
-  only the app's own scripts, and protection against framing and type sniffing. The
-  page loads nothing from other sites; the fonts are bundled.
-- **Input is checked**: session keys before they reach a query, and live recordings
-  must sit in the live folder.
-- **The API's documentation pages are switched off.**
-- **Dependencies are kept patched**: known advisories are pinned out in
-  `pyproject.toml`, and `npm audit` is part of the checks before every commit.
-
-To use it from another device on purpose, start it with
-`racecraft-serve --host 0.0.0.0` and name the address in `RACECRAFT_ALLOWED_HOSTS`.
-There is no login, so do this only on a network you trust.
-
-The installer's signing certificate is a private key: it is ignored by git and has
-never been committed. Make your own with `packaging\make_cert.ps1`.
-
-**Found a vulnerability?** Please report it privately, as described in
-[SECURITY.md](SECURITY.md), rather than in a public issue.
-
----
-
-## Limits: what the data cannot tell you
-
-- **The brake is on or off.** The public feed has no brake pressure, tyre
-  temperatures, fuel or remaining sets, so nothing here pretends to show them.
-- **Positions are about four samples a second**, smoothed between samples. The
-  safety car has no position in the feed; it is drawn ahead of the leader and
-  labelled as simulated.
-- **Practice fuel loads are unknown**, so long runs are the weakest prediction
-  signal and are weighted accordingly.
-- **What chance decides is left to chance**: first-lap incidents, rain and team
-  orders are not modelled.
-- **The models are fitted on 2023 onwards**, so the first race at a new circuit
-  borrows typical values and says so.
+</details>
 
 ---
 
 ## Data, credits and trademarks
 
-- **Timing data** comes from Formula 1's public feeds through
-  [FastF1](https://github.com/theOehrly/Fast-F1) (MIT). Use it in line with F1's
-  terms. Racecraft does not redistribute any data: the `data/` folder is never
-  committed, and each user fetches their own.
-- **Sessions F1's archive will not serve** come from free sources, with thanks:
-  [OpenF1](https://openf1.org) (free tier for personal, non-commercial use),
-  the [Jolpica F1 API](https://github.com/jolpica/jolpica-f1) and
-  [TracingInsights](https://github.com/TracingInsights) (Apache-2.0).
+Racecraft does not redistribute any data: nothing is bundled with the app or kept in
+this repository, and each person's copy fetches its own.
+
+- **Timing data**: Formula 1's public feeds, through
+  [FastF1](https://github.com/theOehrly/Fast-F1) (MIT).
+- **Sessions F1's archive will not serve**, with thanks:
+  [OpenF1](https://openf1.org) (non-commercial, CC BY-NC-SA),
+  the [Jolpica F1 API](https://github.com/jolpica/jolpica-f1) (non-commercial, data
+  CC BY-NC-SA) and [TracingInsights](https://github.com/TracingInsights) (Apache-2.0).
 - **Championship history** for testing the title odds:
   [f1db](https://github.com/f1db/f1db) (CC BY 4.0).
 - **Weather**: [weather data by Open-Meteo.com](https://open-meteo.com) (CC BY 4.0).
