@@ -104,23 +104,6 @@ def find_session(year: int, starts: pd.Timestamp, sessions: list[dict] | None = 
     return best
 
 
-def team_radio(session_key: int, t0: pd.Timestamp, key: str) -> pd.DataFrame:
-    """Each team radio clip: whose, when on the lake's session clock (t0 in UTC), and
-    where F1 serves the MP3 (D-014). F1 still serves them without a login."""
-    clips = pd.DataFrame(_get("team_radio", session_key=session_key))
-    if clips.empty:
-        return _frame({n: [] for n in TABLE_COLUMNS["team_radio"]}, "team_radio")
-    sent = pd.to_datetime(clips["date"], utc=True, format="ISO8601")
-    return _frame({"session_key": key, "driver_number": clips["driver_number"],
-                   "t": (sent - t0).dt.total_seconds(), "url": clips["recording_url"]}, "team_radio")
-
-
-def radio_for(year: int, starts: pd.Timestamp, t0: pd.Timestamp, key: str,
-              sessions: list[dict] | None = None) -> pd.DataFrame:
-    """Team radio for a session OpenF1 did not build: matched by its start time (UTC)."""
-    return team_radio(find_session(year, starts, sessions)["session_key"], t0, key)
-
-
 def extract(season: int, rnd: int, ident: str, session_name: str, key: str,
             telemetry: bool = True) -> dict[str, pd.DataFrame]:
     """All lake tables for one session, from OpenF1."""
@@ -149,7 +132,6 @@ def extract(season: int, rnd: int, ident: str, session_name: str, key: str,
         "race_control": _race_control(rc, key),
         "track_status": status,
         "session_status": _frame({n: [] for n in TABLE_COLUMNS["session_status"]}, "session_status"),
-        "team_radio": team_radio(sk, t0, key),
     }
     markers, rotation = _circuit(schedule.event["Location"], key)
     tables["circuit_markers"] = markers

@@ -89,8 +89,8 @@ The championships need every round, and a new install fetches five weekends, so 
 first takes the rest of the season's race and sprint results from Jolpica into `official_results`
 (`ingest/season_results.py`, D-031): one request a session, once. They count in the standings and
 title odds only; those rounds open no replay and do not feed Starts, Teammates or Pit crews.
-Team radio (`team_radio`: car, time, MP3 address) comes from OpenF1 and plays from F1's
-server in the replay (D-014); `racecraft-ingest --radio` adds it to older sessions.
+Team radio is no longer fetched or served (D-039): no screen showed it once its panel went.
+A lake that already has a `team_radio` table keeps it on disk, unread.
 The prediction screen shows the weekend's forecast at the circuit from Open-Meteo
 (`api/forecast.py`, `/api/sessions/{key}/forecast`, D-015); display only.
 Championship history since 1950 comes from f1db into `<data>/history/f1db/`, apart from

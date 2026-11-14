@@ -138,16 +138,11 @@ class SessionData:
         # table, and a session ingested before it has no rows: everything there is FastF1's.
         try:
             self.sources = con.sql(f"""select table_name, source from sources
-                                       where session_key = '{session_key}' order by table_name""").df()
+                                       where session_key = '{session_key}'
+                                       and table_name <> 'team_radio' order by table_name""").df()
         except duckdb.Error:
             self.sources = pd.DataFrame()
         self.sources = self.sources.to_dict("records") or [{"table_name": "all", "source": "FastF1"}]
-        # Team radio (D-014): who, when, and the MP3's address; none in older lakes.
-        try:
-            self.radio = con.sql(f"""select driver_number, t, url from team_radio
-                                     where session_key = '{session_key}' order by t""").df().to_dict("records")
-        except duckdb.Error:
-            self.radio = []
         self._assemble()
         log.info("loaded %s: %d laps, %d drivers, %d position samples",
                  session_key, len(self.laps), len(self.drivers),
@@ -178,7 +173,6 @@ class SessionData:
         self.meta = sessions.iloc[0].to_dict()
         self.session_name = self.meta.get("session_name") or "Live"
         self.sources = [{"table_name": "all", "source": "F1 live timing"}]     # recorded, parsed by FastF1
-        self.radio = []                     # the live recording does not carry team radio
 
         self.laps = tables.get("laps", _empty(_LAP_COLUMNS)).copy()
         self.drivers = _drivers_from(tables)
@@ -348,7 +342,6 @@ class SessionData:
             "drs_zones": self.drs_zones,
             "has_overtake": self.overtake_changes is not None,
             "sources": self.sources,
-            "radio": self.radio,
         }
 
     def state(self, t: float) -> dict:

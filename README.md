@@ -81,7 +81,7 @@ timing tower can sit on a second monitor.
 
 | | |
 |---|---|
-| **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), and a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side); race control and team radio; and the followed drivers' last laps, channel by channel against lap distance. | ![Replay](docs/screenshots/replay.png) |
+| **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), and a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side); race control; and the followed drivers' last laps, channel by channel against lap distance. | ![Replay](docs/screenshots/replay.png) |
 | **Timing tower**: every car's gap, interval, last and best lap, sectors in timing colours, tyre and age, stops and penalties. | ![Timing tower](docs/screenshots/timing-tower.png) |
 | **Race trace**: the gap to the leader lap by lap, drawn only up to the lap on the clock. Safety-car laps are shaded. | ![Race trace](docs/screenshots/race-trace.png) |
 | **Pedals and speed**: one driver's lap against another's by distance: the time between them, speed, throttle, brake, gear and every brake zone. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
@@ -478,8 +478,6 @@ never been committed. Make your own with `packaging\make_cert.ps1`.
 - **Championship history** for testing the title odds:
   [f1db](https://github.com/f1db/f1db) (CC BY 4.0).
 - **Weather**: [weather data by Open-Meteo.com](https://open-meteo.com) (CC BY 4.0).
-- **Team radio** is played straight from Formula 1's own server; Racecraft stores
-  no audio.
 - **Fonts**: Titillium Web, Barlow Condensed and JetBrains Mono (SIL Open Font
   License), bundled through Fontsource.
 - **Built with** FastF1, DuckDB, pandas, numpy, scipy, FastAPI, React, Vite and

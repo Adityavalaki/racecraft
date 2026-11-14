@@ -42,8 +42,6 @@ export interface SessionInfo {
   has_overtake?: boolean;
   /** Where each table came from, e.g. { table_name: "laps", source: "OpenF1 + TracingInsights" }. */
   sources?: { table_name: string; source: string }[];
-  /** Team radio clips in time order: whose, when (session clock), and the MP3 on F1's server. */
-  radio?: { driver_number: number; t: number; url: string }[];
 }
 
 /** The weather expected at a session's start: forecast if upcoming, else as archived then. */
