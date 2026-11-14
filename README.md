@@ -82,17 +82,17 @@ timing tower can sit on a second monitor.
 | | |
 |---|---|
 | **Replay**: a pit wall. The timing tower, the circuit coloured by a followed car's last lap (green flat out, red braking), and a dashboard for each of two followed drivers (speed, gear, revs, throttle, brake, the gaps either side); race control; and the followed drivers' last laps, channel by channel against lap distance. | ![Replay](docs/screenshots/replay.png) |
-| **Timing tower**: every car's gap, interval, last and best lap, sectors in timing colours, tyre and age, stops and penalties. | ![Timing tower](docs/screenshots/timing-tower.png) |
-| **Race trace**: the gap to the leader lap by lap, drawn only up to the lap on the clock. Safety-car laps are shaded. | ![Race trace](docs/screenshots/race-trace.png) |
-| **Pedals and speed**: one driver's lap against another's by distance: the time between them, speed, throttle, brake, gear and every brake zone. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
+| **Timing tower**: every car's gap, interval, last and best lap, sectors in timing colours, tyre and age, stops and penalties; beside it the field on a ring, one turn a lap, each car a tick that moves with the replay. | ![Timing tower](docs/screenshots/timing-tower.png) |
+| **Race trace**: positions lap by lap, with safety-car laps shaded and every pit stop marked; the gap to the leader and the interval as a bar per driver at any lap, with a lap slider; and each driver's race pace as a box of their green-flag laps. Nothing after the lap on the clock is shown. | ![Race trace](docs/screenshots/race-trace.png) |
+| **Pedals and speed**: one driver's lap against another's by distance: the headline figures, the time between them shaded by who is ahead, speed, a pedal row per driver, and every corner with each driver's slowest point, the time gained or lost there, and where they braked or lifted. | ![Pedals and speed](docs/screenshots/pedals-and-speed.png) |
 | **Race review**: per driver, overtakes made and lost on track, and each pit stop's lap and the places it cost, marked when made under a safety car, VSC or red flag. Click a driver to see their stops along the race, each in a sentence. | ![Race review](docs/screenshots/race-review.png) |
 
 ### Plan
 
 | | |
 |---|---|
-| **Strategy**: each car's pit window and most likely stop lap, the undercut watch, a stint map, and the cheapest plans raced against the field. | ![Strategy](docs/screenshots/strategy.png) |
-| **Tyres**: the wear curve for each compound with every car placed on it, and every car's tyre sets through the weekend. | ![Tyres](docs/screenshots/tyres.png) |
+| **Strategy**: each car's stints so far and the rest of its race shaded by what a stop on each lap would cost, with the cheapest lap marked; where it would rejoin among the cars around it; and the cheapest plans raced against the field. | ![Strategy](docs/screenshots/strategy.png) |
+| **Tyres**: a wear chart for each compound with every car placed on it at its tyres' age, and every car's tyre sets through the weekend. | ![Tyres](docs/screenshots/tyres.png) |
 | **Race prediction**: the favourite, podium chances, the full predicted order with each driver's likely range, and after the race the result beside it. | ![Race prediction](docs/screenshots/race-prediction.png) |
 
 ### Control
@@ -106,9 +106,9 @@ timing tower can sit on a second monitor.
 | | |
 |---|---|
 | **Standings**: both championships as they stood going into the session or after it, with each driver's and team's chance of the title. | ![Standings](docs/screenshots/standings.png) |
-| **Pit crews**: every team's crew ranked by its typical stop against the race's typical stop. | ![Pit crews](docs/screenshots/crews.png) |
+| **Pit crews**: every team's crew ranked by its typical stop against the race's typical stop, each as a box of all its stops this season. | ![Pit crews](docs/screenshots/crews.png) |
 | **Teammates**: each team's two drivers head to head: who qualified ahead, who was faster in races and practice, who finished ahead, and a round-by-round chart of the gap. | ![Teammates](docs/screenshots/teammates.png) |
-| **Starts**: places each driver gains or loses on lap 1, judged against what drivers starting from the same grid slots usually gain. | ![Starts](docs/screenshots/starts.png) |
+| **Starts**: an arrow per driver from grid slot to place after lap 1, judged against what drivers starting from the same grid slots usually gain. | ![Starts](docs/screenshots/starts.png) |
 | **Qualifying laps**: each driver's best lap against their own perfect lap (their three best sectors added together): the time left on the table, and where. | ![Qualifying laps](docs/screenshots/qualifying-laps.png) |
 
 **Settings** holds units, row density, the map's labels and refreshing the data.
@@ -157,11 +157,11 @@ on the other two; 2026, a new rulebook, was never trained on.
 | | Finishing order (rank correlation) | Win chances (Brier, lower is better) |
 |---|---|---|
 | 2023 to 2025, 69 races | **0.69** model, 0.66 grid | **0.54** model, 0.63 grid |
-| 2026, 18 races | **0.69** model, 0.66 grid | **0.45** model, 0.47 grid |
+| 2026, 20 races | **0.69** model, 0.64 grid | **0.48** model, 0.50 grid |
 
 It beats "everyone finishes where they started" every season, by a small margin:
 the grid already holds most of what is knowable on Saturday night. Over 2023 to 2025
-the gain is statistically real (Wilcoxon signed-rank, p < 0.001); 18 races of 2026
+the gain is statistically real (Wilcoxon signed-rank, p < 0.001); 20 races of 2026
 are too few to prove it either way.
 
 **Sprint prediction** ties the grid on order (a sprint is short and nobody stops)
