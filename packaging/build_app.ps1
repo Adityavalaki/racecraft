@@ -28,6 +28,11 @@ try {
     --distpath "$repo\dist" --workpath "$repo\build\pyi"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed ($LASTEXITCODE)" }
 
+# The licence and every bundled library's notice travel with the app (MIT, BSD and Apache require it).
+& $Python "$repo\packaging\make_notices.py"
+if ($LASTEXITCODE -ne 0) { throw "make_notices.py failed ($LASTEXITCODE)" }
+Copy-Item "$repo\LICENSE", "$repo\THIRD_PARTY_NOTICES.txt" "$repo\dist\Racecraft" -Force
+
 Write-Host ""
 Write-Host "Built dist\Racecraft\Racecraft.exe"
 Write-Host "Run it directly, or make an MSIX with build_msix.ps1."

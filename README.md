@@ -436,7 +436,10 @@ endorsed by or connected to** Formula 1, the FIA or any team.
 
 Copyright © 2026 Aditya Valaki. All rights reserved.
 
-The source is published so it can be read and reviewed. It is **not** open source:
-copying, modifying, redistributing or using it commercially needs written
-permission. See [LICENSE](LICENSE) for the full terms. Third-party libraries, data
-and fonts stay under their own licences, listed above.
+**Free for personal use.** Anyone may download, install and run Racecraft, or build
+and run it from this source, for their own personal, non-commercial use. It is
+**not** open source: copying, modifying, redistributing or using it commercially
+needs written permission. To share it, send people to this page rather than a copy.
+See [LICENSE](LICENSE) for the full terms. Third-party libraries, data and fonts stay
+under their own licences: listed above, and in full in
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
