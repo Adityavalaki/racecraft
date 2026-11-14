@@ -19,8 +19,7 @@ $repo = Resolve-Path "$PSScriptRoot\.."
 Write-Host "Building the interface..."
 Push-Location "$repo\web"
 try {
-    if (-not (Test-Path "$repo\web
-ode_modules")) { npm install }
+    if (-not (Test-Path "$repo\web\node_modules")) { npm install }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "The interface build failed ($LASTEXITCODE)" }
 } finally { Pop-Location }
